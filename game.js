@@ -880,7 +880,6 @@
     var ru = state.ruinsDiscovered ? "day " + state.ruinsTravelDay : "-";
     var partyBits = state.party
       .map(function (m) {
-        var pct = Math.max(0, Math.round((100 * m.hp) / m.maxHp));
         return (
           "<li>" +
           '<span class="' +
@@ -893,8 +892,7 @@
           '">' +
           m.name +
           "</span>" +
-          hpBarHtml(pct) +
-          "<span>" +
+          '<span class="party-hp-text">' +
           m.hp +
           "/" +
           m.maxHp +
@@ -910,8 +908,7 @@
         '<span class="role-guest">' +
         state.guest.name +
         "</span>" +
-        hpBarHtml(Math.round((100 * state.guest.hp) / state.guest.maxHp)) +
-        "<span>" +
+        '<span class="party-hp-text">' +
         state.guest.hp +
         "/" +
         state.guest.maxHp +
@@ -922,8 +919,9 @@
 
     return (
       mapBlock +
-      "<h2 class=\"panel-title\">Party & resources</h2>" +
-      "<div class=\"stats-grid\">" +
+      '<div class="party-panel">' +
+      "<h2 class=\"panel-title panel-title-party\">Party & resources</h2>" +
+      "<div class=\"stats-grid stats-grid-compact\">" +
       "<div class=\"stat\">Gold: <b>" +
       state.gold +
       "</b></div>" +
@@ -949,10 +947,10 @@
       ru +
       "</b></div>" +
       "</div>" +
-      "<ul class=\"party-list\">" +
+      "<ul class=\"party-list party-list-compact\">" +
       partyBits +
       guestLi +
-      "</ul>"
+      "</ul></div>"
     );
   }
 

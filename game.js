@@ -520,7 +520,10 @@
   }
 
   function buy(item) {
-    if (state.gold < 1) return;
+    if (state.gold < 1) {
+      logLine("The shopkeeper shrugs: you need at least <span class=\"hi\">1 gp</span>.", "bad");
+      return;
+    }
     state.gold--;
     if (item === "food") state.food++;
     if (item === "water") state.water++;
@@ -646,6 +649,45 @@
       ">+ Mercenary</button>" +
       "</div>"
     );
+  }
+
+  function illiriTabStrip() {
+    var v = state.illiriView;
+    function tabCls(which) {
+      return "illiri-tab" + (v === which ? " illiri-tab-active" : "");
+    }
+    return (
+      '<nav class="illiri-tabs" role="tablist" aria-label="Illirial locations">' +
+      '<button type="button" role="tab" class="' +
+      tabCls("prep") +
+      '" data-illiri-tab="prep" aria-selected="' +
+      (v === "prep" ? "true" : "false") +
+      '">Town</button>' +
+      '<button type="button" role="tab" class="' +
+      tabCls("shop") +
+      '" data-illiri-tab="shop" aria-selected="' +
+      (v === "shop" ? "true" : "false") +
+      '">Shop</button>' +
+      '<button type="button" role="tab" class="' +
+      tabCls("tavern") +
+      '" data-illiri-tab="tavern" aria-selected="' +
+      (v === "tavern" ? "true" : "false") +
+      '">Tavern</button>' +
+      "</nav>"
+    );
+  }
+
+  function wireIlliriTabs(root) {
+    var tabs = root.querySelectorAll("[data-illiri-tab]");
+    var i;
+    for (i = 0; i < tabs.length; i++) {
+      tabs[i].onclick = (function (el) {
+        return function () {
+          state.illiriView = el.getAttribute("data-illiri-tab");
+          render();
+        };
+      })(tabs[i]);
+    }
   }
 
   function wireRosterEdit(root) {
@@ -958,6 +1000,7 @@
         app.innerHTML =
           startCitySplash() +
           renderHeader() +
+          illiriTabStrip() +
           "<h2 class=\"panel-title\">Tavern</h2>" +
           "<p class=\"tavern-lead\">Dim light, spilled ale, dice in the corner. The barkeep knows everyone who marches the trade road.</p>" +
           "<div class=\"tavern-choice-row\">" +
@@ -969,18 +1012,42 @@
               PARTY_MAX +
               " in the traveling party (guest not counted). At least one must stay."
           ) +
-          "<div class=\"actions\">" +
-          '<button type="button" id="leaveTavern">Return to town</button>' +
-          "</div>" +
           renderLog();
+        wireIlliriTabs(app);
         wireRosterEdit(app);
         document.getElementById("barkeepBtn").onclick = function () {
           logLine("The barkeep leans in: something stirs beyond the road.", "");
           render();
         };
-        document.getElementById("leaveTavern").onclick = function () {
-          state.illiriView = "prep";
-          render();
+        return;
+      }
+
+      if (state.illiriView === "shop") {
+        app.innerHTML =
+          startCitySplash() +
+          renderHeader() +
+          illiriTabStrip() +
+          "<h2 class=\"panel-title\">Trader's stall</h2>" +
+          "<p class=\"shopkeeper-lead\">A lean shopkeeper counts coins beside sacks of grain and stoppered waterskins. " +
+          "\"Road fare and spare steel—<span class=\"hi\">1 gp</span> each, same as the quartermaster posted.\"</p>" +
+          "<p class=\"shop-gold-line\">Your purse: <b>" +
+          state.gold +
+          "</b> gp</p>" +
+          "<div class=\"shop-block\">" +
+          "<div class=\"shop-row\"><span>Food (rations)</span><button type=\"button\" id=\"buyFood\">Buy 1 gp</button></div>" +
+          "<div class=\"shop-row\"><span>Water (skins)</span><button type=\"button\" id=\"buyWater\">Buy 1 gp</button></div>" +
+          "<div class=\"shop-row\"><span>Weapon (basic blade)</span><button type=\"button\" id=\"buyWeapon\">Buy 1 gp</button></div>" +
+          "</div>" +
+          renderLog();
+        wireIlliriTabs(app);
+        document.getElementById("buyFood").onclick = function () {
+          buy("food");
+        };
+        document.getElementById("buyWater").onclick = function () {
+          buy("water");
+        };
+        document.getElementById("buyWeapon").onclick = function () {
+          buy("weapon");
         };
         return;
       }
@@ -988,34 +1055,19 @@
       app.innerHTML =
         startCitySplash() +
         renderHeader() +
-        "<h2 class=\"panel-title\">Illirial - preparation</h2>" +
-        "<p>Prices: 1 gp each (food, water, weapon).</p>" +
-        "<div class=\"shop-row\"><span>Food</span><button type=\"button\" id=\"buyFood\">Buy</button></div>" +
-        "<div class=\"shop-row\"><span>Water</span><button type=\"button\" id=\"buyWater\">Buy</button></div>" +
-        "<div class=\"shop-row\"><span>Weapon</span><button type=\"button\" id=\"buyWeapon\">Buy</button></div>" +
+        illiriTabStrip() +
+        "<h2 class=\"panel-title\">Illirial - town</h2>" +
+        "<p class=\"town-lead\">Church, inn, and gate. Use <b>Shop</b> for supplies and <b>Tavern</b> to hire or hear rumors.</p>" +
         "<div class=\"actions\">" +
-        "<button type=\"button\" id=\"tavern\">Tavern</button>" +
         "<button type=\"button\" id=\"church\">Church</button>" +
-        "<button type=\"button\" id=\"rest\">Rest</button>" +
+        "<button type=\"button\" id=\"rest\">Rest at inn</button>" +
         "<button type=\"button\" id=\"guestBtn\">" +
         (state.guest ? "Dismiss guest" : "Add test guest") +
         "</button>" +
         "<button type=\"button\" class=\"primary\" id=\"depart\">Depart</button>" +
         "</div>" +
         renderLog();
-      document.getElementById("buyFood").onclick = function () {
-        buy("food");
-      };
-      document.getElementById("buyWater").onclick = function () {
-        buy("water");
-      };
-      document.getElementById("buyWeapon").onclick = function () {
-        buy("weapon");
-      };
-      document.getElementById("tavern").onclick = function () {
-        state.illiriView = "tavern";
-        render();
-      };
+      wireIlliriTabs(app);
       document.getElementById("church").onclick = function () {
         logLine("Blessing received.", "good");
         render();

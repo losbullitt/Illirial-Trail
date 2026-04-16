@@ -1,4 +1,10 @@
 :root {
+  /* Scene photos under images/ — your art order: 1=end, 2–3=travel, 4=start */
+  --scene-end: url("images/scene-end.jpg");
+  --scene-field: url("images/scene-field.jpg");
+  --scene-field-alt: url("images/scene-field2.jpg");
+  --scene-town: url("images/scene-town.jpg");
+
   --bg: #1a1510;
   --panel: #2a2218;
   --border: #4a3d2a;
@@ -286,45 +292,64 @@ code {
   line-height: 1.35;
 }
 
-/* Generic outpost skyline (no art assets) */
+/* Start town: photo + read overlay (fallback color if image missing) */
 .scene-start-city {
   background-color: #1a1510;
   background-image:
-    radial-gradient(ellipse 120% 80% at 50% 118%, rgba(60, 48, 32, 0.95) 0%, transparent 52%),
-    linear-gradient(180deg, #5a7aa8 0%, #d4b896 42%, #6a5844 42%, #2a2218 100%),
-    repeating-linear-gradient(90deg, transparent 0, transparent 11px, rgba(20, 16, 12, 0.88) 11px, rgba(20, 16, 12, 0.88) 17px, transparent 17px, transparent 28px),
-    repeating-linear-gradient(90deg, transparent 0, transparent 19px, rgba(30, 22, 18, 0.75) 19px, rgba(30, 22, 18, 0.75) 24px, transparent 24px, transparent 40px);
-  background-blend-mode: normal, normal, multiply, multiply;
+    linear-gradient(180deg, rgba(10, 8, 6, 0.45) 0%, rgba(10, 8, 6, 0.78) 100%),
+    var(--scene-town);
+  background-size: cover;
+  background-position: center;
 }
 
-/* Travel splashes: sky shifts by leg (generic wilderness) */
+/* Travel: second travel art D1–D3, third travel art D4–D5; tint shifts by day */
 .scene-travel {
   background-color: #151210;
 }
 
 .scene-travel-d1 {
-  background-image: radial-gradient(circle at 18% 22%, rgba(255, 230, 180, 0.35) 0%, transparent 42%),
-    linear-gradient(185deg, #2a3a58 0%, #8a6a50 55%, #1f1a14 100%);
+  background-image:
+    radial-gradient(circle at 18% 22%, rgba(255, 230, 180, 0.35) 0%, transparent 42%),
+    linear-gradient(185deg, rgba(42, 58, 88, 0.55) 0%, rgba(138, 106, 80, 0.45) 55%, rgba(31, 26, 20, 0.65) 100%),
+    var(--scene-field);
+  background-size: cover;
+  background-position: center;
 }
 
 .scene-travel-d2 {
-  background-image: radial-gradient(circle at 22% 18%, rgba(255, 200, 140, 0.45) 0%, transparent 38%),
-    linear-gradient(185deg, #4a6088 0%, #c9a060 48%, #2a2218 100%);
+  background-image:
+    radial-gradient(circle at 22% 18%, rgba(255, 200, 140, 0.45) 0%, transparent 38%),
+    linear-gradient(185deg, rgba(74, 96, 136, 0.5) 0%, rgba(201, 160, 96, 0.4) 48%, rgba(42, 34, 24, 0.62) 100%),
+    var(--scene-field);
+  background-size: cover;
+  background-position: center;
 }
 
 .scene-travel-d3 {
-  background-image: radial-gradient(circle at 50% 12%, rgba(255, 255, 220, 0.25) 0%, transparent 35%),
-    linear-gradient(185deg, #6a8ab8 0%, #d8c898 52%, #2a2618 100%);
+  background-image:
+    radial-gradient(circle at 50% 12%, rgba(255, 255, 220, 0.25) 0%, transparent 35%),
+    linear-gradient(185deg, rgba(106, 138, 184, 0.48) 0%, rgba(216, 200, 152, 0.42) 52%, rgba(42, 38, 24, 0.6) 100%),
+    var(--scene-field);
+  background-size: cover;
+  background-position: center;
 }
 
 .scene-travel-d4 {
-  background-image: radial-gradient(circle at 78% 20%, rgba(255, 180, 120, 0.35) 0%, transparent 40%),
-    linear-gradient(185deg, #4a5080 0%, #c08050 45%, #3a2818 100%);
+  background-image:
+    radial-gradient(circle at 78% 20%, rgba(255, 180, 120, 0.35) 0%, transparent 40%),
+    linear-gradient(185deg, rgba(74, 80, 128, 0.52) 0%, rgba(192, 128, 80, 0.42) 45%, rgba(58, 40, 24, 0.62) 100%),
+    var(--scene-field-alt);
+  background-size: cover;
+  background-position: center;
 }
 
 .scene-travel-d5 {
-  background-image: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(120, 100, 160, 0.35) 0%, transparent 50%),
-    linear-gradient(185deg, #2a2848 0%, #6a5040 50%, #1a1210 100%);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(120, 100, 160, 0.35) 0%, transparent 50%),
+    linear-gradient(185deg, rgba(42, 40, 72, 0.55) 0%, rgba(106, 80, 64, 0.48) 50%, rgba(26, 18, 16, 0.68) 100%),
+    var(--scene-field-alt);
+  background-size: cover;
+  background-position: center;
 }
 
 .scene-travel .splash-title {
@@ -372,9 +397,11 @@ code {
 
 .scene-end-city {
   background-color: #121a16;
-  background-image: radial-gradient(ellipse 100% 70% at 50% 115%, rgba(80, 120, 100, 0.55) 0%, transparent 55%),
-    linear-gradient(185deg, #3a5a68 0%, #8ab8a0 38%, #4a6048 38%, #1a2218 100%),
-    repeating-linear-gradient(95deg, transparent 0, transparent 40px, rgba(255, 255, 255, 0.04) 40px, rgba(255, 255, 255, 0.04) 41px, transparent 41px, transparent 88px);
+  background-image:
+    linear-gradient(185deg, rgba(58, 90, 104, 0.4) 0%, rgba(74, 96, 72, 0.55) 45%, rgba(26, 34, 24, 0.75) 100%),
+    var(--scene-end);
+  background-size: cover;
+  background-position: center;
 }
 
 .scene-end-city .splash-title {

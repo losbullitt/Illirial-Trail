@@ -114,18 +114,34 @@ body {
 
 /* Compact header: Party & resources (no HP bars in list) */
 .party-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.5rem 0.85rem;
+  align-items: start;
   margin-bottom: 0.5rem;
 }
 
 .panel-title-party {
-  margin-bottom: 0.35rem;
+  grid-column: 1 / -1;
+  margin-bottom: 0.2rem;
   font-size: 0.92rem;
 }
 
+/* Roster left, resource stats right (stacks on narrow viewports) */
+.party-list-compact {
+  grid-column: 1;
+  grid-row: 2;
+  margin-top: 0;
+}
+
 .party-panel .stats-grid-compact {
-  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
-  gap: 0.3rem 0.45rem;
-  margin: 0.35rem 0 0.45rem;
+  grid-column: 2;
+  grid-row: 2;
+  grid-template-columns: 1fr;
+  gap: 0.28rem;
+  margin: 0;
+  padding-left: 0.65rem;
+  border-left: 1px solid var(--border);
   font-size: 0.76rem;
 }
 
@@ -138,8 +154,23 @@ body {
   font-size: 0.62rem;
 }
 
-.party-list-compact {
-  margin-top: 0.3rem;
+@media (max-width: 34rem) {
+  .party-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .party-list-compact {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .party-panel .stats-grid-compact {
+    grid-column: 1;
+    grid-row: 3;
+    padding-left: 0;
+    border-left: none;
+    grid-template-columns: repeat(auto-fill, minmax(8.25rem, 1fr));
+  }
 }
 
 .party-list-compact li {

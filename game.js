@@ -876,6 +876,7 @@
   }
 
   function renderHeader() {
+    var combatUi = state.phase === "action" && state.combat;
     var mult = lootMultiplier(state.party).toFixed(2);
     var ru = state.ruinsDiscovered ? "day " + state.ruinsTravelDay : "-";
     var partyBits = state.party
@@ -915,11 +916,14 @@
         "</span></li>"
       : '<li class="role-guest"><em>Guest slot empty.</em></li>';
 
-    var mapBlock = state.phase === "travel" || state.phase === "action" ? travelMapHtml() : "";
+    var mapBlock =
+      state.phase === "travel" || (state.phase === "action" && !combatUi) ? travelMapHtml() : "";
 
     return (
       mapBlock +
-      '<div class="party-panel">' +
+      '<div class="party-panel' +
+      (combatUi ? " party-panel--combat" : "") +
+      '">' +
       "<h2 class=\"panel-title panel-title-party\">Party & resources</h2>" +
       "<div class=\"stats-grid stats-grid-compact\">" +
       "<div class=\"stat\">Gold: <b>" +
@@ -1200,11 +1204,13 @@
           "<p class=\"battle-lead\">" +
           (state.pendingEncounter ? state.pendingEncounter.label : "Fight") +
           "</p>" +
+          '<div class="combat-stage">' +
           '<div class="foe-row">' +
           foesHtml +
           "</div>" +
           '<div class="battle-grid">' +
           cards +
+          "</div>" +
           "</div>" +
           "<div class=\"actions battle-actions-row\">" +
           '<button type="button" id="fleeBtn">Flee</button>' +

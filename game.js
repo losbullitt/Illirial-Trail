@@ -59,7 +59,7 @@
       weaponInventory: [],
       party: createParty(),
       partyIdSeq: 6,
-      illiriView: "prep",
+      illiriView: "church",
       guest: null,
       travelDay: 0,
       encounterChance: ENCOUNTER_BASE,
@@ -653,26 +653,26 @@
 
   function illiriTabStrip() {
     var v = state.illiriView;
-    function tabCls(which) {
-      return "illiri-tab" + (v === which ? " illiri-tab-active" : "");
+    function tab(which, label) {
+      return (
+        '<button type="button" role="tab" class="' +
+        ("illiri-tab" + (v === which ? " illiri-tab-active" : "")) +
+        '" data-illiri-tab="' +
+        which +
+        '" aria-selected="' +
+        (v === which ? "true" : "false") +
+        '">' +
+        label +
+        "</button>"
+      );
     }
     return (
-      '<nav class="illiri-tabs" role="tablist" aria-label="Illirial locations">' +
-      '<button type="button" role="tab" class="' +
-      tabCls("prep") +
-      '" data-illiri-tab="prep" aria-selected="' +
-      (v === "prep" ? "true" : "false") +
-      '">Town</button>' +
-      '<button type="button" role="tab" class="' +
-      tabCls("shop") +
-      '" data-illiri-tab="shop" aria-selected="' +
-      (v === "shop" ? "true" : "false") +
-      '">Shop</button>' +
-      '<button type="button" role="tab" class="' +
-      tabCls("tavern") +
-      '" data-illiri-tab="tavern" aria-selected="' +
-      (v === "tavern" ? "true" : "false") +
-      '">Tavern</button>' +
+      '<nav class="illiri-tabs" role="tablist" aria-label="Illirial">' +
+      tab("church", "Church") +
+      tab("inn", "Inn") +
+      tab("shop", "Shop") +
+      tab("tavern", "Tavern") +
+      tab("depart", "Depart") +
       "</nav>"
     );
   }
@@ -718,7 +718,7 @@
   }
 
   function departIllirial() {
-    state.illiriView = "prep";
+    state.illiriView = "church";
     state.phase = "travel";
     state.travelDay = 0;
     state.encounterChance = ENCOUNTER_BASE;
@@ -994,6 +994,57 @@
     }
 
     if (state.phase === "story_illiri") {
+      if (state.illiriView === "church") {
+        app.innerHTML =
+          startCitySplash() +
+          renderHeader() +
+          illiriTabStrip() +
+          "<h2 class=\"panel-title\">Church</h2>" +
+          "<p class=\"town-lead\">Cool stone, thin tapers, a priest murmurs over travelers bound east.</p>" +
+          "<div class=\"actions\">" +
+          '<button type="button" id="churchBless">Receive blessing</button>' +
+          "</div>" +
+          renderLog();
+        wireIlliriTabs(app);
+        document.getElementById("churchBless").onclick = function () {
+          logLine("Blessing received.", "good");
+          render();
+        };
+        return;
+      }
+
+      if (state.illiriView === "inn") {
+        app.innerHTML =
+          startCitySplash() +
+          renderHeader() +
+          illiriTabStrip() +
+          "<h2 class=\"panel-title\">Inn</h2>" +
+          "<p class=\"town-lead\">Straw beds and a hearth. The host keeps a fair price for a night that mends bone and nerve.</p>" +
+          "<div class=\"actions\">" +
+          '<button type="button" id="innRest">Rest (full heal)</button>' +
+          "</div>" +
+          renderLog();
+        wireIlliriTabs(app);
+        document.getElementById("innRest").onclick = restAtInn;
+        return;
+      }
+
+      if (state.illiriView === "depart") {
+        app.innerHTML =
+          startCitySplash() +
+          renderHeader() +
+          illiriTabStrip() +
+          "<h2 class=\"panel-title\">Depart</h2>" +
+          "<p class=\"town-lead\">The east gate opens on the trade road — five days to New Isil if the miles are kind.</p>" +
+          "<div class=\"actions\">" +
+          '<button type="button" class="primary" id="departBtn">Leave Illirial</button>' +
+          "</div>" +
+          renderLog();
+        wireIlliriTabs(app);
+        document.getElementById("departBtn").onclick = departIllirial;
+        return;
+      }
+
       if (state.illiriView === "tavern") {
         app.innerHTML =
           startCitySplash() +
@@ -1010,11 +1061,26 @@
               PARTY_MAX +
               " in the traveling party (guest not counted). At least one must stay."
           ) +
+          "<div class=\"actions tavern-guest-actions\">" +
+          "<button type=\"button\" id=\"guestBtn\">" +
+          (state.guest ? "Dismiss guest" : "Add test guest") +
+          "</button>" +
+          "</div>" +
           renderLog();
         wireIlliriTabs(app);
         wireRosterEdit(app);
         document.getElementById("barkeepBtn").onclick = function () {
           logLine("The barkeep leans in: something stirs beyond the road.", "");
+          render();
+        };
+        document.getElementById("guestBtn").onclick = function () {
+          if (state.guest) {
+            state.guest = null;
+            logLine("Guest dismissed.", "");
+          } else {
+            state.guest = { id: "g1", name: "Guest: Guide", role: "soldier", hp: 10, maxHp: 10 };
+            logLine("Guest joins - seventh member alongside your party of " + state.party.length + ".", "good");
+          }
           render();
         };
         return;
@@ -1050,38 +1116,8 @@
         return;
       }
 
-      app.innerHTML =
-        startCitySplash() +
-        renderHeader() +
-        illiriTabStrip() +
-        "<h2 class=\"panel-title\">Illirial - town</h2>" +
-        "<p class=\"town-lead\">Church, inn, and gate. Use <b>Shop</b> for supplies and <b>Tavern</b> to hire or hear rumors.</p>" +
-        "<div class=\"actions\">" +
-        "<button type=\"button\" id=\"church\">Church</button>" +
-        "<button type=\"button\" id=\"rest\">Rest at inn</button>" +
-        "<button type=\"button\" id=\"guestBtn\">" +
-        (state.guest ? "Dismiss guest" : "Add test guest") +
-        "</button>" +
-        "<button type=\"button\" class=\"primary\" id=\"depart\">Depart</button>" +
-        "</div>" +
-        renderLog();
-      wireIlliriTabs(app);
-      document.getElementById("church").onclick = function () {
-        logLine("Blessing received.", "good");
-        render();
-      };
-      document.getElementById("rest").onclick = restAtInn;
-      document.getElementById("guestBtn").onclick = function () {
-        if (state.guest) {
-          state.guest = null;
-          logLine("Guest dismissed.", "");
-        } else {
-          state.guest = { id: "g1", name: "Guest: Guide", role: "soldier", hp: 10, maxHp: 10 };
-          logLine("Guest joins - seventh member alongside your party of " + state.party.length + ".", "good");
-        }
-        render();
-      };
-      document.getElementById("depart").onclick = departIllirial;
+      state.illiriView = "church";
+      render();
       return;
     }
 

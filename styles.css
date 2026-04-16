@@ -297,7 +297,7 @@ button.primary {
   border-bottom: none;
 }
 
-/* Illirial: Town | Shop | Tavern */
+/* Illirial: Church | Inn | Shop | Tavern | Depart */
 .illiri-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -311,9 +311,9 @@ button.primary {
 
 .illiri-tab {
   flex: 1 1 auto;
-  min-width: 5.5rem;
-  padding: 0.4rem 0.55rem;
-  font-size: 0.82rem;
+  min-width: 3.75rem;
+  padding: 0.35rem 0.4rem;
+  font-size: 0.74rem;
   font-weight: 600;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -882,4 +882,8 @@ code {
 
 .tavern-choice-row {
   margin-bottom: 1rem;
+}
+
+.tavern-guest-actions {
+  margin-top: 0.5rem;
 }

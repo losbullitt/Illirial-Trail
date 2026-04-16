@@ -1,0 +1,713 @@
+:root {
+  --bg: #1a1510;
+  --panel: #2a2218;
+  --border: #4a3d2a;
+  --text: #e8dcc8;
+  --muted: #9a8b78;
+  --accent: #c9a227;
+  --danger: #c44;
+  --ok: #6a8;
+  --font: "Segoe UI", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(ellipse at top, #2d261c 0%, var(--bg) 55%);
+  color: var(--text);
+  font-family: var(--font);
+  line-height: 1.45;
+}
+
+.shell {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 2rem;
+}
+
+.header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.65rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.header .sub {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.tagline {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.app {
+  margin-top: 1.25rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.1rem 1.15rem 1.25rem;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+.panel-title {
+  margin: 0 0 0.65rem;
+  font-size: 1.05rem;
+  color: var(--accent);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.5rem 0.75rem;
+  margin: 0.75rem 0 1rem;
+  font-size: 0.9rem;
+}
+
+.stat {
+  padding: 0.35rem 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.stat-hint {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.party-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.party-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0.45rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+
+.party-list li:last-child {
+  border-bottom: none;
+}
+
+.role-soldier {
+  color: #e8b4b4;
+}
+.role-priest {
+  color: #b4c8ff;
+}
+.role-mercenary {
+  color: #c9d6a8;
+}
+.role-guest {
+  color: #ddb4ff;
+}
+
+.hpbar {
+  flex: 1;
+  max-width: 9rem;
+  height: 0.45rem;
+  background: #111;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.hpbar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #5a8, #8c8);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #3a3024;
+  color: var(--text);
+  padding: 0.45rem 0.75rem;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: #4a3b1a;
+  border-color: var(--accent);
+  color: #fff8e8;
+}
+
+.log {
+  margin-top: 1rem;
+  max-height: 14rem;
+  overflow-y: auto;
+  padding: 0.5rem 0.55rem;
+  background: #120f0c;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.log p {
+  margin: 0.2rem 0;
+}
+
+.log .hi {
+  color: var(--text);
+}
+
+.log .bad {
+  color: #f99;
+}
+
+.log .good {
+  color: #9d9;
+}
+
+.shop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.shop-row:last-child {
+  border-bottom: none;
+}
+
+.footer {
+  margin-top: 1rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+code {
+  font-size: 0.85em;
+  color: #dcb;
+}
+
+/* --- visuals: scenes, travel map, battle --- */
+
+.scene {
+  min-height: 7.5rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  margin-bottom: 0.85rem;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.scene-splash {
+  min-height: 12.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0.65rem 0.85rem 0.75rem;
+  box-shadow: inset 0 -70px 90px rgba(8, 6, 4, 0.75);
+}
+
+.scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 0%, rgba(10, 8, 6, 0.55) 100%);
+  pointer-events: none;
+}
+
+.splash-badge {
+  position: relative;
+  z-index: 2;
+  align-self: flex-start;
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 248, 232, 0.85);
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  margin-bottom: 0.35rem;
+}
+
+.splash-title {
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.85);
+}
+
+.splash-sub {
+  position: relative;
+  z-index: 2;
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  color: rgba(232, 220, 200, 0.88);
+  max-width: 26rem;
+  line-height: 1.35;
+}
+
+/* Generic outpost skyline (no art assets) */
+.scene-start-city {
+  background-color: #1a1510;
+  background-image:
+    radial-gradient(ellipse 120% 80% at 50% 118%, rgba(60, 48, 32, 0.95) 0%, transparent 52%),
+    linear-gradient(180deg, #5a7aa8 0%, #d4b896 42%, #6a5844 42%, #2a2218 100%),
+    repeating-linear-gradient(90deg, transparent 0, transparent 11px, rgba(20, 16, 12, 0.88) 11px, rgba(20, 16, 12, 0.88) 17px, transparent 17px, transparent 28px),
+    repeating-linear-gradient(90deg, transparent 0, transparent 19px, rgba(30, 22, 18, 0.75) 19px, rgba(30, 22, 18, 0.75) 24px, transparent 24px, transparent 40px);
+  background-blend-mode: normal, normal, multiply, multiply;
+}
+
+/* Travel splashes: sky shifts by leg (generic wilderness) */
+.scene-travel {
+  background-color: #151210;
+}
+
+.scene-travel-d1 {
+  background-image: radial-gradient(circle at 18% 22%, rgba(255, 230, 180, 0.35) 0%, transparent 42%),
+    linear-gradient(185deg, #2a3a58 0%, #8a6a50 55%, #1f1a14 100%);
+}
+
+.scene-travel-d2 {
+  background-image: radial-gradient(circle at 22% 18%, rgba(255, 200, 140, 0.45) 0%, transparent 38%),
+    linear-gradient(185deg, #4a6088 0%, #c9a060 48%, #2a2218 100%);
+}
+
+.scene-travel-d3 {
+  background-image: radial-gradient(circle at 50% 12%, rgba(255, 255, 220, 0.25) 0%, transparent 35%),
+    linear-gradient(185deg, #6a8ab8 0%, #d8c898 52%, #2a2618 100%);
+}
+
+.scene-travel-d4 {
+  background-image: radial-gradient(circle at 78% 20%, rgba(255, 180, 120, 0.35) 0%, transparent 40%),
+    linear-gradient(185deg, #4a5080 0%, #c08050 45%, #3a2818 100%);
+}
+
+.scene-travel-d5 {
+  background-image: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(120, 100, 160, 0.35) 0%, transparent 50%),
+    linear-gradient(185deg, #2a2848 0%, #6a5040 50%, #1a1210 100%);
+}
+
+.scene-travel .splash-title {
+  color: #fff8ec;
+}
+
+.scene-ruins {
+  background-image: radial-gradient(ellipse at 50% 120%, #2a3540 0%, transparent 55%),
+    linear-gradient(160deg, #1f1c18 0%, #2a2620 100%);
+}
+
+.scene-splash.scene-ruins::before,
+.scene-splash.scene-battle::before {
+  content: none;
+}
+
+.scene-ruins::before {
+  content: "Ruins";
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.45rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9ab;
+  z-index: 1;
+}
+
+.scene-battle {
+  background-image: radial-gradient(circle at 70% 0%, rgba(200, 80, 60, 0.25) 0%, transparent 45%),
+    linear-gradient(185deg, #241a18 0%, #1a1510 100%);
+}
+
+.scene-battle::before {
+  content: "Skirmish";
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.45rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #f99;
+  z-index: 1;
+}
+
+.scene-end-city {
+  background-color: #121a16;
+  background-image: radial-gradient(ellipse 100% 70% at 50% 115%, rgba(80, 120, 100, 0.55) 0%, transparent 55%),
+    linear-gradient(185deg, #3a5a68 0%, #8ab8a0 38%, #4a6048 38%, #1a2218 100%),
+    repeating-linear-gradient(95deg, transparent 0, transparent 40px, rgba(255, 255, 255, 0.04) 40px, rgba(255, 255, 255, 0.04) 41px, transparent 41px, transparent 88px);
+}
+
+.scene-end-city .splash-title {
+  color: #e8fff0;
+}
+
+.travel-visual {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.35rem 0.35rem;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.map-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.map-node {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.35rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #2c241c;
+  color: var(--muted);
+}
+
+.map-node.start {
+  color: var(--accent);
+}
+
+.map-node.end {
+  color: #9d9;
+}
+
+.map-track {
+  flex: 1;
+  display: flex;
+  gap: 0.2rem;
+  align-items: stretch;
+}
+
+.map-seg {
+  flex: 1;
+  min-height: 2.25rem;
+  border-radius: 4px;
+  border: 1px dashed var(--border);
+  background: #1c1610;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+.map-seg.done {
+  border-style: solid;
+  background: #2a3828;
+  color: #9d9;
+}
+
+.map-seg.current {
+  outline: 2px solid var(--accent);
+  color: var(--text);
+}
+
+.map-day {
+  font-weight: 700;
+}
+
+.map-ruin {
+  display: inline-block;
+  padding: 0.05rem 0.25rem;
+  border-radius: 3px;
+  background: #3a3050;
+  color: #ddb4ff;
+  font-size: 0.6rem;
+}
+
+.map-caption {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 0.85rem;
+  border: 2px solid var(--border);
+  flex-shrink: 0;
+}
+
+.avatar.sm {
+  width: 1.35rem;
+  height: 1.35rem;
+  font-size: 0.72rem;
+}
+
+.avatar-soldier {
+  background: #4a2a2a;
+  color: #fcc;
+}
+
+.avatar-priest {
+  background: #2a3550;
+  color: #cdf;
+}
+
+.avatar-mercenary {
+  background: #35402a;
+  color: #dfa;
+}
+
+.party-list li {
+  gap: 0.45rem;
+}
+
+.battle-lead {
+  margin: 0 0 0.65rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.foe-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+}
+
+.foe-card {
+  flex: 1 1 7.5rem;
+  max-width: 10rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid #5a3030;
+  background: linear-gradient(160deg, #3a2220 0%, #221510 100%);
+}
+
+.foe-name {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: #fbb;
+}
+
+.foe-meta {
+  margin-top: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.battle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.25rem, 1fr));
+  gap: 0.45rem;
+  align-items: start;
+}
+
+.battle-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.35rem 0.45rem 0.45rem;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Compact paper-doll strip; command grid stays full size below */
+.battle-doll {
+  margin-bottom: 0.35rem;
+}
+
+.battle-doll .battle-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 0.1rem;
+}
+
+.battle-doll .battle-avatar {
+  width: 1.15rem;
+  height: 1.15rem;
+  font-size: 0.58rem;
+  border-width: 1px;
+}
+
+.battle-doll .hpbar {
+  max-width: 100%;
+  height: 0.32rem;
+}
+
+.battle-doll .battle-name {
+  font-size: 0.66rem;
+  font-weight: 600;
+  max-width: 6.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battle-doll .battle-hp {
+  font-size: 0.62rem;
+  color: var(--muted);
+  margin-bottom: 0;
+}
+
+.battle-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.25rem;
+}
+
+.battle-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.battle-hp {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.battle-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem;
+}
+
+.act-btn {
+  font-size: 0.68rem;
+  padding: 0.28rem 0.2rem;
+  border-radius: 5px;
+}
+
+.act-btn.selected {
+  border-color: var(--accent);
+  color: #fff;
+  background: #4a3b1a;
+}
+
+.battle-actions-row {
+  margin-top: 0.65rem;
+}
+
+.hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* Party roster editor (Illirial prep) */
+.roster-heading {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.95rem;
+  color: var(--accent);
+}
+
+.roster-note {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.roster-edit {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.roster-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.45rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.roster-row:last-child {
+  border-bottom: none;
+}
+
+.roster-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.roster-meta {
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.roster-remove {
+  font-size: 0.68rem;
+  padding: 0.2rem 0.4rem;
+}
+
+.roster-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.65rem;
+}
+
+.roster-add button {
+  font-size: 0.75rem;
+}
+
+.tavern-lead {
+  margin: 0 0 0.75rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.tavern-choice-row {
+  margin-bottom: 1rem;
+}

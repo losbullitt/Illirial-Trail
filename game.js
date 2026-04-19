@@ -9,7 +9,10 @@
   var ENCOUNTER_BASE = 0.1;
   var ENCOUNTER_STEP = 0.25;
   var ENCOUNTER_CAP = 0.95;
-  var RUINS_FIRST_CHANCE = 0.12;
+  var RUINS_BASE_CHANCE = 0.18;
+  var RUINS_DAY_BONUS = 0.12;
+  var RUINS_MAX_CHANCE = 0.72;
+  var RUINS_QUIET_DAY_CHANCE = 0.06;
   var SKELETON_FIGHT_CHANCE = 0.45;
   var WEAPON_TIERS = [
     { id: "knife", label: "Knife", grade: 0 },
@@ -182,8 +185,13 @@
     return { kind: "skeletons", label: n + " skeleton(s)", foes: list };
   }
 
+  function ruinsDiscoveryChance() {
+    var byDay = RUINS_BASE_CHANCE + Math.max(0, state.travelDay - 1) * RUINS_DAY_BONUS;
+    return Math.min(byDay, RUINS_MAX_CHANCE);
+  }
+
   function rollFieldEncounterType() {
-    if (!state.ruinsDiscovered && Math.random() < RUINS_FIRST_CHANCE) return "ruins_discovery";
+    if (!state.ruinsDiscovered && Math.random() < ruinsDiscoveryChance()) return "ruins_discovery";
     return Math.random() < 0.5 ? "bandits" : "wolves";
   }
 
@@ -507,6 +515,15 @@
       }
       if (t === "bandits") startTacticalCombat(buildBandits());
       else startTacticalCombat(buildWolves());
+      render();
+      return;
+    }
+    if (!state.ruinsDiscovered && Math.random() < RUINS_QUIET_DAY_CHANCE) {
+      state.ruinsDiscovered = true;
+      state.ruinsTravelDay = state.travelDay;
+      state.pendingEncounter = { kind: "ruins_discovery", label: "Mysterious ruins", foes: [] };
+      state.phase = "action";
+      logLine("Scouts spot old stonework off-road.", "hi");
       render();
       return;
     }

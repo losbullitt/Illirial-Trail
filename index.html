@@ -3,7 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Illirial to New Isil</title>
+  <title>Illirial Trail — Outpost City to New Isil</title>
+  <meta
+    name="description"
+    content="Oregon Trail–style browser prototype: lead your party from Outpost City to New Isil."
+  />
+  <meta name="theme-color" content="#1a1520" />
   <link rel="stylesheet" href="styles.css?v=14" />
 </head>
 <body>
@@ -14,7 +19,10 @@
     </header>
     <main id="app" class="app" aria-live="polite"></main>
     <footer class="footer">
-      <span>Open via a local server (e.g. <code>py -3 -m http.server 8080</code> in this folder) if the browser blocks scripts.</span>
+      <span>
+        Deploy this folder to any static host (Netlify, Vercel, GitHub Pages, Cloudflare Pages, S3, etc.); all asset paths are relative.
+        For local development, run <code>py -3 -m http.server 8080</code> here and open <code>http://localhost:8080</code>.
+      </span>
     </footer>
   </div>
   <script src="game.js?v=14"></script>

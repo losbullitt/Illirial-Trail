@@ -21,6 +21,24 @@
     { id: "runesword", label: "Runesword", grade: 3 },
   ];
 
+  var transitionTimers = [];
+  var DEPART_BLACKOUT_MS = 950;
+  var DEPART_MAP_MS = 1500;
+  var MARCH_MS = 1350;
+  var ENCOUNTER_CUT_MS = 820;
+  var RESUME_TRAVEL_MS = 520;
+  var ARRIVE_CITY_MS = 900;
+
+  function clearTransitionTimers() {
+    var i;
+    for (i = 0; i < transitionTimers.length; i++) clearTimeout(transitionTimers[i]);
+    transitionTimers.length = 0;
+  }
+
+  function scheduleTransition(fn, ms) {
+    transitionTimers.push(setTimeout(fn, ms));
+  }
+
   function rollInt(min, max) {
     return min + Math.floor(Math.random() * (max - min + 1));
   }
@@ -72,6 +90,7 @@
       log: [],
       pendingEncounter: null,
       combat: null,
+      transition: null,
     };
   }
 
@@ -291,17 +310,38 @@
     finishEncounterCommon();
   }
 
+  function queueResumeTravel() {
+    clearTransitionTimers();
+    state.phase = "travel";
+    state.transition = { kind: "resume", label: "On the road again" };
+    render();
+    scheduleTransition(function () {
+      state.transition = null;
+      render();
+    }, RESUME_TRAVEL_MS);
+  }
+
+  function queueArrivalAtNewIsil() {
+    clearTransitionTimers();
+    state.phase = "story_new_isil";
+    state.transition = { kind: "arrive", label: "New Isil" };
+    render();
+    scheduleTransition(function () {
+      state.transition = null;
+      render();
+    }, ARRIVE_CITY_MS);
+  }
+
   function finishEncounterCommon() {
     state.pendingEncounter = null;
     state.combat = null;
     endOfDayPriestHealing();
     if (state.travelDay >= ROUTE_DAYS) {
-      state.phase = "story_new_isil";
       logLine("<span class=\"hi\">You reach New Isil.</span>", "good");
+      queueArrivalAtNewIsil();
     } else {
-      state.phase = "travel";
+      queueResumeTravel();
     }
-    render();
   }
 
   function tacticalWin() {
@@ -497,43 +537,76 @@
     render();
   }
 
-  function advanceTravelDay() {
+  function queueEncounterCutaway(title, subtitle, applyFn) {
+    clearTransitionTimers();
+    state.transition = { kind: "encounter", title: title, subtitle: subtitle };
+    render();
+    scheduleTransition(function () {
+      state.transition = null;
+      applyFn();
+      render();
+    }, ENCOUNTER_CUT_MS);
+  }
+
+  function applyRuinsDiscoveryEncounter() {
+    state.ruinsDiscovered = true;
+    state.ruinsTravelDay = state.travelDay;
+    state.pendingEncounter = { kind: "ruins_discovery", label: "Mysterious ruins", foes: [] };
+    state.phase = "action";
+  }
+
+  function runTravelDayResolution() {
     if (state.phase !== "travel") return;
     if (state.travelDay >= ROUTE_DAYS) return;
-    var hadEncounter = rollTravelEncounter();
     state.travelDay++;
     logLine("Day " + state.travelDay + " of " + ROUTE_DAYS + " on the road.", "");
+    var hadEncounter = rollTravelEncounter();
     if (hadEncounter) {
       var t = rollFieldEncounterType();
       if (t === "ruins_discovery") {
-        state.ruinsDiscovered = true;
-        state.ruinsTravelDay = state.travelDay;
-        state.pendingEncounter = { kind: "ruins_discovery", label: "Mysterious ruins", foes: [] };
-        state.phase = "action";
-        render();
+        queueEncounterCutaway("Ruins on the horizon", "Day " + state.travelDay + " - old stonework breaks the skyline", function () {
+          applyRuinsDiscoveryEncounter();
+        });
         return;
       }
-      if (t === "bandits") startTacticalCombat(buildBandits());
-      else startTacticalCombat(buildWolves());
-      render();
+      if (t === "bandits") {
+        queueEncounterCutaway("Ambush", "Day " + state.travelDay + " - blades in the dust", function () {
+          startTacticalCombat(buildBandits());
+        });
+        return;
+      }
+      queueEncounterCutaway("Wolves in the brush", "Day " + state.travelDay + " - eyes in the tall grass", function () {
+        startTacticalCombat(buildWolves());
+      });
       return;
     }
     if (!state.ruinsDiscovered && Math.random() < RUINS_QUIET_DAY_CHANCE) {
-      state.ruinsDiscovered = true;
-      state.ruinsTravelDay = state.travelDay;
-      state.pendingEncounter = { kind: "ruins_discovery", label: "Mysterious ruins", foes: [] };
-      state.phase = "action";
       logLine("Scouts spot old stonework off-road.", "hi");
-      render();
+      queueEncounterCutaway("Strange ground", "Day " + state.travelDay + " - a side path worth a look", function () {
+        applyRuinsDiscoveryEncounter();
+      });
       return;
     }
     logLine("Quiet travel.", "");
     endOfDayPriestHealing();
     if (state.travelDay >= ROUTE_DAYS) {
-      state.phase = "story_new_isil";
       logLine("You reach New Isil.", "good");
+      queueArrivalAtNewIsil();
+    } else {
+      render();
     }
+  }
+
+  function beginNextTravelDayMarch() {
+    if (state.phase !== "travel") return;
+    if (state.travelDay >= ROUTE_DAYS) return;
+    clearTransitionTimers();
+    state.transition = { kind: "march", fromD: state.travelDay, toD: state.travelDay + 1 };
     render();
+    scheduleTransition(function () {
+      state.transition = null;
+      runTravelDayResolution();
+    }, MARCH_MS);
   }
 
   function buy(item) {
@@ -735,25 +808,87 @@
   }
 
   function departIllirial() {
+    clearTransitionTimers();
     state.illiriView = "church";
     state.phase = "travel";
     state.travelDay = 0;
     state.encounterChance = ENCOUNTER_BASE;
+    state.transition = { kind: "depart", stage: "blackout" };
     logLine("You depart Illirial for New Isil.", "hi");
     render();
+    scheduleTransition(function () {
+      state.transition = { kind: "depart", stage: "map" };
+      render();
+    }, DEPART_BLACKOUT_MS);
+    scheduleTransition(function () {
+      state.transition = null;
+      render();
+    }, DEPART_BLACKOUT_MS + DEPART_MAP_MS);
   }
 
-  function travelMapHtml() {
+  function transitionBlackoutHtml(title, line) {
+    return (
+      '<div class="transition-root transition-root--blackout" role="presentation">' +
+      '<div class="transition-blackout-inner">' +
+      '<p class="transition-blackout-title">' +
+      title +
+      "</p>" +
+      '<p class="transition-blackout-line">' +
+      line +
+      "</p>" +
+      "</div></div>"
+    );
+  }
+
+  function transitionEncounterHtml(tr) {
+    return (
+      '<div class="transition-root transition-root--cut" role="dialog" aria-modal="true">' +
+      '<div class="cut-card">' +
+      '<div class="cut-kicker">Cut away</div>' +
+      "<h2 class=\"cut-title\">" +
+      tr.title +
+      "</h2>" +
+      '<p class="cut-sub">' +
+      tr.subtitle +
+      "</p>" +
+      "</div></div>"
+    );
+  }
+
+  function transitionResumeOverlayHtml(tr) {
+    return (
+      '<div class="transition-sheet transition-sheet--dim" role="presentation">' +
+      '<p class="transition-sheet-title">' +
+      tr.label +
+      "</p></div>"
+    );
+  }
+
+  function transitionArriveOverlayHtml(tr) {
+    return (
+      '<div class="transition-sheet transition-sheet--gold" role="presentation">' +
+      '<p class="transition-sheet-title">' +
+      tr.label +
+      "</p>" +
+      '<p class="transition-sheet-sub">The harbor opens ahead</p></div>'
+    );
+  }
+
+  function travelMapHtml(march) {
+    march = march || null;
     var i;
     var segs = "";
+    var marching = march && march.kind === "march";
     for (i = 1; i <= ROUTE_DAYS; i++) {
       var done = state.travelDay >= i;
-      var cur = state.travelDay + 1 === i && state.phase === "travel";
+      var marchingSeg = marching && march.toD === i;
+      var cur = state.travelDay + 1 === i && state.phase === "travel" && !marchingSeg;
       var ruinHere = state.ruinsDiscovered && state.ruinsTravelDay === i;
       segs +=
         '<div class="map-seg' +
         (done ? " done" : "") +
         (cur ? " current" : "") +
+        (marchingSeg ? " map-seg-marching" : "") +
         '">' +
         '<span class="map-day">D' +
         i +
@@ -761,12 +896,18 @@
         (ruinHere ? '<span class="map-ruin" title="Ruins">R</span>' : "") +
         "</div>";
     }
+    var leg = marching ? Math.min(Math.max(march.fromD, 0), ROUTE_DAYS - 1) : -1;
+    var caravan =
+      marching && leg >= 0
+        ? '<div class="map-caravan map-caravan--leg-' + leg + '" aria-hidden="true"><span class="map-caravan-dot"></span></div>'
+        : "";
     return (
       '<div class="travel-visual" aria-hidden="true">' +
       '<div class="map-row">' +
       '<div class="map-node start">Illirial</div>' +
-      '<div class="map-track">' +
+      '<div class="map-track map-track--rel">' +
       segs +
+      caravan +
       "</div>" +
       '<div class="map-node end">New Isil</div>' +
       "</div>" +
@@ -933,8 +1074,10 @@
         "</span></li>"
       : '<li class="role-guest"><em>Guest slot empty.</em></li>';
 
+    var marchForMap =
+      state.phase === "travel" && state.transition && state.transition.kind === "march" ? state.transition : null;
     var mapBlock =
-      state.phase === "travel" || (state.phase === "action" && !combatUi) ? travelMapHtml() : "";
+      state.phase === "travel" || (state.phase === "action" && !combatUi) ? travelMapHtml(marchForMap) : "";
 
     return (
       mapBlock +
@@ -1008,6 +1151,7 @@
         "<p>Game over.</p><div class=\"actions\"><button type=\"button\" class=\"primary\" id=\"btnRestart\">Restart</button></div>" +
         renderLog();
       document.getElementById("btnRestart").onclick = function () {
+        clearTransitionTimers();
         state = initialState();
         render();
       };
@@ -1143,6 +1287,28 @@
     }
 
     if (state.phase === "travel") {
+      if (state.transition && state.transition.kind === "depart" && state.transition.stage === "blackout") {
+        app.innerHTML =
+          transitionBlackoutHtml("Leaving Illirial", "Torches, gate chains, then darkness and the open east.") +
+          renderLog();
+        return;
+      }
+      if (state.transition && state.transition.kind === "depart" && state.transition.stage === "map") {
+        app.innerHTML =
+          '<div class="travel-map-intro">' +
+          '<h2 class="panel-title">The trade road</h2>' +
+          '<p class="map-intro-lead">Your caravan joins the eastbound line. Five days to New Isil on the posted route.</p>' +
+          travelMapHtml(null) +
+          "</div>" +
+          renderLog();
+        return;
+      }
+      if (state.transition && state.transition.kind === "encounter") {
+        app.innerHTML = transitionEncounterHtml(state.transition) + renderLog();
+        return;
+      }
+      var resumeOverlay =
+        state.transition && state.transition.kind === "resume" ? transitionResumeOverlayHtml(state.transition) : "";
       app.innerHTML =
         travelSplashMarkup() +
         renderHeader() +
@@ -1153,8 +1319,10 @@
         ROUTE_DAYS +
         " days complete. Each <b>Next day</b> consumes 1 food and 1 water. Encounter chance shown above rises after quiet days.</p>" +
         "<div class=\"actions\"><button type=\"button\" class=\"primary\" id=\"nextDay\">Next day</button></div>" +
-        renderLog();
+        renderLog() +
+        resumeOverlay;
       document.getElementById("nextDay").onclick = function () {
+        if (state.transition) return;
         consumeTravelDaySupplies();
         if (allDead()) {
           state.phase = "gameover";
@@ -1162,7 +1330,7 @@
           render();
           return;
         }
-        advanceTravelDay();
+        beginNextTravelDayMarch();
       };
       return;
     }
@@ -1245,14 +1413,18 @@
     }
 
     if (state.phase === "story_new_isil") {
+      var arriveOv =
+        state.transition && state.transition.kind === "arrive" ? transitionArriveOverlayHtml(state.transition) : "";
       app.innerHTML =
         endCitySplash() +
         renderHeader() +
         "<h2 class=\"panel-title\">New Isil</h2>" +
         "<p>Demo complete - you reached the endpoint.</p>" +
         "<div class=\"actions\"><button type=\"button\" class=\"primary\" id=\"restart\">Play again</button></div>" +
-        renderLog();
+        renderLog() +
+        arriveOv;
       document.getElementById("restart").onclick = function () {
+        clearTransitionTimers();
         state = initialState();
         render();
       };

@@ -3,13 +3,49 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- If the page looks like plain black text on white, styles.css did not load: run the server from this folder (see serve.ps1). -->
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #1a1510;
+      color: #e8dcc8;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      line-height: 1.45;
+    }
+    .shell {
+      max-width: 52rem;
+      margin: 0 auto;
+      padding: 1.25rem 1rem 2rem;
+    }
+    .header h1 {
+      margin: 0 0 0.25rem;
+      font-size: 1.65rem;
+    }
+    .header .sub,
+    .tagline {
+      color: #9a8b78;
+    }
+    .app {
+      margin-top: 1.25rem;
+      background: #2a2218;
+      border: 1px solid #4a3d2a;
+      border-radius: 10px;
+      padding: 1.1rem 1.15rem 1.25rem;
+    }
+    .footer {
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      color: #9a8b78;
+    }
+  </style>
   <title>Illirial Trail — Outpost City to New Isil</title>
   <meta
     name="description"
     content="Oregon Trail–style browser prototype: lead your party from Outpost City to New Isil."
   />
   <meta name="theme-color" content="#1a1520" />
-  <link rel="stylesheet" href="styles.css?v=14" />
+  <link rel="stylesheet" href="styles.css?v=16" />
 </head>
 <body>
   <div class="shell">
@@ -21,10 +57,10 @@
     <footer class="footer">
       <span>
         Deploy this folder to any static host (Netlify, Vercel, GitHub Pages, Cloudflare Pages, S3, etc.); all asset paths are relative.
-        For local development, run <code>py -3 -m http.server 8080</code> here and open <code>http://localhost:8080</code>.
+        For local development, run <code>serve.ps1</code> in this folder (or <code>py -3 -m http.server 8080</code> after <code>cd</code> here) and open <code>http://127.0.0.1:8080/index.html</code>.
       </span>
     </footer>
   </div>
-  <script src="game.js?v=14"></script>
+  <script src="game.js?v=16"></script>
 </body>
 </html>

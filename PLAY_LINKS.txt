@@ -1,0 +1,15 @@
+Illirial Trail - how to run
+============================
+
+Web (public, no install):
+  https://losbullitt.github.io/Illirial-Trail/
+
+Web (local - run server from this folder first):
+  http://127.0.0.1:8080/index.html
+  (PowerShell: cd to this folder, then: py -3 -m http.server 8080
+   or double-click serve.ps1)
+
+Desktop window (Python + pywebview):
+  py -3 desktop.py
+  or double-click desktop.bat
+  (one-time: py -3 -m pip install pywebview)

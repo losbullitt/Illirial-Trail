@@ -1,4 +1,4 @@
-/* Illirial Trail - skeleton demo (UTF-8, ASCII) */
+/* Cantebury Trails - skeleton demo (UTF-8, ASCII) */
 (function () {
   "use strict";
 
@@ -757,7 +757,7 @@
       );
     }
     return (
-      '<nav class="illiri-tabs" role="tablist" aria-label="Illirial">' +
+      '<nav class="illiri-tabs" role="tablist" aria-label="Cantebury">' +
       tab("church", "Church") +
       tab("inn", "Inn") +
       tab("shop", "Shop") +
@@ -814,7 +814,7 @@
     state.travelDay = 0;
     state.encounterChance = ENCOUNTER_BASE;
     state.transition = { kind: "depart", stage: "blackout" };
-    logLine("You depart Illirial for New Isil.", "hi");
+    logLine("You depart Cantebury for New Isil.", "hi");
     render();
     scheduleTransition(function () {
       state.transition = { kind: "depart", stage: "map" };
@@ -904,7 +904,7 @@
     return (
       '<div class="travel-visual" aria-hidden="true">' +
       '<div class="map-row">' +
-      '<div class="map-node start">Illirial</div>' +
+      '<div class="map-node start">Cantebury</div>' +
       '<div class="map-track map-track--rel">' +
       segs +
       caravan +
@@ -920,7 +920,7 @@
     return (
       '<div class="scene scene-splash scene-start-city" role="img" aria-label="Outpost city skyline">' +
       '<div class="splash-badge">Camp</div>' +
-      '<div class="splash-title">Illirial</div>' +
+      '<div class="splash-title">Cantebury</div>' +
       '<div class="splash-sub">Outpost City - walls, markets, smoke</div>' +
       "</div>"
     );
@@ -1202,7 +1202,7 @@
           "<h2 class=\"panel-title\">Depart</h2>" +
           "<p class=\"town-lead\">The east gate opens on the trade road — five days to New Isil if the miles are kind.</p>" +
           "<div class=\"actions\">" +
-          '<button type="button" class="primary" id="departBtn">Leave Illirial</button>' +
+          '<button type="button" class="primary" id="departBtn">Leave Cantebury</button>' +
           "</div>" +
           renderLog();
         wireIlliriTabs(app);
@@ -1289,7 +1289,7 @@
     if (state.phase === "travel") {
       if (state.transition && state.transition.kind === "depart" && state.transition.stage === "blackout") {
         app.innerHTML =
-          transitionBlackoutHtml("Leaving Illirial", "Torches, gate chains, then darkness and the open east.") +
+          transitionBlackoutHtml("Leaving Cantebury", "Torches, gate chains, then darkness and the open east.") +
           renderLog();
         return;
       }
@@ -1432,7 +1432,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    logLine("Prepare in <span class=\"hi\">Illirial</span>, then depart toward New Isil.", "");
+    logLine("Prepare in <span class=\"hi\">Cantebury</span>, then depart toward New Isil.", "");
     render();
   });
 })();

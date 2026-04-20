@@ -1,4 +1,4 @@
-"""Illirial Trail desktop window. Install: py -3 -m pip install pywebview  Run: py -3 desktop.py"""
+"""Cantebury Trails desktop window. Install: py -3 -m pip install pywebview  Run: py -3 desktop.py"""
 from __future__ import annotations
 
 import sys
@@ -15,7 +15,7 @@ def main() -> None:
     root = Path(__file__).resolve().parent
     index_uri = (root / "index.html").as_uri()
     webview.create_window(
-        "Illirial Trail",
+        "Cantebury Trails",
         index_uri,
         width=1100,
         height=820,

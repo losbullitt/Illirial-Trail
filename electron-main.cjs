@@ -11,7 +11,7 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     backgroundColor: "#1a1510",
-    title: "Illirial Trail",
+    title: "Cantebury Trails",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

@@ -111,7 +111,7 @@
       transition: null,
       blessing: null,
       inventoryFocusId: "p0",
-      dollStyleByRole: { soldier: "classic", priest: "classic", mercenary: "classic" },
+      dollStyleByMember: {},
     };
   }
 
@@ -1007,6 +1007,14 @@
     return ["classic"];
   }
 
+
+  function memberDollStyle(member) {
+    var opts = roleDollStyles(member.role);
+    var chosen = state.dollStyleByMember ? state.dollStyleByMember[member.id] : null;
+    if (!chosen) return opts[0];
+    return opts.indexOf(chosen) >= 0 ? chosen : opts[0];
+  }
+
   function inventoryMemberById(id) {
     for (var i = 0; i < state.party.length; i++) if (state.party[i].id === id) return state.party[i];
     return state.party[0] || null;
@@ -1059,7 +1067,7 @@
     var focus = inventoryMemberById(state.inventoryFocusId);
     if (!focus) return "";
     var prof = profileForMember(focus);
-    var roleStyle = (state.dollStyleByRole && state.dollStyleByRole[focus.role]) || "classic";
+    var roleStyle = memberDollStyle(focus);
     var styleChoices = roleDollStyles(focus.role)
       .map(function (st) {
         return '<option value="' + st + '"' + (st === roleStyle ? " selected" : "") + '>' + st.charAt(0).toUpperCase() + st.slice(1) + "</option>";
@@ -1124,7 +1132,7 @@
       '<p><b>biography</b> ' +
       prof.bio +
       "</p>" +
-      '<p><b>paper doll</b> <select id="dollStyleSelect">' +
+      '<p><b>paper doll</b> <select id="dollStyleSelect" aria-label="Character paper doll style">' +
       styleChoices +
       "</select></p>" +
       "</div>" +
@@ -1171,8 +1179,9 @@
       sel.onchange = function () {
         var m = inventoryMemberById(state.inventoryFocusId);
         if (!m) return;
-        state.dollStyleByRole[m.role] = sel.value;
-        logLine("Paper doll style set for " + roleLabel(m.role) + ": <span class=\"hi\">" + sel.value + "</span>.", "");
+        if (!state.dollStyleByMember) state.dollStyleByMember = {};
+        state.dollStyleByMember[m.id] = sel.value;
+        logLine("Paper doll style set for " + m.name + ": <span class=\"hi\">" + sel.value + "</span>.", "");
         render();
       };
     }

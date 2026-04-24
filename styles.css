@@ -1455,3 +1455,10 @@ code {
   font-size: 0.68rem;
   color: #c9a227;
 }
+
+.party-openable {
+  cursor: pointer;
+}
+.party-openable:hover {
+  background: rgba(201,162,39,0.12);
+}

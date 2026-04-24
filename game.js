@@ -1316,10 +1316,13 @@
     var mult = lootMultiplier(state.party).toFixed(2);
     var ru = state.ruinsDiscovered ? "day " + state.ruinsTravelDay : "-";
     var bless = blessingTypeLabel(state.blessing);
+    var canOpenFromHeader = state.phase === "story_illiri" && state.illiriView === "inventory";
     var partyBits = state.party
       .map(function (m) {
         return (
-          "<li>" +
+          "<li" +
+          (canOpenFromHeader ? ' class="party-openable" data-open-from-header="' + m.id + '"' : "") +
+          ">" +
           '<span class="' +
           avatarClass(m.role) +
           ' sm">' +
@@ -1407,6 +1410,20 @@
         .join("") +
       "</div>"
     );
+  }
+
+  function wireHeaderPartyOpen(root) {
+    var rows = root.querySelectorAll("[data-open-from-header]");
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].onclick = (function (row) {
+        return function () {
+          state.inventoryFocusId = row.getAttribute("data-open-from-header");
+          state.inventoryDetailOpen = true;
+          state.inventoryDebug = "open from header " + state.inventoryFocusId + " at " + Date.now();
+          render();
+        };
+      })(rows[i]);
+    }
   }
 
   function wireBattleActions(root) {
@@ -1502,6 +1519,7 @@
           renderLog();
         wireIlliriTabs(app);
         wireInventoryScreen(app);
+        wireHeaderPartyOpen(app);
         return;
       }
 

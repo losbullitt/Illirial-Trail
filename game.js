@@ -789,10 +789,15 @@
       tab("inn", "Inn") +
       tab("shop", "Shop") +
       tab("tavern", "Tavern") +
-      tab("inventory", "Inventory") +
+      tab("inventory", "Inventory & Dolls") +
       tab("depart", "Depart") +
       "</nav>"
     );
+  }
+
+  function openInventoryView() {
+    state.illiriView = "inventory";
+    render();
   }
 
   function wireIlliriTabs(root) {
@@ -1404,6 +1409,7 @@
           }
           render();
         };
+        document.getElementById("openInvFromChurch").onclick = openInventoryView;
         return;
       }
 
@@ -1419,6 +1425,7 @@
           renderLog();
         wireIlliriTabs(app);
         document.getElementById("innRest").onclick = restAtInn;
+        document.getElementById("openInvFromInn").onclick = openInventoryView;
         return;
       }
 
@@ -1426,7 +1433,7 @@
         app.innerHTML =
           startCitySplash() +
           illiriTabStrip() +
-          "<h2 class=\"panel-title\">Inventory</h2>" +
+          "<h2 class=\"panel-title\">Inventory & Paper Doll Studio</h2>" +
           "<p class=\"town-lead\">Review your party roster, resources, and travel odds before heading out.</p>" +
           renderHeader() +
           renderLog();
@@ -1446,6 +1453,7 @@
           renderLog();
         wireIlliriTabs(app);
         document.getElementById("departBtn").onclick = departIllirial;
+        document.getElementById("openInvFromDepart").onclick = openInventoryView;
         return;
       }
 
@@ -1476,6 +1484,7 @@
           logLine("The barkeep leans in: something stirs beyond the road.", "");
           render();
         };
+        document.getElementById("openInvFromTavern").onclick = openInventoryView;
         document.getElementById("guestBtn").onclick = function () {
           if (state.guest) {
             state.guest = null;
@@ -1504,8 +1513,10 @@
           "<div class=\"shop-row\"><span>Water (skins)</span><button type=\"button\" id=\"buyWater\">Buy 1 gp</button></div>" +
           "<div class=\"shop-row\"><span>Weapon (basic blade)</span><button type=\"button\" id=\"buyWeapon\">Buy 1 gp</button></div>" +
           "</div>" +
+          '<div class="actions"><button type="button" id="openInvFromShop">Inventory & dolls</button></div>' +
           renderLog();
         wireIlliriTabs(app);
+        document.getElementById("openInvFromShop").onclick = openInventoryView;
         document.getElementById("buyFood").onclick = function () {
           buy("food");
         };

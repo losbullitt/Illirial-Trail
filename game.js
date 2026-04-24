@@ -1076,6 +1076,7 @@
 
     var roster = state.party
       .map(function (m) {
+        var st = memberDollStyle(m);
         return (
           '<button type="button" class="inv-member-btn' +
           (m.id === focus.id ? " selected" : "") +
@@ -1089,6 +1090,9 @@
           "</span>" +
           '<span class="inv-member-name">' +
           m.name +
+          "</span>" +
+          '<span class="inv-member-style">' +
+          st +
           "</span>" +
           "</button>"
         );
@@ -1114,6 +1118,9 @@
       roleStyle +
       '">' +
       focus.role.charAt(0).toUpperCase() +
+      "</div>" +
+      '<div class="sheet-style-chip">' +
+      roleStyle +
       "</div>" +
       "</div>" +
       '<div class="sheet-meta">' +

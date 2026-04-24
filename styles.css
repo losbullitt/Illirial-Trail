@@ -1272,6 +1272,14 @@ code {
   white-space: nowrap;
 }
 
+.inv-member-style {
+  margin-left: auto;
+  font-size: 0.62rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .sheet-card {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1290,9 +1298,18 @@ code {
   border-radius: 8px;
   min-height: 7rem;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   background: #16120d;
+  gap: 0.35rem;
+}
+
+.sheet-style-chip {
+  font-size: 0.62rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .sheet-doll {
@@ -1302,15 +1319,15 @@ code {
   border-width: 3px;
 }
 
-.doll-soldier-classic { box-shadow: inset 0 0 0 2px rgba(255,220,220,0.2); }
-.doll-soldier-veteran { box-shadow: inset 0 0 0 2px rgba(255,180,140,0.28); }
-.doll-soldier-warden { box-shadow: inset 0 0 0 2px rgba(210,240,255,0.24); }
-.doll-priest-classic { box-shadow: inset 0 0 0 2px rgba(220,230,255,0.25); }
-.doll-priest-scribe { box-shadow: inset 0 0 0 2px rgba(230,220,255,0.24); }
-.doll-priest-oracle { box-shadow: inset 0 0 0 2px rgba(170,210,255,0.26); }
-.doll-mercenary-classic { box-shadow: inset 0 0 0 2px rgba(210,240,190,0.22); }
-.doll-mercenary-raider { box-shadow: inset 0 0 0 2px rgba(255,210,150,0.26); }
-.doll-mercenary-ranger { box-shadow: inset 0 0 0 2px rgba(170,255,210,0.24); }
+.doll-soldier-classic { background: linear-gradient(135deg, #5f2b2b 0%, #3f1f1f 100%); color: #ffd8d8; }
+.doll-soldier-veteran { background: linear-gradient(135deg, #6a3d1f 0%, #3d2311 100%); color: #ffe2bf; }
+.doll-soldier-warden { background: linear-gradient(135deg, #24425f 0%, #162a3f 100%); color: #d5ecff; }
+.doll-priest-classic { background: linear-gradient(135deg, #2b355f 0%, #1b2340 100%); color: #dce3ff; }
+.doll-priest-scribe { background: linear-gradient(135deg, #46306a 0%, #2a1d40 100%); color: #eadbff; }
+.doll-priest-oracle { background: linear-gradient(135deg, #21536f 0%, #153446 100%); color: #cff1ff; }
+.doll-mercenary-classic { background: linear-gradient(135deg, #35572f 0%, #243b20 100%); color: #def6d3; }
+.doll-mercenary-raider { background: linear-gradient(135deg, #6a4622 0%, #3f2a14 100%); color: #ffe5bf; }
+.doll-mercenary-ranger { background: linear-gradient(135deg, #1f5c46 0%, #13392c 100%); color: #d6ffe8; }
 
 .sheet-meta p {
   margin: 0 0 0.25rem;

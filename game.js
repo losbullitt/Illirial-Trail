@@ -762,6 +762,7 @@
       tab("inn", "Inn") +
       tab("shop", "Shop") +
       tab("tavern", "Tavern") +
+      tab("inventory", "Inventory") +
       tab("depart", "Depart") +
       "</nav>"
     );
@@ -1162,7 +1163,6 @@
       if (state.illiriView === "church") {
         app.innerHTML =
           startCitySplash() +
-          renderHeader() +
           illiriTabStrip() +
           "<h2 class=\"panel-title\">Church</h2>" +
           "<p class=\"town-lead\">Cool stone, thin tapers, a priest murmurs over travelers bound east.</p>" +
@@ -1181,7 +1181,6 @@
       if (state.illiriView === "inn") {
         app.innerHTML =
           startCitySplash() +
-          renderHeader() +
           illiriTabStrip() +
           "<h2 class=\"panel-title\">Inn</h2>" +
           "<p class=\"town-lead\">Straw beds and a hearth. The host keeps a fair price for a night that mends bone and nerve.</p>" +
@@ -1194,10 +1193,21 @@
         return;
       }
 
+      if (state.illiriView === "inventory") {
+        app.innerHTML =
+          startCitySplash() +
+          illiriTabStrip() +
+          "<h2 class=\"panel-title\">Inventory</h2>" +
+          "<p class=\"town-lead\">Review your party roster, resources, and travel odds before heading out.</p>" +
+          renderHeader() +
+          renderLog();
+        wireIlliriTabs(app);
+        return;
+      }
+
       if (state.illiriView === "depart") {
         app.innerHTML =
           startCitySplash() +
-          renderHeader() +
           illiriTabStrip() +
           "<h2 class=\"panel-title\">Depart</h2>" +
           "<p class=\"town-lead\">The east gate opens on the trade road — five days to New Isil if the miles are kind.</p>" +
@@ -1213,7 +1223,6 @@
       if (state.illiriView === "tavern") {
         app.innerHTML =
           startCitySplash() +
-          renderHeader() +
           illiriTabStrip() +
           "<h2 class=\"panel-title\">Tavern</h2>" +
           "<p class=\"tavern-lead\">Dim light, spilled ale, dice in the corner. The barkeep knows everyone who marches the trade road.</p>" +
@@ -1254,7 +1263,6 @@
       if (state.illiriView === "shop") {
         app.innerHTML =
           startCitySplash() +
-          renderHeader() +
           illiriTabStrip() +
           "<h2 class=\"panel-title\">Trader's stall</h2>" +
           "<p class=\"shopkeeper-lead\">A lean shopkeeper counts coins beside sacks of grain and stoppered waterskins. " +

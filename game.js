@@ -1496,9 +1496,12 @@
           illiriTabStrip() +
           "<h2 class=\"panel-title\">Inventory & Paper Doll Studio</h2>" +
           "<p class=\"town-lead\">Review your party roster, resources, and travel odds before heading out.</p>" +
+          "<p class=\"town-lead\">Build marker: inv-live-3</p>" +
           renderHeader() +
+          inventoryScreenHtml() +
           renderLog();
         wireIlliriTabs(app);
+        wireInventoryScreen(app);
         return;
       }
 

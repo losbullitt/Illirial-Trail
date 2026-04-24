@@ -1283,16 +1283,6 @@ code {
   letter-spacing: 0.04em;
 }
 
-.inv-member-doll-select {
-  margin-left: auto;
-  font: inherit;
-  font-size: 0.68rem;
-  background: #2a2218;
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 0.12rem 0.3rem;
-}
 
 .sheet-card {
   border: 1px solid var(--border);
@@ -1388,4 +1378,29 @@ code {
   .sheet-top {
     grid-template-columns: 1fr;
   }
+}
+
+
+.inv-style-btn-row {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 0.2rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.inv-style-btn {
+  font: inherit;
+  font-size: 0.62rem;
+  padding: 0.1rem 0.28rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: #2a2218;
+  color: var(--muted);
+}
+
+.inv-style-btn.selected {
+  border-color: var(--accent);
+  background: #4a3b1a;
+  color: #fff;
 }

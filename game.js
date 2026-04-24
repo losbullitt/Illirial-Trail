@@ -1070,7 +1070,17 @@
     var roleStyle = memberDollStyle(focus);
     var styleChoices = roleDollStyles(focus.role)
       .map(function (st) {
-        return '<option value="' + st + '"' + (st === roleStyle ? " selected" : "") + '>' + st.charAt(0).toUpperCase() + st.slice(1) + "</option>";
+        return (
+          '<button type="button" class="inv-style-btn' +
+          (st === roleStyle ? " selected" : "") +
+          '" data-style-set="' +
+          focus.id +
+          '" data-style="' +
+          st +
+          '">' +
+          st +
+          "</button>"
+        );
       })
       .join("");
 
@@ -1079,7 +1089,17 @@
         var st = memberDollStyle(m);
         var opts = roleDollStyles(m.role)
           .map(function (opt) {
-            return '<option value="' + opt + '"' + (opt === st ? " selected" : "") + '>' + opt + '</option>';
+            return (
+              '<button type="button" class="inv-style-btn' +
+              (opt === st ? " selected" : "") +
+              '" data-style-set="' +
+              m.id +
+              '" data-style="' +
+              opt +
+              '">' +
+              opt +
+              "</button>"
+            );
           })
           .join("");
         return (
@@ -1096,11 +1116,9 @@
           '<span class="inv-member-name">' +
           m.name +
           "</span>" +
-          '<select class="inv-member-doll-select" data-member-style="' +
-          m.id +
-          '">' +
+          '<span class="inv-style-btn-row">' +
           opts +
-          "</select>" +
+          "</span>" +
           "</div>"
         );
       })
@@ -1153,9 +1171,9 @@
       '<p><b>biography</b> ' +
       prof.bio +
       "</p>" +
-      '<p><b>paper doll</b> <select id="dollStyleSelect" aria-label="Character paper doll style">' +
+      '<p><b>paper doll</b> <span class="inv-style-btn-row">' +
       styleChoices +
-      "</select></p>" +
+      "</span></p>" +
       "</div>" +
       "</div>" +
       '<div class="sheet-divider"></div>' +
@@ -1190,45 +1208,34 @@
     for (var i = 0; i < memberRows.length; i++) {
       memberRows[i].onclick = (function (row) {
         return function (ev) {
-          if (ev.target && ev.target.classList && ev.target.classList.contains("inv-member-doll-select")) return;
+          if (ev.target && ev.target.getAttribute && ev.target.getAttribute("data-style-set")) return;
           state.inventoryFocusId = row.getAttribute("data-inv-member");
           render();
         };
       })(memberRows[i]);
     }
 
-    var rowSelects = root.querySelectorAll("[data-member-style]");
-    for (i = 0; i < rowSelects.length; i++) {
-      rowSelects[i].onchange = (function (selEl) {
+    var styleBtns = root.querySelectorAll("[data-style-set]");
+    for (i = 0; i < styleBtns.length; i++) {
+      styleBtns[i].onclick = (function (btn) {
         return function () {
-          var id = selEl.getAttribute("data-member-style");
+          var id = btn.getAttribute("data-style-set");
+          var style = btn.getAttribute("data-style");
           var m = inventoryMemberById(id);
           if (!m) return;
           if (!state.dollStyleByMember) state.dollStyleByMember = {};
-          state.dollStyleByMember[id] = selEl.value;
+          state.dollStyleByMember[id] = style;
           state.inventoryFocusId = id;
-          logLine("Paper doll style set for " + m.name + ": <span class=\"hi\">" + selEl.value + "</span>.", "");
+          logLine("Paper doll style set for " + m.name + ": <span class="hi">" + style + "</span>.", "");
           render();
         };
-      })(rowSelects[i]);
+      })(styleBtns[i]);
     }
 
     var focusSel = root.querySelector("#invFocusSelect");
     if (focusSel) {
       focusSel.onchange = function () {
         state.inventoryFocusId = focusSel.value;
-        render();
-      };
-    }
-
-    var sel = root.querySelector("#dollStyleSelect");
-    if (sel) {
-      sel.onchange = function () {
-        var m = inventoryMemberById(state.inventoryFocusId);
-        if (!m) return;
-        if (!state.dollStyleByMember) state.dollStyleByMember = {};
-        state.dollStyleByMember[m.id] = sel.value;
-        logLine("Paper doll style set for " + m.name + ": <span class=\"hi\">" + sel.value + "</span>.", "");
         render();
       };
     }

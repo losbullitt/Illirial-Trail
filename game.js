@@ -110,6 +110,8 @@
       combat: null,
       transition: null,
       blessing: null,
+      inventoryFocusId: "p0",
+      dollStyleByRole: { soldier: "classic", priest: "classic", mercenary: "classic" },
     };
   }
 
@@ -983,6 +985,192 @@
 
   function avatarClass(role) {
     return "avatar avatar-" + role;
+  }
+
+
+  function roleLabel(role) {
+    if (role === "soldier") return "Soldier";
+    if (role === "priest") return "Priest";
+    if (role === "mercenary") return "Mercenary";
+    return "Traveler";
+  }
+
+  function roleDollStyles(role) {
+    if (role === "soldier") return ["classic", "veteran", "warden"];
+    if (role === "priest") return ["classic", "scribe", "oracle"];
+    if (role === "mercenary") return ["classic", "raider", "ranger"];
+    return ["classic"];
+  }
+
+  function inventoryMemberById(id) {
+    for (var i = 0; i < state.party.length; i++) if (state.party[i].id === id) return state.party[i];
+    return state.party[0] || null;
+  }
+
+  function ensureInventoryFocus() {
+    var m = inventoryMemberById(state.inventoryFocusId);
+    if (!m && state.party.length) state.inventoryFocusId = state.party[0].id;
+  }
+
+  function profileForMember(m) {
+    var seed = 0;
+    var src = (m.id || "") + (m.name || "");
+    for (var i = 0; i < src.length; i++) seed += src.charCodeAt(i) * (i + 1);
+    var age = 18 + (seed % 17);
+    var towns = ["Cantebury", "Northwall", "Dunmere", "Isil Reach", "Stonefield", "Harbor Vale"];
+    var hometown = towns[seed % towns.length];
+    var bioByRole = {
+      soldier: "Keeps the line under pressure and protects the caravan vanguard.",
+      priest: "Carries old rites, mends wounds, and steadies morale on the road.",
+      mercenary: "Scouts profit routes, reads danger, and cuts deals under stress.",
+    };
+    var skillsByRole = {
+      soldier: ["Shield wall", "Road discipline", "Vanguard drills"],
+      priest: ["Field medicine", "Rite of warding", "Camp counsel"],
+      mercenary: ["Trail scouting", "Quick draw", "Loot appraisal"],
+    };
+    var traitsByRole = {
+      soldier: ["Steady", "Protective", "Direct"],
+      priest: ["Patient", "Observant", "Composed"],
+      mercenary: ["Pragmatic", "Bold", "Wry"],
+    };
+    return {
+      age: age,
+      hometown: hometown,
+      bio: bioByRole[m.role] || "A hardened road traveler.",
+      skills: skillsByRole[m.role] || ["Adaptable", "Resilient", "Focused"],
+      traits: traitsByRole[m.role] || ["Stoic", "Reliable", "Calm"],
+      stats: {
+        strength: m.role === "soldier" ? 8 : m.role === "mercenary" ? 7 : 5,
+        intelligence: m.role === "priest" ? 8 : m.role === "mercenary" ? 6 : 5,
+        stamina: m.role === "soldier" ? 7 : m.role === "mercenary" ? 6 : 5,
+        luck: m.role === "mercenary" ? 8 : 6,
+      },
+    };
+  }
+
+  function inventoryScreenHtml() {
+    ensureInventoryFocus();
+    var focus = inventoryMemberById(state.inventoryFocusId);
+    if (!focus) return "";
+    var prof = profileForMember(focus);
+    var roleStyle = (state.dollStyleByRole && state.dollStyleByRole[focus.role]) || "classic";
+    var styleChoices = roleDollStyles(focus.role)
+      .map(function (st) {
+        return '<option value="' + st + '"' + (st === roleStyle ? " selected" : "") + '>' + st.charAt(0).toUpperCase() + st.slice(1) + "</option>";
+      })
+      .join("");
+
+    var roster = state.party
+      .map(function (m) {
+        return (
+          '<button type="button" class="inv-member-btn' +
+          (m.id === focus.id ? " selected" : "") +
+          '" data-inv-member="' +
+          m.id +
+          '">' +
+          '<span class="' +
+          avatarClass(m.role) +
+          ' sm">' +
+          m.role.charAt(0).toUpperCase() +
+          "</span>" +
+          '<span class="inv-member-name">' +
+          m.name +
+          "</span>" +
+          "</button>"
+        );
+      })
+      .join("");
+
+    return (
+      '<section class="sheet-wrap">' +
+      '<div class="sheet-roster">' +
+      '<h3 class="roster-heading">Party selection</h3>' +
+      '<div class="inv-member-list">' +
+      roster +
+      "</div>" +
+      "</div>" +
+      '<div class="sheet-card">' +
+      '<div class="sheet-top">' +
+      '<div class="sheet-portrait" role="img" aria-label="portrait">' +
+      '<div class="sheet-doll avatar avatar-' +
+      focus.role +
+      ' doll-' +
+      focus.role +
+      '-' +
+      roleStyle +
+      '">' +
+      focus.role.charAt(0).toUpperCase() +
+      "</div>" +
+      "</div>" +
+      '<div class="sheet-meta">' +
+      '<p><b>class</b> ' +
+      roleLabel(focus.role) +
+      "</p>" +
+      '<p><b>name</b> ' +
+      focus.name +
+      "</p>" +
+      '<p><b>age</b> ' +
+      prof.age +
+      "</p>" +
+      '<p><b>hometown</b> ' +
+      prof.hometown +
+      "</p>" +
+      '<p><b>biography</b> ' +
+      prof.bio +
+      "</p>" +
+      '<p><b>paper doll</b> <select id="dollStyleSelect">' +
+      styleChoices +
+      "</select></p>" +
+      "</div>" +
+      "</div>" +
+      '<div class="sheet-divider"></div>' +
+      '<div class="sheet-sections">' +
+      '<h4>-Stats-</h4>' +
+      '<p>Strength: ' +
+      prof.stats.strength +
+      "</p>" +
+      '<p>Intelligence: ' +
+      prof.stats.intelligence +
+      "</p>" +
+      '<p>Stamina: ' +
+      prof.stats.stamina +
+      "</p>" +
+      '<p>Luck: ' +
+      prof.stats.luck +
+      "</p>" +
+      '<h4>-Skills-</h4>' +
+      '<p>- ' +
+      prof.skills.join("</p><p>- ") +
+      "</p>" +
+      '<h4>-Personality-</h4>' +
+      '<p>- ' +
+      prof.traits.join("</p><p>- ") +
+      "</p>" +
+      "</div></div></section>"
+    );
+  }
+
+  function wireInventoryScreen(root) {
+    var memberBtns = root.querySelectorAll("[data-inv-member]");
+    for (var i = 0; i < memberBtns.length; i++) {
+      memberBtns[i].onclick = (function (btn) {
+        return function () {
+          state.inventoryFocusId = btn.getAttribute("data-inv-member");
+          render();
+        };
+      })(memberBtns[i]);
+    }
+    var sel = root.querySelector("#dollStyleSelect");
+    if (sel) {
+      sel.onchange = function () {
+        var m = inventoryMemberById(state.inventoryFocusId);
+        if (!m) return;
+        state.dollStyleByRole[m.role] = sel.value;
+        logLine("Paper doll style set for " + roleLabel(m.role) + ": <span class=\"hi\">" + sel.value + "</span>.", "");
+        render();
+      };
+    }
   }
 
   function hpBarHtml(pct) {

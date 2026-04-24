@@ -113,6 +113,7 @@
       inventoryFocusId: "p0",
       dollStyleByMember: {},
       inventoryDetailOpen: false,
+      inventoryDebug: "idle",
     };
   }
 
@@ -1098,6 +1099,7 @@
       return (
         '<section class="sheet-wrap sheet-wrap--single">' +
         '<div class="sheet-card">' +
+        '<p class="inv-debug">debug: ' + state.inventoryDebug + '</p>' +
         '<h3 class="roster-heading">Party roster</h3>' +
         '<p class="roster-note">Hover and click a name/icon to open that character sheet.</p>' +
         '<div class="inv-open-list">' +
@@ -1199,6 +1201,7 @@
         opens[i].onclick = (function (btn) {
           return function () {
             state.inventoryFocusId = btn.getAttribute("data-open-char");
+            state.inventoryDebug = "open " + state.inventoryFocusId + " at " + Date.now();
             state.inventoryDetailOpen = true;
             render();
           };
@@ -1211,6 +1214,7 @@
     if (back) {
       back.onclick = function () {
         state.inventoryDetailOpen = false;
+        state.inventoryDebug = "back to roster at " + Date.now();
         render();
       };
     }
@@ -1226,6 +1230,7 @@
           if (!state.dollStyleByMember) state.dollStyleByMember = {};
           state.dollStyleByMember[id] = style;
           logLine("Paper doll style set for " + m.name + ": <span class=\"hi\">" + style + "</span>.", "");
+          state.inventoryDebug = "style " + id + " -> " + style + " at " + Date.now();
           render();
         };
       })(styleBtns[j]);

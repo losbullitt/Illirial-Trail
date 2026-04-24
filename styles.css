@@ -1449,3 +1449,9 @@ code {
   font-size: 0.7rem;
   color: var(--muted);
 }
+
+.inv-debug {
+  margin: 0 0 0.4rem;
+  font-size: 0.68rem;
+  color: #c9a227;
+}

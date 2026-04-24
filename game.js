@@ -1463,7 +1463,8 @@
           }
           render();
         };
-        document.getElementById("openInvFromChurch").onclick = openInventoryView;
+        var openInvChurch = document.getElementById("openInvFromChurch");
+        if (openInvChurch) openInvChurch.onclick = openInventoryView;
         return;
       }
 
@@ -1479,7 +1480,8 @@
           renderLog();
         wireIlliriTabs(app);
         document.getElementById("innRest").onclick = restAtInn;
-        document.getElementById("openInvFromInn").onclick = openInventoryView;
+        var openInvInn = document.getElementById("openInvFromInn");
+        if (openInvInn) openInvInn.onclick = openInventoryView;
         return;
       }
 
@@ -1507,7 +1509,8 @@
           renderLog();
         wireIlliriTabs(app);
         document.getElementById("departBtn").onclick = departIllirial;
-        document.getElementById("openInvFromDepart").onclick = openInventoryView;
+        var openInvDepart = document.getElementById("openInvFromDepart");
+        if (openInvDepart) openInvDepart.onclick = openInventoryView;
         return;
       }
 
@@ -1538,7 +1541,8 @@
           logLine("The barkeep leans in: something stirs beyond the road.", "");
           render();
         };
-        document.getElementById("openInvFromTavern").onclick = openInventoryView;
+        var openInvTavern = document.getElementById("openInvFromTavern");
+        if (openInvTavern) openInvTavern.onclick = openInventoryView;
         document.getElementById("guestBtn").onclick = function () {
           if (state.guest) {
             state.guest = null;
@@ -1570,7 +1574,8 @@
           '<div class="actions"><button type="button" id="openInvFromShop">Inventory & dolls</button></div>' +
           renderLog();
         wireIlliriTabs(app);
-        document.getElementById("openInvFromShop").onclick = openInventoryView;
+        var openInvShop = document.getElementById("openInvFromShop");
+        if (openInvShop) openInvShop.onclick = openInventoryView;
         document.getElementById("buyFood").onclick = function () {
           buy("food");
         };

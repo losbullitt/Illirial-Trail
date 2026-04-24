@@ -1103,6 +1103,13 @@
       '<section class="sheet-wrap">' +
       '<div class="sheet-roster">' +
       '<h3 class="roster-heading">Party selection</h3>' +
+      '<p class="roster-note">Focused character: <select id="invFocusSelect" aria-label="Focused character">' +
+      state.party
+        .map(function (m) {
+          return '<option value="' + m.id + '"' + (m.id === focus.id ? " selected" : "") + '>' + m.name + '</option>';
+        })
+        .join("") +
+      "</select></p>" +
       '<div class="inv-member-list">' +
       roster +
       "</div>" +
@@ -1181,6 +1188,14 @@
         };
       })(memberBtns[i]);
     }
+    var focusSel = root.querySelector("#invFocusSelect");
+    if (focusSel) {
+      focusSel.onchange = function () {
+        state.inventoryFocusId = focusSel.value;
+        render();
+      };
+    }
+
     var sel = root.querySelector("#dollStyleSelect");
     if (sel) {
       sel.onchange = function () {

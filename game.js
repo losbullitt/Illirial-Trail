@@ -112,6 +112,7 @@
       blessing: null,
       inventoryFocusId: "p0",
       dollStyleByMember: {},
+      inventoryDetailOpen: false,
     };
   }
 
@@ -1066,6 +1067,46 @@
     ensureInventoryFocus();
     var focus = inventoryMemberById(state.inventoryFocusId);
     if (!focus) return "";
+
+    if (!state.inventoryDetailOpen) {
+      var cards = state.party
+        .map(function (m) {
+          return (
+            '<button type="button" class="inv-open-char" data-open-char="' +
+            m.id +
+            '">' +
+            '<span class="' +
+            avatarClass(m.role) +
+            '">' +
+            m.role.charAt(0).toUpperCase() +
+            "</span>" +
+            '<span class="inv-open-meta">' +
+            '<span class="inv-open-name">' +
+            m.name +
+            "</span>" +
+            '<span class="inv-open-sub">' +
+            roleLabel(m.role) +
+            " - " +
+            memberDollStyle(m) +
+            "</span>" +
+            "</span>" +
+            "</button>"
+          );
+        })
+        .join("");
+
+      return (
+        '<section class="sheet-wrap sheet-wrap--single">' +
+        '<div class="sheet-card">' +
+        '<h3 class="roster-heading">Party roster</h3>' +
+        '<p class="roster-note">Hover and click a name/icon to open that character sheet.</p>' +
+        '<div class="inv-open-list">' +
+        cards +
+        "</div>" +
+        "</div></section>"
+      );
+    }
+
     var prof = profileForMember(focus);
     var roleStyle = memberDollStyle(focus);
     var styleChoices = roleDollStyles(focus.role)
@@ -1084,62 +1125,10 @@
       })
       .join("");
 
-    var roster = state.party
-      .map(function (m) {
-        var st = memberDollStyle(m);
-        var opts = roleDollStyles(m.role)
-          .map(function (opt) {
-            return (
-              '<button type="button" class="inv-style-btn' +
-              (opt === st ? " selected" : "") +
-              '" data-style-set="' +
-              m.id +
-              '" data-style="' +
-              opt +
-              '">' +
-              opt +
-              "</button>"
-            );
-          })
-          .join("");
-        return (
-          '<div class="inv-member-row' +
-          (m.id === focus.id ? " selected" : "") +
-          '" data-inv-member="' +
-          m.id +
-          '">' +
-          '<span class="' +
-          avatarClass(m.role) +
-          ' sm">' +
-          m.role.charAt(0).toUpperCase() +
-          "</span>" +
-          '<span class="inv-member-name">' +
-          m.name +
-          "</span>" +
-          '<span class="inv-style-btn-row">' +
-          opts +
-          "</span>" +
-          "</div>"
-        );
-      })
-      .join("");
-
     return (
-      '<section class="sheet-wrap">' +
-      '<div class="sheet-roster">' +
-      '<h3 class="roster-heading">Party selection</h3>' +
-      '<p class="roster-note">Focused character: <select id="invFocusSelect" aria-label="Focused character">' +
-      state.party
-        .map(function (m) {
-          return '<option value="' + m.id + '"' + (m.id === focus.id ? " selected" : "") + '>' + m.name + '</option>';
-        })
-        .join("") +
-      "</select></p>" +
-      '<div class="inv-member-list">' +
-      roster +
-      "</div>" +
-      "</div>" +
+      '<section class="sheet-wrap sheet-wrap--single">' +
       '<div class="sheet-card">' +
+      '<div class="actions"><button type="button" id="invBack">Back to roster</button></div>' +
       '<div class="sheet-top">' +
       '<div class="sheet-portrait" role="img" aria-label="portrait">' +
       '<div class="sheet-doll avatar avatar-' +
@@ -1204,20 +1193,31 @@
   }
 
   function wireInventoryScreen(root) {
-    var memberRows = root.querySelectorAll("[data-inv-member]");
-    for (var i = 0; i < memberRows.length; i++) {
-      memberRows[i].onclick = (function (row) {
-        return function (ev) {
-          if (ev.target && ev.target.getAttribute && ev.target.getAttribute("data-style-set")) return;
-          state.inventoryFocusId = row.getAttribute("data-inv-member");
-          render();
-        };
-      })(memberRows[i]);
+    if (!state.inventoryDetailOpen) {
+      var opens = root.querySelectorAll("[data-open-char]");
+      for (var i = 0; i < opens.length; i++) {
+        opens[i].onclick = (function (btn) {
+          return function () {
+            state.inventoryFocusId = btn.getAttribute("data-open-char");
+            state.inventoryDetailOpen = true;
+            render();
+          };
+        })(opens[i]);
+      }
+      return;
+    }
+
+    var back = root.querySelector("#invBack");
+    if (back) {
+      back.onclick = function () {
+        state.inventoryDetailOpen = false;
+        render();
+      };
     }
 
     var styleBtns = root.querySelectorAll("[data-style-set]");
-    for (i = 0; i < styleBtns.length; i++) {
-      styleBtns[i].onclick = (function (btn) {
+    for (var j = 0; j < styleBtns.length; j++) {
+      styleBtns[j].onclick = (function (btn) {
         return function () {
           var id = btn.getAttribute("data-style-set");
           var style = btn.getAttribute("data-style");
@@ -1225,19 +1225,10 @@
           if (!m) return;
           if (!state.dollStyleByMember) state.dollStyleByMember = {};
           state.dollStyleByMember[id] = style;
-          state.inventoryFocusId = id;
           logLine("Paper doll style set for " + m.name + ": <span class=\"hi\">" + style + "</span>.", "");
           render();
         };
-      })(styleBtns[i]);
-    }
-
-    var focusSel = root.querySelector("#invFocusSelect");
-    if (focusSel) {
-      focusSel.onchange = function () {
-        state.inventoryFocusId = focusSel.value;
-        render();
-      };
+      })(styleBtns[j]);
     }
   }
 

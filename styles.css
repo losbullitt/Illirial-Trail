@@ -1404,3 +1404,48 @@ code {
   background: #4a3b1a;
   color: #fff;
 }
+
+
+.sheet-wrap--single {
+  grid-template-columns: 1fr;
+}
+
+.inv-open-list {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+}
+
+.inv-open-char {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.35rem 0.45rem;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.inv-open-char:hover {
+  border-color: var(--accent);
+  background: rgba(201, 162, 39, 0.12);
+}
+
+.inv-open-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.inv-open-name {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.inv-open-sub {
+  font-size: 0.7rem;
+  color: var(--muted);
+}

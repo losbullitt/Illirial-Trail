@@ -1251,19 +1251,22 @@ code {
   gap: 0.35rem;
 }
 
-.inv-member-btn {
+.inv-member-row {
   display: flex;
   align-items: center;
   gap: 0.35rem;
   justify-content: flex-start;
   font-size: 0.78rem;
   width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.12);
+  padding: 0.2rem 0.3rem;
 }
 
-.inv-member-btn.selected {
+.inv-member-row.selected {
   border-color: var(--accent);
-  background: #4a3b1a;
-  color: #fff;
+  background: rgba(201, 162, 39, 0.13);
 }
 
 .inv-member-name {
@@ -1278,6 +1281,17 @@ code {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.inv-member-doll-select {
+  margin-left: auto;
+  font: inherit;
+  font-size: 0.68rem;
+  background: #2a2218;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.12rem 0.3rem;
 }
 
 .sheet-card {

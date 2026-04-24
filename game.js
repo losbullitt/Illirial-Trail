@@ -1077,8 +1077,13 @@
     var roster = state.party
       .map(function (m) {
         var st = memberDollStyle(m);
+        var opts = roleDollStyles(m.role)
+          .map(function (opt) {
+            return '<option value="' + opt + '"' + (opt === st ? " selected" : "") + '>' + opt + '</option>';
+          })
+          .join("");
         return (
-          '<button type="button" class="inv-member-btn' +
+          '<div class="inv-member-row' +
           (m.id === focus.id ? " selected" : "") +
           '" data-inv-member="' +
           m.id +
@@ -1091,10 +1096,12 @@
           '<span class="inv-member-name">' +
           m.name +
           "</span>" +
-          '<span class="inv-member-style">' +
-          st +
-          "</span>" +
-          "</button>"
+          '<select class="inv-member-doll-select" data-member-style="' +
+          m.id +
+          '">' +
+          opts +
+          "</select>" +
+          "</div>"
         );
       })
       .join("");
@@ -1179,15 +1186,33 @@
   }
 
   function wireInventoryScreen(root) {
-    var memberBtns = root.querySelectorAll("[data-inv-member]");
-    for (var i = 0; i < memberBtns.length; i++) {
-      memberBtns[i].onclick = (function (btn) {
-        return function () {
-          state.inventoryFocusId = btn.getAttribute("data-inv-member");
+    var memberRows = root.querySelectorAll("[data-inv-member]");
+    for (var i = 0; i < memberRows.length; i++) {
+      memberRows[i].onclick = (function (row) {
+        return function (ev) {
+          if (ev.target && ev.target.classList && ev.target.classList.contains("inv-member-doll-select")) return;
+          state.inventoryFocusId = row.getAttribute("data-inv-member");
           render();
         };
-      })(memberBtns[i]);
+      })(memberRows[i]);
     }
+
+    var rowSelects = root.querySelectorAll("[data-member-style]");
+    for (i = 0; i < rowSelects.length; i++) {
+      rowSelects[i].onchange = (function (selEl) {
+        return function () {
+          var id = selEl.getAttribute("data-member-style");
+          var m = inventoryMemberById(id);
+          if (!m) return;
+          if (!state.dollStyleByMember) state.dollStyleByMember = {};
+          state.dollStyleByMember[id] = selEl.value;
+          state.inventoryFocusId = id;
+          logLine("Paper doll style set for " + m.name + ": <span class=\"hi\">" + selEl.value + "</span>.", "");
+          render();
+        };
+      })(rowSelects[i]);
+    }
+
     var focusSel = root.querySelector("#invFocusSelect");
     if (focusSel) {
       focusSel.onchange = function () {

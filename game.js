@@ -53,6 +53,24 @@
     return 1 + 0.05 * mercenaryCount(party);
   }
 
+
+  function blessingTypeLabel(type) {
+    if (type === "attack") return "War blessing (+1 attack power)";
+    if (type === "gold") return "Prosperity blessing (+gold found on the road)";
+    if (type === "ward") return "Ward blessing (fewer enemies engage)";
+    return "None";
+  }
+
+  function hasBlessing(type) {
+    return !!state.blessing && state.blessing === type;
+  }
+
+  function roadGoldBonus(baseGold) {
+    if (!hasBlessing("gold")) return baseGold;
+    return baseGold + 1;
+  }
+
+
   function createParty() {
     var roles = ["soldier", "soldier", "soldier", "priest", "priest", "mercenary"];
     var out = [];
@@ -91,6 +109,7 @@
       pendingEncounter: null,
       combat: null,
       transition: null,
+      blessing: null,
     };
   }
 
@@ -179,6 +198,7 @@
 
   function buildBandits() {
     var n = rollInt(1, 5);
+    if (hasBlessing("ward")) n = Math.max(1, n - 1);
     var list = [];
     for (var i = 0; i < n; i++) {
       list.push({ id: "b" + i, name: "Bandit " + (i + 1), hp: 3, maxHp: 3, dmg: 1 });
@@ -188,6 +208,7 @@
 
   function buildWolves() {
     var n = rollInt(3, 7);
+    if (hasBlessing("ward")) n = Math.max(1, n - 1);
     var list = [];
     for (var i = 0; i < n; i++) {
       list.push({ id: "w" + i, name: "Wolf " + (i + 1), hp: 2, maxHp: 2, dmg: 1 });
@@ -197,6 +218,7 @@
 
   function buildSkeletons() {
     var n = rollInt(1, 3);
+    if (hasBlessing("ward")) n = Math.max(1, n - 1);
     var list = [];
     for (var i = 0; i < n; i++) {
       list.push({ id: "s" + i, name: "Skeleton " + (i + 1), hp: 5, maxHp: 5, dmg: 2 });
@@ -247,10 +269,13 @@
   }
 
   function attackDamage(member) {
-    if (member.role === "soldier") return 4;
-    if (member.role === "mercenary") return 3;
-    if (member.role === "priest") return isUndeadFight() ? 3 : 2;
-    return 2;
+    var d;
+    if (member.role === "soldier") d = 4;
+    else if (member.role === "mercenary") d = 3;
+    else if (member.role === "priest") d = isUndeadFight() ? 3 : 2;
+    else d = 2;
+    if (hasBlessing("attack")) d += 1;
+    return d;
   }
 
   function rollWeaponLoot(fromRuins) {
@@ -274,7 +299,7 @@
 
   function resolveRuinsSearchRewards() {
     var mult = lootMultiplier(state.party);
-    var goldGain = Math.floor(10 * mult);
+    var goldGain = roadGoldBonus(Math.floor(10 * mult));
     var gemGain = Math.floor(10 * mult);
     state.gold += goldGain;
     state.gems += gemGain;
@@ -285,7 +310,7 @@
 
   function winCombatLoot(kind) {
     if (kind === "bandits") {
-      var gold = rollInt(1, 4) * Math.max(1, mercenaryCount(state.party));
+      var gold = roadGoldBonus(rollInt(1, 4) * Math.max(1, mercenaryCount(state.party)));
       state.gold += gold;
       logLine("Victory: +" + gold + " gold.", "good");
     }
@@ -294,7 +319,7 @@
       logLine("Victory: +2 food.", "good");
     }
     if (kind === "skeletons" || kind === "ruins_combat") {
-      var g2 = rollInt(2, 6);
+      var g2 = roadGoldBonus(rollInt(2, 6));
       state.gold += g2;
       logLine("Victory: +" + g2 + " gold (old coins).", "good");
     }
@@ -1038,6 +1063,7 @@
     var combatUi = state.phase === "action" && state.combat;
     var mult = lootMultiplier(state.party).toFixed(2);
     var ru = state.ruinsDiscovered ? "day " + state.ruinsTravelDay : "-";
+    var bless = blessingTypeLabel(state.blessing);
     var partyBits = state.party
       .map(function (m) {
         return (
@@ -1172,7 +1198,22 @@
           renderLog();
         wireIlliriTabs(app);
         document.getElementById("churchBless").onclick = function () {
-          logLine("Blessing received.", "good");
+          if (state.blessing) {
+            logLine("You already carry a blessing: <span class=\"hi\">" + blessingTypeLabel(state.blessing) + "</span>.", "");
+            render();
+            return;
+          }
+          var r = Math.random();
+          if (r < 0.3) state.blessing = "attack";
+          else if (r < 0.5) state.blessing = "gold";
+          else if (r < 0.6) state.blessing = "ward";
+          else state.blessing = null;
+
+          if (state.blessing) {
+            logLine("Blessing granted: <span class=\"hi\">" + blessingTypeLabel(state.blessing) + "</span>.", "good");
+          } else {
+            logLine("The prayer brings calm, but no lasting boon this time.", "");
+          }
           render();
         };
         return;

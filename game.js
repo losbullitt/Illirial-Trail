@@ -1226,7 +1226,7 @@
           if (!state.dollStyleByMember) state.dollStyleByMember = {};
           state.dollStyleByMember[id] = style;
           state.inventoryFocusId = id;
-          logLine("Paper doll style set for " + m.name + ": <span class="hi">" + style + "</span>.", "");
+          logLine("Paper doll style set for " + m.name + ": <span class=\"hi\">" + style + "</span>.", "");
           render();
         };
       })(styleBtns[i]);

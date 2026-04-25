@@ -7,9 +7,9 @@
   var PARTY_MAX = 6;
   var STAT_KEYS = ["strength", "intelligence", "stamina", "luck"];
   var CLASS_BASE_STATS = {
-    soldier: { strength: 8, intelligence: 5, stamina: 7, luck: 6 },
-    priest: { strength: 5, intelligence: 8, stamina: 5, luck: 6 },
-    mercenary: { strength: 7, intelligence: 6, stamina: 6, luck: 8 },
+    soldier: { strength: 4, intelligence: 4, stamina: 4, luck: 4 },
+    priest: { strength: 4, intelligence: 4, stamina: 4, luck: 4 },
+    mercenary: { strength: 4, intelligence: 4, stamina: 4, luck: 4 },
   };
   var PRESET_LEADER = {
     name: "Captain Elara Vale",
@@ -17,7 +17,7 @@
     age: 31,
     hometown: "Cantebury",
     bio: "A veteran caravan captain who has crossed the trade road through flood, famine, and war.",
-    stats: { strength: 9, intelligence: 5, stamina: 8, luck: 6 },
+    stats: { strength: 4, intelligence: 4, stamina: 4, luck: 4 },
     source: "preset",
   };
   /* Quiet day ramps danger: +25 percentage points per day with no encounter (cap 95%). */
@@ -1188,10 +1188,10 @@
       skills: skillsByRole[m.role] || ["Adaptable", "Resilient", "Focused"],
       traits: traitsByRole[m.role] || ["Stoic", "Reliable", "Calm"],
       stats: {
-        strength: m.role === "soldier" ? 8 : m.role === "mercenary" ? 7 : 5,
-        intelligence: m.role === "priest" ? 8 : m.role === "mercenary" ? 6 : 5,
-        stamina: m.role === "soldier" ? 7 : m.role === "mercenary" ? 6 : 5,
-        luck: m.role === "mercenary" ? 8 : 6,
+        strength: 4,
+        intelligence: 4,
+        stamina: 4,
+        luck: 4,
       },
     };
   }

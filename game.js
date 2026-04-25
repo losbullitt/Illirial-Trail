@@ -5,6 +5,14 @@
   var CLASS_HP = { soldier: 10, priest: 5, mercenary: 7 };
   var ROUTE_DAYS = 5;
   var PARTY_MAX = 6;
+  var PRESET_LEADER = {
+    name: "Captain Elara Vale",
+    role: "soldier",
+    age: 31,
+    hometown: "Cantebury",
+    bio: "A veteran caravan captain who has crossed the trade road through flood, famine, and war.",
+    source: "preset",
+  };
   /* Quiet day ramps danger: +25 percentage points per day with no encounter (cap 95%). */
   var ENCOUNTER_BASE = 0.1;
   var ENCOUNTER_STEP = 0.25;
@@ -87,9 +95,36 @@
     return out;
   }
 
+
+  function cloneLeaderProfile(src) {
+    return {
+      name: src.name,
+      role: src.role,
+      age: src.age,
+      hometown: src.hometown,
+      bio: src.bio,
+      source: src.source || "custom",
+    };
+  }
+
+  function beginRunWithLeader(profile) {
+    var lead = cloneLeaderProfile(profile);
+    state.leaderProfile = lead;
+    if (!state.party.length) state.party = createParty();
+    state.party[0].name = lead.name;
+    state.party[0].role = lead.role;
+    state.party[0].maxHp = CLASS_HP[lead.role];
+    state.party[0].hp = state.party[0].maxHp;
+    state.inventoryFocusId = state.party[0].id;
+    state.inventoryDetailOpen = false;
+    state.illiriView = "church";
+    state.phase = "story_illiri";
+    logLine("Caravan leader ready: <span class=\"hi\">" + lead.name + "</span> (" + roleLabel(lead.role) + ").", "good");
+  }
+
   function initialState() {
     return {
-      phase: "story_illiri",
+      phase: "new_game_setup",
       gold: 500,
       gems: 0,
       food: 0,
@@ -110,10 +145,10 @@
       combat: null,
       transition: null,
       blessing: null,
+      leaderProfile: null,
       inventoryFocusId: "p0",
       dollStyleByMember: {},
       inventoryDetailOpen: false,
-      inventoryDebug: "idle",
     };
   }
 
@@ -1028,6 +1063,22 @@
   }
 
   function profileForMember(m) {
+    if (m && m.id === "p0" && state.leaderProfile) {
+      var base = {
+        soldier: { strength: 8, intelligence: 5, stamina: 7, luck: 6 },
+        priest: { strength: 5, intelligence: 8, stamina: 5, luck: 6 },
+        mercenary: { strength: 7, intelligence: 6, stamina: 6, luck: 8 },
+      };
+      var st = base[state.leaderProfile.role] || { strength: 6, intelligence: 6, stamina: 6, luck: 6 };
+      return {
+        age: state.leaderProfile.age,
+        hometown: state.leaderProfile.hometown,
+        bio: state.leaderProfile.bio,
+        skills: m.role === "priest" ? ["Field medicine", "Rite of warding", "Camp counsel"] : m.role === "mercenary" ? ["Trail scouting", "Quick draw", "Loot appraisal"] : ["Shield wall", "Road discipline", "Vanguard drills"],
+        traits: m.role === "priest" ? ["Patient", "Observant", "Composed"] : m.role === "mercenary" ? ["Pragmatic", "Bold", "Wry"] : ["Steady", "Protective", "Direct"],
+        stats: st,
+      };
+    }
     var seed = 0;
     var src = (m.id || "") + (m.name || "");
     for (var i = 0; i < src.length; i++) seed += src.charCodeAt(i) * (i + 1);
@@ -1099,8 +1150,7 @@
       return (
         '<section class="sheet-wrap sheet-wrap--single">' +
         '<div class="sheet-card">' +
-        '<p class="inv-debug">debug: ' + state.inventoryDebug + '</p>' +
-        '<h3 class="roster-heading">Party roster</h3>' +
+          '<h3 class="roster-heading">Party roster</h3>' +
         '<p class="roster-note">Hover and click a name/icon to open that character sheet.</p>' +
         '<div class="inv-open-list">' +
         cards +
@@ -1201,7 +1251,6 @@
         opens[i].onclick = (function (btn) {
           return function () {
             state.inventoryFocusId = btn.getAttribute("data-open-char");
-            state.inventoryDebug = "open " + state.inventoryFocusId + " at " + Date.now();
             state.inventoryDetailOpen = true;
             render();
           };
@@ -1214,7 +1263,6 @@
     if (back) {
       back.onclick = function () {
         state.inventoryDetailOpen = false;
-        state.inventoryDebug = "back to roster at " + Date.now();
         render();
       };
     }
@@ -1230,7 +1278,6 @@
           if (!state.dollStyleByMember) state.dollStyleByMember = {};
           state.dollStyleByMember[id] = style;
           logLine("Paper doll style set for " + m.name + ": <span class=\"hi\">" + style + "</span>.", "");
-          state.inventoryDebug = "style " + id + " -> " + style + " at " + Date.now();
           render();
         };
       })(styleBtns[j]);
@@ -1316,6 +1363,7 @@
     var mult = lootMultiplier(state.party).toFixed(2);
     var ru = state.ruinsDiscovered ? "day " + state.ruinsTravelDay : "-";
     var bless = blessingTypeLabel(state.blessing);
+    var leaderLine = state.leaderProfile ? state.leaderProfile.name + " (" + roleLabel(state.leaderProfile.role) + ")" : "Unassigned";
     var canOpenFromHeader = state.phase === "story_illiri" && state.illiriView === "inventory";
     var partyBits = state.party
       .map(function (m) {
@@ -1419,7 +1467,6 @@
         return function () {
           state.inventoryFocusId = row.getAttribute("data-open-from-header");
           state.inventoryDetailOpen = true;
-          state.inventoryDebug = "open from header " + state.inventoryFocusId + " at " + Date.now();
           render();
         };
       })(rows[i]);
@@ -1449,6 +1496,79 @@
       document.getElementById("btnRestart").onclick = function () {
         clearTransitionTimers();
         state = initialState();
+        render();
+      };
+      return;
+    }
+
+    if (state.phase === "new_game_setup") {
+      app.innerHTML =
+        startCitySplash() +
+        "<h2 class=\"panel-title\">Start a new caravan</h2>" +
+        "<p class=\"town-lead\">Choose how to set your caravan leader before departing Cantebury.</p>" +
+        "<div class=\"actions\">" +
+        '<button type="button" class="primary" id="newLeaderBtn">Create new character</button>' +
+        '<button type="button" id="presetLeaderBtn">Use preset leader</button>' +
+        "</div>" +
+        renderLog();
+      document.getElementById("newLeaderBtn").onclick = function () {
+        state.phase = "new_character";
+        render();
+      };
+      document.getElementById("presetLeaderBtn").onclick = function () {
+        beginRunWithLeader(PRESET_LEADER);
+        render();
+      };
+      return;
+    }
+
+    if (state.phase === "new_character") {
+      app.innerHTML =
+        startCitySplash() +
+        "<h2 class=\"panel-title\">Create your leader</h2>" +
+        "<p class=\"town-lead\">Define the character who leads the first caravan.</p>" +
+        '<div class="char-form">' +
+        '<label>Name <input id="leadName" maxlength="32" placeholder="e.g. Rowan Hale"></label>' +
+        '<label>Class <select id="leadRole"><option value="soldier">Soldier</option><option value="priest">Priest</option><option value="mercenary">Mercenary</option></select></label>' +
+        '<label>Age <input id="leadAge" type="number" min="16" max="70" value="28"></label>' +
+        '<label>Hometown <input id="leadTown" maxlength="32" value="Cantebury"></label>' +
+        '<label>Biography <textarea id="leadBio" rows="4" maxlength="240" placeholder="A short backstory..."></textarea></label>' +
+        "</div>" +
+        "<div class=\"actions\">" +
+        '<button type="button" class="primary" id="createLeaderBtn">Start caravan</button>' +
+        '<button type="button" id="backLeaderBtn">Back</button>' +
+        "</div>" +
+        renderLog();
+
+      document.getElementById("backLeaderBtn").onclick = function () {
+        state.phase = "new_game_setup";
+        render();
+      };
+
+      document.getElementById("createLeaderBtn").onclick = function () {
+        var name = (document.getElementById("leadName").value || "").trim();
+        var role = document.getElementById("leadRole").value;
+        var ageRaw = parseInt(document.getElementById("leadAge").value, 10);
+        var hometown = (document.getElementById("leadTown").value || "").trim();
+        var bio = (document.getElementById("leadBio").value || "").trim();
+
+        if (!name) {
+          logLine("Leader name is required.", "bad");
+          render();
+          return;
+        }
+        if (!(ageRaw >= 16 && ageRaw <= 70)) ageRaw = 28;
+        if (!hometown) hometown = "Cantebury";
+        if (!bio) bio = "A first-time caravan leader eager to reach New Isil.";
+
+        beginRunWithLeader({
+          name: name,
+          role: role,
+          age: ageRaw,
+          hometown: hometown,
+          bio: bio,
+          source: "custom",
+        });
         render();
       };
       return;
@@ -1513,7 +1633,6 @@
           illiriTabStrip() +
           "<h2 class=\"panel-title\">Inventory & Paper Doll Studio</h2>" +
           "<p class=\"town-lead\">Review your party roster, resources, and travel odds before heading out.</p>" +
-          "<p class=\"town-lead\">Build marker: inv-live-3</p>" +
           renderHeader() +
           inventoryScreenHtml() +
           renderLog();

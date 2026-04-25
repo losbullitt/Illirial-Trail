@@ -1450,15 +1450,35 @@ code {
   color: var(--muted);
 }
 
-.inv-debug {
-  margin: 0 0 0.4rem;
-  font-size: 0.68rem;
-  color: #c9a227;
-}
 
 .party-openable {
   cursor: pointer;
 }
 .party-openable:hover {
   background: rgba(201,162,39,0.12);
+}
+
+
+.char-form {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.6rem 0 0.3rem;
+}
+
+.char-form label {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.char-form input,
+.char-form select,
+.char-form textarea {
+  font: inherit;
+  color: var(--text);
+  background: #1b1611;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 0.45rem;
 }

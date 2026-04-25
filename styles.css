@@ -1482,3 +1482,48 @@ code {
   border-radius: 6px;
   padding: 0.35rem 0.45rem;
 }
+
+
+.char-stat-wrap {
+  margin-top: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.char-stat-head {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+}
+
+.char-stat-row {
+  display: grid;
+  grid-template-columns: 6.5rem 4.5rem 1.8rem 2.2rem 1.8rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 0.2rem;
+}
+
+.char-stat-name,
+.char-stat-base,
+.char-stat-bonus,
+.char-stat-total {
+  font-size: 0.72rem;
+}
+
+.char-stat-base,
+.char-stat-total {
+  color: var(--muted);
+}
+
+.char-stat-btn {
+  padding: 0.12rem 0.2rem;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 42rem) {
+  .char-stat-row {
+    grid-template-columns: 1fr 1fr 1.8rem 2.2rem 1.8rem 1fr;
+  }
+}

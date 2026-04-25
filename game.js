@@ -5,12 +5,19 @@
   var CLASS_HP = { soldier: 10, priest: 5, mercenary: 7 };
   var ROUTE_DAYS = 5;
   var PARTY_MAX = 6;
+  var STAT_KEYS = ["strength", "intelligence", "stamina", "luck"];
+  var CLASS_BASE_STATS = {
+    soldier: { strength: 8, intelligence: 5, stamina: 7, luck: 6 },
+    priest: { strength: 5, intelligence: 8, stamina: 5, luck: 6 },
+    mercenary: { strength: 7, intelligence: 6, stamina: 6, luck: 8 },
+  };
   var PRESET_LEADER = {
     name: "Captain Elara Vale",
     role: "soldier",
     age: 31,
     hometown: "Cantebury",
     bio: "A veteran caravan captain who has crossed the trade road through flood, famine, and war.",
+    stats: { strength: 9, intelligence: 5, stamina: 8, luck: 6 },
     source: "preset",
   };
   /* Quiet day ramps danger: +25 percentage points per day with no encounter (cap 95%). */
@@ -96,6 +103,19 @@
   }
 
 
+  function cloneStats(stats) {
+    return {
+      strength: stats.strength,
+      intelligence: stats.intelligence,
+      stamina: stats.stamina,
+      luck: stats.luck,
+    };
+  }
+
+  function baseStatsForRole(role) {
+    return cloneStats(CLASS_BASE_STATS[role] || CLASS_BASE_STATS.soldier);
+  }
+
   function cloneLeaderProfile(src) {
     return {
       name: src.name,
@@ -103,13 +123,60 @@
       age: src.age,
       hometown: src.hometown,
       bio: src.bio,
+      stats: src.stats ? cloneStats(src.stats) : baseStatsForRole(src.role),
       source: src.source || "custom",
+    };
+  }
+
+  function totalBonusPoints(bonus) {
+    var sum = 0;
+    for (var i = 0; i < STAT_KEYS.length; i++) sum += bonus[STAT_KEYS[i]] || 0;
+    return sum;
+  }
+
+  function currentLeaderDraft() {
+    if (!state.newLeaderDraft) {
+      state.newLeaderDraft = {
+        name: "",
+        role: "soldier",
+        age: 28,
+        hometown: "Cantebury",
+        bio: "",
+        bonus: { strength: 0, intelligence: 0, stamina: 0, luck: 0 },
+      };
+    }
+    return state.newLeaderDraft;
+  }
+
+  function setLeaderDraftField(key, value) {
+    var draft = currentLeaderDraft();
+    draft[key] = value;
+  }
+
+  function adjustLeaderDraftBonus(stat, delta) {
+    var draft = currentLeaderDraft();
+    if (!draft.bonus) draft.bonus = { strength: 0, intelligence: 0, stamina: 0, luck: 0 };
+    var cur = draft.bonus[stat] || 0;
+    var used = totalBonusPoints(draft.bonus);
+    if (delta > 0 && used >= 4) return;
+    if (delta < 0 && cur <= 0) return;
+    draft.bonus[stat] = cur + delta;
+  }
+
+  function leaderDraftFinalStats(draft) {
+    var base = baseStatsForRole(draft.role);
+    return {
+      strength: base.strength + (draft.bonus.strength || 0),
+      intelligence: base.intelligence + (draft.bonus.intelligence || 0),
+      stamina: base.stamina + (draft.bonus.stamina || 0),
+      luck: base.luck + (draft.bonus.luck || 0),
     };
   }
 
   function beginRunWithLeader(profile) {
     var lead = cloneLeaderProfile(profile);
     state.leaderProfile = lead;
+    state.newLeaderDraft = null;
     if (!state.party.length) state.party = createParty();
     state.party[0].name = lead.name;
     state.party[0].role = lead.role;
@@ -146,6 +213,7 @@
       transition: null,
       blessing: null,
       leaderProfile: null,
+      newLeaderDraft: null,
       inventoryFocusId: "p0",
       dollStyleByMember: {},
       inventoryDetailOpen: false,
@@ -1064,12 +1132,7 @@
 
   function profileForMember(m) {
     if (m && m.id === "p0" && state.leaderProfile) {
-      var base = {
-        soldier: { strength: 8, intelligence: 5, stamina: 7, luck: 6 },
-        priest: { strength: 5, intelligence: 8, stamina: 5, luck: 6 },
-        mercenary: { strength: 7, intelligence: 6, stamina: 6, luck: 8 },
-      };
-      var st = base[state.leaderProfile.role] || { strength: 6, intelligence: 6, stamina: 6, luck: 6 };
+      var st = cloneStats(state.leaderProfile.stats || baseStatsForRole(state.leaderProfile.role));
       return {
         age: state.leaderProfile.age,
         hometown: state.leaderProfile.hometown,
@@ -1523,22 +1586,119 @@
     }
 
     if (state.phase === "new_character") {
+      var draft = currentLeaderDraft();
+      var baseStats = baseStatsForRole(draft.role);
+      var bonus = draft.bonus || { strength: 0, intelligence: 0, stamina: 0, luck: 0 };
+      var usedPts = totalBonusPoints(bonus);
+      var remainPts = 4 - usedPts;
+      function statRow(key, label) {
+        var b = baseStats[key];
+        var plus = bonus[key] || 0;
+        var total = b + plus;
+        return (
+          '<div class="char-stat-row">' +
+          '<span class="char-stat-name">' +
+          label +
+          '</span>' +
+          '<span class="char-stat-base">Base ' +
+          b +
+          '</span>' +
+          '<button type="button" class="char-stat-btn" data-stat-minus="' +
+          key +
+          '"' +
+          (plus <= 0 ? ' disabled' : '') +
+          '>-</button>' +
+          '<span class="char-stat-bonus">+' +
+          plus +
+          '</span>' +
+          '<button type="button" class="char-stat-btn" data-stat-plus="' +
+          key +
+          '"' +
+          (remainPts <= 0 ? ' disabled' : '') +
+          '>+</button>' +
+          '<span class="char-stat-total">Total ' +
+          total +
+          '</span>' +
+          '</div>'
+        );
+      }
+
       app.innerHTML =
         startCitySplash() +
         "<h2 class=\"panel-title\">Create your leader</h2>" +
         "<p class=\"town-lead\">Define the character who leads the first caravan.</p>" +
         '<div class="char-form">' +
-        '<label>Name <input id="leadName" maxlength="32" placeholder="e.g. Rowan Hale"></label>' +
-        '<label>Class <select id="leadRole"><option value="soldier">Soldier</option><option value="priest">Priest</option><option value="mercenary">Mercenary</option></select></label>' +
-        '<label>Age <input id="leadAge" type="number" min="16" max="70" value="28"></label>' +
-        '<label>Hometown <input id="leadTown" maxlength="32" value="Cantebury"></label>' +
-        '<label>Biography <textarea id="leadBio" rows="4" maxlength="240" placeholder="A short backstory..."></textarea></label>' +
-        "</div>" +
+        '<label>Name <input id="leadName" maxlength="32" placeholder="e.g. Rowan Hale" value="' +
+        (draft.name || "") +
+        '"></label>' +
+        '<label>Class <select id="leadRole"><option value="soldier"' +
+        (draft.role === "soldier" ? " selected" : "") +
+        '>Soldier</option><option value="priest"' +
+        (draft.role === "priest" ? " selected" : "") +
+        '>Priest</option><option value="mercenary"' +
+        (draft.role === "mercenary" ? " selected" : "") +
+        '>Mercenary</option></select></label>' +
+        '<label>Age <input id="leadAge" type="number" min="16" max="70" value="' +
+        draft.age +
+        '"></label>' +
+        '<label>Hometown <input id="leadTown" maxlength="32" value="' +
+        (draft.hometown || "") +
+        '"></label>' +
+        '<label>Biography <textarea id="leadBio" rows="4" maxlength="240" placeholder="A short backstory...">' +
+        (draft.bio || "") +
+        '</textarea></label>' +
+        '<div class="char-stat-wrap">' +
+        '<p class="char-stat-head">Bonus points remaining: <b>' +
+        remainPts +
+        '</b> / 4</p>' +
+        statRow("strength", "Strength") +
+        statRow("intelligence", "Intelligence") +
+        statRow("stamina", "Stamina") +
+        statRow("luck", "Luck") +
+        '</div>' +
+        '</div>' +
         "<div class=\"actions\">" +
         '<button type="button" class="primary" id="createLeaderBtn">Start caravan</button>' +
         '<button type="button" id="backLeaderBtn">Back</button>' +
         "</div>" +
         renderLog();
+
+      document.getElementById("leadName").oninput = function () {
+        setLeaderDraftField("name", this.value);
+      };
+      document.getElementById("leadRole").onchange = function () {
+        setLeaderDraftField("role", this.value);
+        render();
+      };
+      document.getElementById("leadAge").oninput = function () {
+        var v = parseInt(this.value, 10);
+        setLeaderDraftField("age", isNaN(v) ? 28 : v);
+      };
+      document.getElementById("leadTown").oninput = function () {
+        setLeaderDraftField("hometown", this.value);
+      };
+      document.getElementById("leadBio").oninput = function () {
+        setLeaderDraftField("bio", this.value);
+      };
+
+      var plusBtns = app.querySelectorAll("[data-stat-plus]");
+      for (var pi = 0; pi < plusBtns.length; pi++) {
+        plusBtns[pi].onclick = (function (btn) {
+          return function () {
+            adjustLeaderDraftBonus(btn.getAttribute("data-stat-plus"), 1);
+            render();
+          };
+        })(plusBtns[pi]);
+      }
+      var minusBtns = app.querySelectorAll("[data-stat-minus]");
+      for (var mi = 0; mi < minusBtns.length; mi++) {
+        minusBtns[mi].onclick = (function (btn) {
+          return function () {
+            adjustLeaderDraftBonus(btn.getAttribute("data-stat-minus"), -1);
+            render();
+          };
+        })(minusBtns[mi]);
+      }
 
       document.getElementById("backLeaderBtn").onclick = function () {
         state.phase = "new_game_setup";
@@ -1546,14 +1706,21 @@
       };
 
       document.getElementById("createLeaderBtn").onclick = function () {
-        var name = (document.getElementById("leadName").value || "").trim();
-        var role = document.getElementById("leadRole").value;
-        var ageRaw = parseInt(document.getElementById("leadAge").value, 10);
-        var hometown = (document.getElementById("leadTown").value || "").trim();
-        var bio = (document.getElementById("leadBio").value || "").trim();
+        var latest = currentLeaderDraft();
+        var name = (latest.name || "").trim();
+        var role = latest.role;
+        var ageRaw = parseInt(latest.age, 10);
+        var hometown = (latest.hometown || "").trim();
+        var bio = (latest.bio || "").trim();
+        var remain = 4 - totalBonusPoints(latest.bonus || { strength: 0, intelligence: 0, stamina: 0, luck: 0 });
 
         if (!name) {
           logLine("Leader name is required.", "bad");
+          render();
+          return;
+        }
+        if (remain !== 0) {
+          logLine("Spend all 4 bonus points before starting.", "bad");
           render();
           return;
         }
@@ -1567,6 +1734,7 @@
           age: ageRaw,
           hometown: hometown,
           bio: bio,
+          stats: leaderDraftFinalStats(latest),
           source: "custom",
         });
         render();

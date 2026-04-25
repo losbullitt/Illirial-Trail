@@ -177,11 +177,29 @@
     var lead = cloneLeaderProfile(profile);
     state.leaderProfile = lead;
     state.newLeaderDraft = null;
-    if (!state.party.length) state.party = createParty();
-    state.party[0].name = lead.name;
-    state.party[0].role = lead.role;
-    state.party[0].maxHp = CLASS_HP[lead.role];
-    state.party[0].hp = state.party[0].maxHp;
+
+    if (lead.source === "preset") {
+      state.party = createParty();
+      state.partyIdSeq = state.party.length;
+      state.party[0].name = lead.name;
+      state.party[0].role = lead.role;
+      state.party[0].maxHp = CLASS_HP[lead.role];
+      state.party[0].hp = state.party[0].maxHp;
+      logLine("Preset caravan assembled with a full party.", "good");
+    } else {
+      state.party = [
+        {
+          id: "p0",
+          name: lead.name,
+          role: lead.role,
+          hp: CLASS_HP[lead.role],
+          maxHp: CLASS_HP[lead.role],
+        },
+      ];
+      state.partyIdSeq = 1;
+      logLine("You begin with only your leader. Recruit companions in the tavern before departure.", "hi");
+    }
+
     state.inventoryFocusId = state.party[0].id;
     state.inventoryDetailOpen = false;
     state.illiriView = "church";

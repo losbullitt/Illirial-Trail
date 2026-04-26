@@ -6,10 +6,26 @@
   var ROUTE_DAYS = 5;
   var PARTY_MAX = 6;
   var STAT_KEYS = ["strength", "intelligence", "stamina", "luck"];
+  var BALANCE_DATA =
+    typeof window !== "undefined" && window.ILLIRIAL_BALANCE
+      ? window.ILLIRIAL_BALANCE
+      : {
+          version: "0.3.0-alpha",
+          classCreationBonusPoints: 3,
+          classes: {
+            soldier: { final: { strength: 7, intelligence: 3, stamina: 5, luck: 4 } },
+            priest: { final: { strength: 4, intelligence: 6, stamina: 4, luck: 5 } },
+            mercenary: { final: { strength: 6, intelligence: 3, stamina: 5, luck: 5 } },
+          },
+          monsters: [],
+          weapons: [],
+        };
+  var GAME_VERSION = BALANCE_DATA.version || "0.3.0-alpha";
+  var CLASS_BONUS_POINTS = BALANCE_DATA.classCreationBonusPoints || 3;
   var CLASS_BASE_STATS = {
-    soldier: { strength: 4, intelligence: 4, stamina: 4, luck: 4 },
-    priest: { strength: 4, intelligence: 4, stamina: 4, luck: 4 },
-    mercenary: { strength: 4, intelligence: 4, stamina: 4, luck: 4 },
+    soldier: (BALANCE_DATA.classes && BALANCE_DATA.classes.soldier && BALANCE_DATA.classes.soldier.final) || { strength: 7, intelligence: 3, stamina: 5, luck: 4 },
+    priest: (BALANCE_DATA.classes && BALANCE_DATA.classes.priest && BALANCE_DATA.classes.priest.final) || { strength: 4, intelligence: 6, stamina: 4, luck: 5 },
+    mercenary: (BALANCE_DATA.classes && BALANCE_DATA.classes.mercenary && BALANCE_DATA.classes.mercenary.final) || { strength: 6, intelligence: 3, stamina: 5, luck: 5 },
   };
   var PRESET_LEADER = {
     name: "Captain Elara Vale",
@@ -17,7 +33,7 @@
     age: 31,
     hometown: "Cantebury",
     bio: "A veteran caravan captain who has crossed the trade road through flood, famine, and war.",
-    stats: { strength: 4, intelligence: 4, stamina: 4, luck: 4 },
+    stats: cloneStats(CLASS_BASE_STATS.soldier),
     source: "preset",
   };
   /* Quiet day ramps danger: +25 percentage points per day with no encounter (cap 95%). */
@@ -158,7 +174,7 @@
     if (!draft.bonus) draft.bonus = { strength: 0, intelligence: 0, stamina: 0, luck: 0 };
     var cur = draft.bonus[stat] || 0;
     var used = totalBonusPoints(draft.bonus);
-    if (delta > 0 && used >= 4) return;
+    if (delta > 0 && used >= CLASS_BONUS_POINTS) return;
     if (delta < 0 && cur <= 0) return;
     draft.bonus[stat] = cur + delta;
   }
@@ -1608,7 +1624,7 @@
       var baseStats = baseStatsForRole(draft.role);
       var bonus = draft.bonus || { strength: 0, intelligence: 0, stamina: 0, luck: 0 };
       var usedPts = totalBonusPoints(bonus);
-      var remainPts = 4 - usedPts;
+      var remainPts = CLASS_BONUS_POINTS - usedPts;
       function statRow(key, label) {
         var b = baseStats[key];
         var plus = bonus[key] || 0;
@@ -1730,7 +1746,7 @@
         var ageRaw = parseInt(latest.age, 10);
         var hometown = (latest.hometown || "").trim();
         var bio = (latest.bio || "").trim();
-        var remain = 4 - totalBonusPoints(latest.bonus || { strength: 0, intelligence: 0, stamina: 0, luck: 0 });
+        var remain = CLASS_BONUS_POINTS - totalBonusPoints(latest.bonus || { strength: 0, intelligence: 0, stamina: 0, luck: 0 });
 
         if (!name) {
           logLine("Leader name is required.", "bad");
@@ -1738,7 +1754,7 @@
           return;
         }
         if (remain !== 0) {
-          logLine("Spend all 4 bonus points before starting.", "bad");
+          logLine("Spend all " + CLASS_BONUS_POINTS + " bonus points before starting.", "bad");
           render();
           return;
         }

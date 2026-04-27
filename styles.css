@@ -1,6 +1,7 @@
 :root {
   /* Scene photos under images/ — your art order: 1=end, 2–3=travel, 4=start */
   --scene-end: url("images/scene-end.jpg");
+  --scene-gustaf: url("images/Gustaf.jpeg");
   --scene-field: url("images/scene-field.jpg");
   --scene-field-alt: url("images/scene-field2.jpg");
   --scene-town: url("images/scene-town.jpg");
@@ -554,6 +555,12 @@ code {
   color: #e8fff0;
 }
 
+.scene-end-city--gustaf {
+  background-image:
+    linear-gradient(185deg, rgba(50, 80, 98, 0.45) 0%, rgba(66, 92, 118, 0.58) 45%, rgba(18, 28, 36, 0.78) 100%),
+    var(--scene-gustaf);
+}
+
 .travel-visual {
   margin: 0 0 0.75rem;
   padding: 0.5rem 0.35rem 0.35rem;
@@ -813,6 +820,8 @@ code {
   margin-top: -0.275rem;
   z-index: 3;
   filter: drop-shadow(0 0 6px rgba(201, 162, 39, 0.9));
+  left: var(--from-left, 0%);
+  animation: map-caravan-march 1.35s ease-in-out forwards;
 }
 
 .map-caravan-dot {
@@ -824,73 +833,13 @@ code {
   border: 1px solid #4a3a12;
 }
 
-.map-caravan--leg-0 {
-  animation: march-leg-0 1.35s ease-in-out forwards;
-}
-
-.map-caravan--leg-1 {
-  animation: march-leg-1 1.35s ease-in-out forwards;
-}
-
-.map-caravan--leg-2 {
-  animation: march-leg-2 1.35s ease-in-out forwards;
-}
-
-.map-caravan--leg-3 {
-  animation: march-leg-3 1.35s ease-in-out forwards;
-}
-
-.map-caravan--leg-4 {
-  animation: march-leg-4 1.35s ease-in-out forwards;
-}
-
-@keyframes march-leg-0 {
+@keyframes map-caravan-march {
   from {
-    left: 2%;
+    left: var(--from-left, 0%);
   }
 
   to {
-    left: 18%;
-  }
-}
-
-@keyframes march-leg-1 {
-  from {
-    left: 22%;
-  }
-
-  to {
-    left: 38%;
-  }
-}
-
-@keyframes march-leg-2 {
-  from {
-    left: 42%;
-  }
-
-  to {
-    left: 58%;
-  }
-}
-
-@keyframes march-leg-3 {
-  from {
-    left: 62%;
-  }
-
-  to {
-    left: 78%;
-  }
-}
-
-@keyframes march-leg-4 {
-  from {
-    left: 82%;
-  }
-
-  to {
-    left: 98%;
+    left: var(--to-left, 0%);
   }
 }
 
@@ -898,32 +847,12 @@ code {
   .transition-root--blackout,
   .transition-root--cut,
   .map-seg-marching,
-  .map-caravan--leg-0,
-  .map-caravan--leg-1,
-  .map-caravan--leg-2,
-  .map-caravan--leg-3,
-  .map-caravan--leg-4 {
+  .map-caravan {
     animation: none !important;
   }
 
-  .map-caravan--leg-0 {
-    left: 18%;
-  }
-
-  .map-caravan--leg-1 {
-    left: 38%;
-  }
-
-  .map-caravan--leg-2 {
-    left: 58%;
-  }
-
-  .map-caravan--leg-3 {
-    left: 78%;
-  }
-
-  .map-caravan--leg-4 {
-    left: 98%;
+  .map-caravan {
+    left: var(--to-left, var(--from-left, 0%));
   }
 }
 
@@ -1483,6 +1412,78 @@ code {
   padding: 0.35rem 0.45rem;
 }
 
+.char-headshot-wrap {
+  margin-top: 0.2rem;
+}
+
+.char-headshot-head {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.char-headshot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.2rem, 1fr));
+  gap: 0.35rem;
+  max-height: 17rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.char-headshot-option {
+  display: grid;
+  gap: 0.22rem;
+  justify-items: center;
+  align-content: start;
+  text-align: center;
+  padding: 0.25rem;
+  min-height: 6.9rem;
+}
+
+.char-headshot-option img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #0f0c09;
+}
+
+.char-headshot-option span {
+  font-size: 0.62rem;
+  line-height: 1.2;
+  color: var(--muted);
+  word-break: break-word;
+}
+
+.char-headshot-option.selected {
+  border-color: var(--accent);
+  background: rgba(201, 162, 39, 0.14);
+}
+
+.char-headshot-option.selected span {
+  color: var(--text);
+}
+
+.char-headshot-option-none {
+  min-height: 2.4rem;
+  align-content: center;
+}
+
+.sheet-headshot {
+  width: 100%;
+  max-width: 6.4rem;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #0f0c09;
+}
+
 
 .char-stat-wrap {
   margin-top: 0.35rem;
@@ -1526,4 +1527,93 @@ code {
   .char-stat-row {
     grid-template-columns: 1fr 1fr 1.8rem 2.2rem 1.8rem 1fr;
   }
+}
+
+
+.data-panel {
+  margin-top: 0.5rem;
+}
+
+.data-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.4rem 0.45rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.data-table th {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.data-details {
+  margin-top: 0.65rem;
+}
+
+.data-details summary {
+  cursor: pointer;
+  color: var(--text);
+}
+
+.data-pre {
+  margin: 0.45rem 0 0;
+  padding: 0.55rem;
+  max-height: 12rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #120f0c;
+  font-size: 0.74rem;
+}
+
+
+.battle-card-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.45);
+  background: rgba(74, 59, 26, 0.2);
+}
+
+.foe-card {
+  text-align: left;
+}
+
+button.foe-card {
+  width: 100%;
+  cursor: default;
+}
+
+button.foe-card.foe-card-targetable {
+  cursor: pointer;
+}
+button.foe-card:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+
+.foe-card.foe-card-targetable {
+  border-color: #7a4a4a;
+}
+
+.foe-card.foe-card-targetable:hover {
+  border-color: var(--accent);
+}
+
+.foe-card.foe-card-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.4);
 }

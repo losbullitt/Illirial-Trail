@@ -1,7 +1,25 @@
 window.ILLIRIAL_BALANCE = {
-  "version": "0.3.0-alpha",
+  "version": "3.2.4",
   "source": "chart for game.xlsx",
   "classCreationBonusPoints": 3,
+  "hpGrowthTuning": {
+    "selectedModel": "optimal",
+    "baseFormula": "hpGain = max(1, ceil(stamina/2) + rng(0..level) - k(level))",
+    "models": {
+      "conservative": {
+        "k": "ceil(1.2 * level) + 2",
+        "notes": "Lower survivability curve for harsher campaigns."
+      },
+      "optimal": {
+        "k": "level + 1",
+        "notes": "Current default. Balanced baseline for core progression."
+      },
+      "optimalA": {
+        "k": "level",
+        "notes": "Slightly faster than optimal for stress testing."
+      }
+    }
+  },
   "classes": {
     "soldier": {
       "base": {

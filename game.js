@@ -3,7 +3,11 @@
   "use strict";
 
   var CLASS_HP = { soldier: 10, priest: 5, mercenary: 7 };
-  var ROUTE_DAYS = 5;
+  var DEFAULT_ROUTE_DAYS = 10;
+  var DESTINATIONS = {
+    new_isil: { key: "new_isil", label: "New Isil", subtitle: "End city - spires above the bay", badge: "Harbor" },
+    gustaf: { key: "gustaf", label: "Gustaf", subtitle: "Stone quays and wind-bent banners", badge: "Port" },
+  };
   var PARTY_MAX = 6;
   var STAT_KEYS = ["strength", "intelligence", "stamina", "luck"];
   var BALANCE_DATA =
@@ -33,6 +37,8 @@
     age: 31,
     hometown: "Cantebury",
     bio: "A veteran caravan captain who has crossed the trade road through flood, famine, and war.",
+    gender: "woman",
+    headshot: "Vale.jpeg",
     stats: cloneStats(CLASS_BASE_STATS.soldier),
     source: "preset",
   };
@@ -51,6 +57,53 @@
     { id: "war_axe", label: "War axe", grade: 2 },
     { id: "runesword", label: "Runesword", grade: 3 },
   ];
+  var XP_PER_LEVEL = 3;
+  var BALANCE_MONSTERS = (BALANCE_DATA && BALANCE_DATA.monsters ? BALANCE_DATA.monsters : []).filter(function (m) {
+    return m && m.name;
+  });
+  var HEADSHOT_FILES = [
+    "farmer 1 woman.jpeg",
+    "farmer 1.jpeg",
+    "farmer 5 man.jpeg",
+    "farmer woman 2.jpeg",
+    "female mercenary 1.jpeg",
+    "female mercenary 2.jpeg",
+    "female mercenary 5.jpeg",
+    "female mercenary 6.jpeg",
+    "female merchant .jpeg",
+    "female priest 1.jpeg",
+    "female priest 4.jpeg",
+    "female priest 5.jpeg",
+    "male cleric 1.jpeg",
+    "male merchant.jpeg",
+    "male priest 1.jpeg",
+    "mercenary 1.jpeg",
+    "mercenary 2.jpeg",
+    "mercenary 3.jpeg",
+    "mercenary female 4.jpeg",
+    "merchant 2.jpeg",
+    "merchant woman 3.jpeg",
+    "soldier 1.jpeg",
+    "soldier 10.jpeg",
+    "soldier 2.jpeg",
+    "soldier 3.jpeg",
+    "soldier 4.jpeg",
+    "soldier 5.jpeg",
+    "soldier 6.jpeg",
+    "soldier 7.jpeg",
+    "soldier 8.jpeg",
+    "soldier 9.jpeg",
+    "soldier woman 1.jpeg",
+    "soldier woman 10.jpeg",
+    "soldier woman 2.jpeg",
+    "soldier woman 3.jpeg",
+    "soldier woman 4.jpeg",
+    "soldier woman 5.jpeg",
+    "soldier woman 6.jpeg",
+    "soldier woman 7.jpeg",
+    "soldier woman 8.jpeg",
+    "woman soldier 9.jpeg",
+  ];
 
   var transitionTimers = [];
   var DEPART_BLACKOUT_MS = 950;
@@ -68,6 +121,13 @@
 
   function scheduleTransition(fn, ms) {
     transitionTimers.push(setTimeout(fn, ms));
+  }
+
+  function trackPlaytest(eventName, payload) {
+    if (typeof window === "undefined") return;
+    var t = window.PlaytestTracker;
+    if (!t || typeof t.track !== "function") return;
+    t.track(eventName, payload || {});
   }
 
   function rollInt(min, max) {
@@ -101,19 +161,98 @@
     return baseGold + 1;
   }
 
+  function destinationForKey(key) {
+    return DESTINATIONS[key] || DESTINATIONS.new_isil;
+  }
+
+  function currentDestination() {
+    return destinationForKey(state && state.travelDestination ? state.travelDestination : "new_isil");
+  }
+
+  function locationLabel(key) {
+    if (key === "cantebury") return "Cantebury";
+    return destinationForKey(key).label;
+  }
+
+  function currentOriginLabel() {
+    return locationLabel(state && state.travelOrigin ? state.travelOrigin : "cantebury");
+  }
+
+  function routeDaysForLeg(originKey, destinationKey) {
+    if (destinationKey === "gustaf") return 4;
+    if (destinationKey === "new_isil") return 7;
+    return DEFAULT_ROUTE_DAYS;
+  }
+
+  function currentRouteDays() {
+    var origin = state && state.travelOrigin ? state.travelOrigin : "cantebury";
+    var dest = state && state.travelDestination ? state.travelDestination : "new_isil";
+    return routeDaysForLeg(origin, dest);
+  }
+
+  function levelKValue(level) {
+    var tune = BALANCE_DATA && BALANCE_DATA.hpGrowthTuning ? BALANCE_DATA.hpGrowthTuning : null;
+    var model = tune && tune.selectedModel ? tune.selectedModel : "optimal";
+    if (model === "conservative") return Math.ceil(1.2 * level) + 2;
+    if (model === "optimalA") return level;
+    return level + 1;
+  }
+
+  function memberBaseStats(member) {
+    if (member && member.id === "p0" && state && state.leaderProfile && state.leaderProfile.stats) {
+      return cloneStats(state.leaderProfile.stats);
+    }
+    return baseStatsForRole(member && member.role ? member.role : "soldier");
+  }
+
+  function memberMaxMp(member) {
+    var st = memberBaseStats(member);
+    var level = member && typeof member.level === "number" ? member.level : 1;
+    return Math.max(0, 2 + (st.intelligence || 0) + Math.floor((level - 1) / 2));
+  }
+
+  function hpGainOnLevel(member) {
+    var st = memberBaseStats(member);
+    var level = member && typeof member.level === "number" ? member.level : 1;
+    var base = Math.ceil((st.stamina || 0) / 2);
+    var raw = base + rollInt(0, level);
+    var gain = Math.max(1, raw - levelKValue(level));
+    return gain;
+  }
+
+  function initMemberProgress(member) {
+    if (!member) return member;
+    if (typeof member.level !== "number" || member.level < 1) member.level = 1;
+    if (typeof member.xp !== "number" || member.xp < 0) member.xp = 0;
+    if (typeof member.maxHp !== "number" || member.maxHp < 1) member.maxHp = CLASS_HP[member.role] || 1;
+    if (typeof member.hp !== "number" || member.hp < 0) member.hp = member.maxHp;
+    var nextMaxMp = memberMaxMp(member);
+    member.maxMp = nextMaxMp;
+    if (typeof member.mp !== "number" || member.mp < 0) member.mp = member.maxMp;
+    if (member.mp > member.maxMp) member.mp = member.maxMp;
+    if (member.hp > member.maxHp) member.hp = member.maxHp;
+    return member;
+  }
 
   function createParty() {
     var roles = ["soldier", "soldier", "soldier", "priest", "priest", "mercenary"];
     var out = [];
+    var used = {};
     for (var i = 0; i < roles.length; i++) {
       var role = roles[i];
-      out.push({
-        id: "p" + i,
-        name: role.charAt(0).toUpperCase() + role.slice(1) + " " + (i + 1),
-        role: role,
-        hp: CLASS_HP[role],
-        maxHp: CLASS_HP[role],
-      });
+      var portrait = pickUniquePortrait(role, null, used);
+      out.push(
+        initMemberProgress({
+          id: "p" + i,
+          name: role.charAt(0).toUpperCase() + role.slice(1) + " " + (i + 1),
+          role: role,
+          gender: portrait.gender,
+          headshot: portrait.headshot,
+          hp: CLASS_HP[role],
+          maxHp: CLASS_HP[role],
+        })
+      );
+      if (portrait.headshot) used[portrait.headshot] = true;
     }
     return out;
   }
@@ -139,6 +278,8 @@
       age: src.age,
       hometown: src.hometown,
       bio: src.bio,
+      gender: src.gender || "man",
+      headshot: src.headshot || "",
       stats: src.stats ? cloneStats(src.stats) : baseStatsForRole(src.role),
       source: src.source || "custom",
     };
@@ -158,6 +299,9 @@
         age: 28,
         hometown: "Cantebury",
         bio: "",
+        gender: "man",
+        headshot: "",
+        headshotShowCount: 5,
         bonus: { strength: 0, intelligence: 0, stamina: 0, luck: 0 },
       };
     }
@@ -204,37 +348,58 @@
       logLine("Preset caravan assembled with a full party.", "good");
     } else {
       state.party = [
-        {
+        initMemberProgress({
           id: "p0",
           name: lead.name,
           role: lead.role,
           hp: CLASS_HP[lead.role],
           maxHp: CLASS_HP[lead.role],
-        },
+        }),
       ];
       state.partyIdSeq = 1;
       logLine("You begin with only your leader. Recruit companions in the tavern before departure.", "hi");
     }
 
+    state.food += state.water || 0;
+    state.water = 0;
+    if (state.party[0]) {
+      if (!state.party[0].gender) state.party[0].gender = lead.gender || "man";
+      if (!state.party[0].headshot && lead.headshot) state.party[0].headshot = lead.headshot;
+    }
+    for (var pi = 0; pi < state.party.length; pi++) initMemberProgress(state.party[pi]);
+    assignMissingPartyPortraits();
+    if (state.party[0] && state.leaderProfile) {
+      if (!state.leaderProfile.gender) state.leaderProfile.gender = state.party[0].gender || "man";
+      if (!state.leaderProfile.headshot) state.leaderProfile.headshot = state.party[0].headshot || "";
+    }
     state.inventoryFocusId = state.party[0].id;
     state.inventoryDetailOpen = false;
+    state.travelInventoryOpen = false;
     state.illiriView = "church";
     state.phase = "story_illiri";
     logLine("Caravan leader ready: <span class=\"hi\">" + lead.name + "</span> (" + roleLabel(lead.role) + ").", "good");
+    trackPlaytest("run_started", {
+      leaderRole: lead.role,
+      leaderSource: lead.source || "custom",
+      partySize: state.party.length,
+      version: GAME_VERSION,
+    });
   }
 
   function initialState() {
     return {
       phase: "new_game_setup",
-      gold: 500,
+      gold: 25,
       gems: 0,
-      food: 0,
+      food: 10,
       water: 0,
       weapons: 0,
       weaponInventory: [],
       party: createParty(),
       partyIdSeq: 6,
       illiriView: "church",
+      travelOrigin: "cantebury",
+      travelDestination: "new_isil",
       guest: null,
       travelDay: 0,
       encounterChance: ENCOUNTER_BASE,
@@ -251,10 +416,15 @@
       inventoryFocusId: "p0",
       dollStyleByMember: {},
       inventoryDetailOpen: false,
+      travelInventoryOpen: false,
+      settlementTown: null,
+      settlementView: "church",
+      gameoverMode: null,
     };
   }
 
   var state = initialState();
+  assignMissingPartyPortraits();
 
   function logLine(html, cls) {
     state.log.unshift({ html: html, cls: cls || "" });
@@ -337,34 +507,28 @@
     return false;
   }
 
-  function buildBandits() {
-    var n = rollInt(1, 5);
-    if (hasBlessing("ward")) n = Math.max(1, n - 1);
-    var list = [];
-    for (var i = 0; i < n; i++) {
-      list.push({ id: "b" + i, name: "Bandit " + (i + 1), hp: 3, maxHp: 3, dmg: 1 });
-    }
-    return { kind: "bandits", label: n + " bandit(s)", foes: list };
+  function randomBalanceMonster() {
+    if (!BALANCE_MONSTERS.length) return { name: "Bandit", atk: 2 };
+    return BALANCE_MONSTERS[rollInt(0, BALANCE_MONSTERS.length - 1)];
   }
 
-  function buildWolves() {
-    var n = rollInt(3, 7);
+  function buildRandomMonsterEncounter(sourceKind) {
+    var n = rollInt(1, 4);
     if (hasBlessing("ward")) n = Math.max(1, n - 1);
     var list = [];
     for (var i = 0; i < n; i++) {
-      list.push({ id: "w" + i, name: "Wolf " + (i + 1), hp: 2, maxHp: 2, dmg: 1 });
+      var mon = randomBalanceMonster();
+      var monsterHp = Math.max(1, parseInt(mon && mon.hp, 10) || 1);
+      list.push({
+        id: "m" + i,
+        name: mon.name,
+        hp: monsterHp,
+        maxHp: monsterHp,
+        dmg: 2,
+      });
     }
-    return { kind: "wolves", label: n + " wolves", foes: list };
-  }
-
-  function buildSkeletons() {
-    var n = rollInt(1, 3);
-    if (hasBlessing("ward")) n = Math.max(1, n - 1);
-    var list = [];
-    for (var i = 0; i < n; i++) {
-      list.push({ id: "s" + i, name: "Skeleton " + (i + 1), hp: 5, maxHp: 5, dmg: 2 });
-    }
-    return { kind: "skeletons", label: n + " skeleton(s)", foes: list };
+    var src = sourceKind || "road";
+    return { kind: "monster_pack", label: n + " random monster(s) [" + src + "]", foes: list };
   }
 
   function ruinsDiscoveryChance() {
@@ -374,7 +538,7 @@
 
   function rollFieldEncounterType() {
     if (!state.ruinsDiscovered && Math.random() < ruinsDiscoveryChance()) return "ruins_discovery";
-    return Math.random() < 0.5 ? "bandits" : "wolves";
+    return "monster";
   }
 
   function startTacticalCombat(enc) {
@@ -390,6 +554,12 @@
       round: 1,
     };
     logLine("<span class=\"hi\">Battle:</span> " + enc.label + ". Choose actions, then End round.", "");
+    trackPlaytest("combat_started", {
+      kind: enc.kind,
+      label: enc.label,
+      foeCount: enc.foes ? enc.foes.length : 0,
+      day: state.travelDay,
+    });
   }
 
   function foesAlive() {
@@ -466,9 +636,50 @@
     }
   }
 
+  function grantXp(amount) {
+    if (!amount || amount < 1) return;
+    var gained = 0;
+    for (var i = 0; i < state.party.length; i++) {
+      var m = state.party[i];
+      if (!m) continue;
+      initMemberProgress(m);
+      m.xp += amount;
+      gained++;
+      while (m.xp >= XP_PER_LEVEL) {
+        m.xp -= XP_PER_LEVEL;
+        m.level += 1;
+        var hpGain = hpGainOnLevel(m);
+        m.maxHp += hpGain;
+        m.hp = Math.min(m.maxHp, m.hp + hpGain);
+        var prevMaxMp = m.maxMp || 0;
+        m.maxMp = memberMaxMp(m);
+        var mpGain = Math.max(0, m.maxMp - prevMaxMp);
+        m.mp = Math.min(m.maxMp, (m.mp || 0) + mpGain);
+        logLine(
+          m.name +
+            " levels up to <span class=\"hi\">" +
+            m.level +
+            "</span> (+" +
+            hpGain +
+            " HP, +" +
+            mpGain +
+            " MP).",
+          "good"
+        );
+        trackPlaytest("member_leveled", {
+          memberId: m.id,
+          role: m.role,
+          level: m.level,
+          hpGain: hpGain,
+          mpGain: mpGain,
+        });
+      }
+    }
+    if (gained) logLine("XP +" + amount + " awarded to active party (" + gained + " member(s)).", "good");
+  }
+
   function fleeEncounter() {
     if (state.food > 0) state.food--;
-    if (Math.random() < 0.3 && state.water > 0) state.water--;
     logLine("You flee, losing supplies.", "bad");
     state.encounterChance = ENCOUNTER_BASE;
     state.combat = null;
@@ -487,10 +698,23 @@
     }, RESUME_TRAVEL_MS);
   }
 
-  function queueArrivalAtNewIsil() {
+  function queueArrivalAtDestination() {
     clearTransitionTimers();
-    state.phase = "story_new_isil";
-    state.transition = { kind: "arrive", label: "New Isil" };
+    var dest = currentDestination();
+    var finalLeg = dest.key === "new_isil";
+    if (finalLeg) {
+      trackPlaytest("run_completed", { day: state.travelDay, routeDays: currentRouteDays(), destination: dest.key, origin: state.travelOrigin || "cantebury" });
+      state.gameoverMode = "win";
+      state.phase = "gameover";
+      logLine("<span class=\"hi\">Run complete:</span> you reached New Isil.", "good");
+      render();
+      return;
+    }
+    trackPlaytest("leg_completed", { day: state.travelDay, routeDays: currentRouteDays(), destination: dest.key, origin: state.travelOrigin || "cantebury" });
+    state.phase = "settlement";
+    state.settlementTown = dest.key;
+    state.settlementView = "church";
+    state.transition = { kind: "arrive", label: dest.label };
     render();
     scheduleTransition(function () {
       state.transition = null;
@@ -502,9 +726,9 @@
     state.pendingEncounter = null;
     state.combat = null;
     endOfDayPriestHealing();
-    if (state.travelDay >= ROUTE_DAYS) {
+    if (state.travelDay >= currentRouteDays()) {
       logLine("<span class=\"hi\">You reach New Isil.</span>", "good");
-      queueArrivalAtNewIsil();
+      queueArrivalAtDestination();
     } else {
       queueResumeTravel();
     }
@@ -512,6 +736,9 @@
 
   function tacticalWin() {
     var k = state.combat.kind;
+    var foesDefeated = state.combat && state.combat.foes ? state.combat.foes.length : 0;
+    trackPlaytest("combat_won", { kind: k, foesDefeated: foesDefeated, day: state.travelDay });
+    if (foesDefeated > 0) grantXp(foesDefeated);
     winCombatLoot(k);
     if (k === "ruins_combat") resolveRuinsSearchRewards();
     state.encounterChance = ENCOUNTER_BASE;
@@ -521,6 +748,11 @@
   }
 
   function tacticalLoss() {
+    trackPlaytest("combat_lost", {
+      kind: state.combat && state.combat.kind ? state.combat.kind : "unknown",
+      day: state.travelDay,
+    });
+    state.gameoverMode = "loss";
     state.phase = "gameover";
     logLine("The party has fallen.", "bad");
     state.combat = null;
@@ -528,25 +760,60 @@
     render();
   }
 
-  function setChoice(memberId, action) {
-    if (!state.combat) return;
-    var ok = false;
+  function choiceForMember(memberId) {
+    if (!state.combat) return null;
+    var raw = state.combat.choices[memberId];
+    if (!raw) return null;
+    if (typeof raw === "string") return { action: raw, targetId: null };
+    return raw;
+  }
+
+  function choiceComplete(memberId) {
+    var rec = choiceForMember(memberId);
+    if (!rec || !rec.action) return false;
+    if (rec.action === "attack") return !!rec.targetId;
+    return true;
+  }
+
+  function currentPlannerId() {
+    if (!state.combat) return null;
     var team = combatTeam();
     for (var i = 0; i < team.length; i++) {
-      if (team[i].id === memberId) ok = true;
+      if (!choiceComplete(team[i].id)) return team[i].id;
     }
-    if (!ok) return;
-    state.combat.choices[memberId] = action;
+    return null;
+  }
+
+  function setChoice(memberId, action) {
+    if (!state.combat) return;
+    var current = currentPlannerId();
+    if (!current || memberId !== current) return;
+    if (action === "attack") {
+      state.combat.choices[memberId] = { action: "attack", targetId: null };
+    } else {
+      state.combat.choices[memberId] = { action: action, targetId: null };
+    }
+    render();
+  }
+
+  function chooseAttackTarget(foeId) {
+    if (!state.combat || !foeId) return;
+    var current = currentPlannerId();
+    if (!current) return;
+    var rec = choiceForMember(current);
+    if (!rec || rec.action !== "attack") return;
+    var foes = foesAlive();
+    var target = null;
+    for (var i = 0; i < foes.length; i++) {
+      if (foes[i].id === foeId) target = foes[i];
+    }
+    if (!target) return;
+    state.combat.choices[current] = { action: "attack", targetId: foeId };
     render();
   }
 
   function allChoicesReady() {
-    if (!state.combat) return false;
-    var team = combatTeam();
-    for (var i = 0; i < team.length; i++) {
-      if (!state.combat.choices[team[i].id]) return false;
-    }
-    return true;
+    return currentPlannerId() === null;
   }
 
   function strikeFoe(foe, dmg) {
@@ -587,7 +854,8 @@
     var i;
     for (i = 0; i < team.length; i++) {
       var m = team[i];
-      var act = c.choices[m.id];
+      var rec = choiceForMember(m.id);
+      var act = rec && rec.action ? rec.action : null;
       var ref = teamMemberById(m.id);
       if (!ref || ref.hp <= 0) continue;
 
@@ -597,7 +865,8 @@
         continue;
       }
       if (act === "attack") {
-        var tgt = randomFoe();
+        var tgt = rec && rec.targetId ? state.combat.foes.find(function (f) { return f.id === rec.targetId && f.hp > 0; }) : null;
+        if (!tgt) tgt = randomFoe();
         if (!tgt) continue;
         var d = attackDamage(m);
         strikeFoe(tgt, d);
@@ -633,11 +902,7 @@
         if (state.food > 0) {
           state.food--;
           healMember(m.id, 5);
-          logLine(m.name + " eats rations (+5 HP).", "good");
-        } else if (state.water > 0) {
-          state.water--;
-          healMember(m.id, 3);
-          logLine(m.name + " drinks water (+3 HP).", "good");
+          logLine(m.name + " uses 1 supply (+5 HP).", "good");
         } else if (state.weapons > 0) {
           state.weapons--;
           var boss = strongestFoe();
@@ -667,7 +932,7 @@
       });
       if (!live.length) break;
       var v = live[rollInt(0, live.length - 1)];
-      var dmg = f.dmg;
+      var dmg = Math.max(0, parseInt(f.dmg, 10) || 2);
       if (c.defending[v.id]) dmg = Math.max(0, dmg - 2);
       damageMember(v.id, dmg);
       logLine(f.name + " hits " + v.name + " (-" + dmg + ").", "bad");
@@ -723,9 +988,10 @@
 
   function runTravelDayResolution() {
     if (state.phase !== "travel") return;
-    if (state.travelDay >= ROUTE_DAYS) return;
+    if (state.travelDay >= currentRouteDays()) return;
     state.travelDay++;
-    logLine("Day " + state.travelDay + " of " + ROUTE_DAYS + " on the road.", "");
+    logLine("Day " + state.travelDay + " of " + currentRouteDays() + " on the road.", "");
+    trackPlaytest("day_advanced", { day: state.travelDay, routeDays: currentRouteDays() });
     var hadEncounter = rollTravelEncounter();
     if (hadEncounter) {
       var t = rollFieldEncounterType();
@@ -735,14 +1001,8 @@
         });
         return;
       }
-      if (t === "bandits") {
-        queueEncounterCutaway("Ambush", "Day " + state.travelDay + " - blades in the dust", function () {
-          startTacticalCombat(buildBandits());
-        });
-        return;
-      }
-      queueEncounterCutaway("Wolves in the brush", "Day " + state.travelDay + " - eyes in the tall grass", function () {
-        startTacticalCombat(buildWolves());
+      queueEncounterCutaway("Hostile creatures", "Day " + state.travelDay + " - a random pack attacks", function () {
+        startTacticalCombat(buildRandomMonsterEncounter("road"));
       });
       return;
     }
@@ -755,9 +1015,9 @@
     }
     logLine("Quiet travel.", "");
     endOfDayPriestHealing();
-    if (state.travelDay >= ROUTE_DAYS) {
-      logLine("You reach New Isil.", "good");
-      queueArrivalAtNewIsil();
+    if (state.travelDay >= currentRouteDays()) {
+      logLine("You reach " + currentDestination().label + ".", "good");
+      queueArrivalAtDestination();
     } else {
       render();
     }
@@ -765,7 +1025,7 @@
 
   function beginNextTravelDayMarch() {
     if (state.phase !== "travel") return;
-    if (state.travelDay >= ROUTE_DAYS) return;
+    if (state.travelDay >= currentRouteDays()) return;
     clearTransitionTimers();
     state.transition = { kind: "march", fromD: state.travelDay, toD: state.travelDay + 1 };
     render();
@@ -776,18 +1036,18 @@
   }
 
   function buy(item) {
+    if (item !== "food") {
+      logLine("Only supplies can be purchased during this test.", "bad");
+      render();
+      return;
+    }
     if (state.gold < 1) {
       logLine("The shopkeeper shrugs: you need at least <span class=\"hi\">1 gp</span>.", "bad");
       return;
     }
     state.gold--;
-    if (item === "food") state.food++;
-    if (item === "water") state.water++;
-    if (item === "weapon") {
-      state.weapons++;
-      state.weaponInventory.push("knife");
-    }
-    logLine("Bought 1 " + item + ".", "");
+    state.food++;
+    logLine("Bought 1 supply.", "");
     render();
   }
 
@@ -806,14 +1066,7 @@
       partyAlive().forEach(function (m) {
         m.hp = Math.max(0, m.hp - 2);
       });
-      logLine("Starvation (-2 HP each, hungry).", "bad");
-    }
-    if (state.water > 0) state.water--;
-    else {
-      partyAlive().forEach(function (m) {
-        m.hp = Math.max(0, m.hp - 1);
-      });
-      logLine("Thirst (-1 HP each).", "bad");
+      logLine("No supplies (-2 HP each).", "bad");
     }
   }
 
@@ -823,13 +1076,24 @@
       return;
     }
     var id = "p" + state.partyIdSeq++;
-    state.party.push({
-      id: id,
-      name: role.charAt(0).toUpperCase() + role.slice(1) + " " + id.slice(1),
-      role: role,
-      hp: CLASS_HP[role],
-      maxHp: CLASS_HP[role],
-    });
+    var portrait = pickUniquePortrait(role, null, usedHeadshotsMap());
+    if (!portrait.headshot) {
+      state.partyIdSeq--;
+      logLine("No unique " + role + " headshots remain for this session.", "bad");
+      render();
+      return;
+    }
+    state.party.push(
+      initMemberProgress({
+        id: id,
+        name: role.charAt(0).toUpperCase() + role.slice(1) + " " + id.slice(1),
+        role: role,
+        gender: portrait.gender,
+        headshot: portrait.headshot,
+        hp: CLASS_HP[role],
+        maxHp: CLASS_HP[role],
+      })
+    );
     logLine("Recruited a " + role + " (" + id + ").", "good");
     render();
   }
@@ -929,6 +1193,7 @@
       tab("shop", "Shop") +
       tab("tavern", "Tavern") +
       tab("inventory", "Inventory & Dolls") +
+      tab("data", "Balance Data") +
       tab("depart", "Depart") +
       "</nav>"
     );
@@ -950,6 +1215,78 @@
         };
       })(tabs[i]);
     }
+  }
+
+  function settlementTabStrip() {
+    function tab(id, label) {
+      return (
+        '<button type="button" class="illiri-tab' +
+        (state.settlementView === id ? " illiri-tab-active" : "") +
+        '" data-settlement-tab="' +
+        id +
+        '">' +
+        label +
+        "</button>"
+      );
+    }
+    return (
+      '<div class="illiri-tabs">' +
+      tab("church", "Church") +
+      tab("tavern", "Tavern") +
+      tab("shop", "Shop") +
+      tab("depart", "Depart") +
+      "</div>"
+    );
+  }
+
+  function wireSettlementTabs(root) {
+    var tabs = root.querySelectorAll("[data-settlement-tab]");
+    var i;
+    for (i = 0; i < tabs.length; i++) {
+      tabs[i].onclick = (function (el) {
+        return function () {
+          state.settlementView = el.getAttribute("data-settlement-tab") || "church";
+          render();
+        };
+      })(tabs[i]);
+    }
+  }
+
+  function buySettlementSupplies() {
+    if (state.gold < 1) {
+      logLine("Need 1 gp to buy supplies.", "bad");
+      render();
+      return;
+    }
+    state.gold -= 1;
+    state.food += 1;
+    logLine("Bought 1 supply.", "good");
+    render();
+  }
+
+  function buySettlementWeapon() {
+    if (state.gold < 3) {
+      logLine("Need 3 gp to buy a weapon.", "bad");
+      render();
+      return;
+    }
+    state.gold -= 3;
+    state.weapons += 1;
+    state.weaponInventory.push("settlement_blade");
+    logLine("Bought 1 weapon for 3 gp.", "good");
+    render();
+  }
+
+  function sellSettlementGem() {
+    if (state.gems < 1) {
+      logLine("No gems to sell.", "bad");
+      render();
+      return;
+    }
+    state.gems -= 1;
+    state.gold += 5;
+    logLine("Sold 1 gem for 5 gp.", "good");
+    render();
   }
 
   function wireRosterEdit(root) {
@@ -982,11 +1319,21 @@
   function departIllirial() {
     clearTransitionTimers();
     state.illiriView = "church";
+    state.travelInventoryOpen = false;
+    state.inventoryDetailOpen = false;
     state.phase = "travel";
     state.travelDay = 0;
     state.encounterChance = ENCOUNTER_BASE;
     state.transition = { kind: "depart", stage: "blackout" };
-    logLine("You depart Cantebury for New Isil.", "hi");
+    var dest = currentDestination();
+    var originLabel = currentOriginLabel();
+    logLine("You depart " + originLabel + " for " + dest.label + ".", "hi");
+    trackPlaytest("travel_started", {
+      routeDays: currentRouteDays(),
+      partySize: state.party.length,
+      destination: dest.key,
+      origin: state.travelOrigin || "cantebury",
+    });
     render();
     scheduleTransition(function () {
       state.transition = { kind: "depart", stage: "map" };
@@ -1048,10 +1395,11 @@
 
   function travelMapHtml(march) {
     march = march || null;
+    var routeDays = currentRouteDays();
     var i;
     var segs = "";
     var marching = march && march.kind === "march";
-    for (i = 1; i <= ROUTE_DAYS; i++) {
+    for (i = 1; i <= routeDays; i++) {
       var done = state.travelDay >= i;
       var marchingSeg = marching && march.toD === i;
       var cur = state.travelDay + 1 === i && state.phase === "travel" && !marchingSeg;
@@ -1068,22 +1416,25 @@
         (ruinHere ? '<span class="map-ruin" title="Ruins">R</span>' : "") +
         "</div>";
     }
-    var leg = marching ? Math.min(Math.max(march.fromD, 0), ROUTE_DAYS - 1) : -1;
+    var fromD = marching ? Math.max(0, march.fromD) : 0;
+    var toD = marching ? Math.min(routeDays, Math.max(1, march.toD)) : 0;
+    var fromPct = fromD <= 0 ? 0 : ((fromD - 0.5) / routeDays) * 100;
+    var toPct = ((toD - 0.5) / routeDays) * 100;
     var caravan =
-      marching && leg >= 0
-        ? '<div class="map-caravan map-caravan--leg-' + leg + '" aria-hidden="true"><span class="map-caravan-dot"></span></div>'
+      marching
+        ? '<div class="map-caravan" style="--from-left:' + fromPct.toFixed(3) + '%;--to-left:' + toPct.toFixed(3) + '%;" aria-hidden="true"><span class="map-caravan-dot"></span></div>'
         : "";
     return (
       '<div class="travel-visual" aria-hidden="true">' +
       '<div class="map-row">' +
-      '<div class="map-node start">Cantebury</div>' +
+      '<div class="map-node start">' + currentOriginLabel() + '</div>' +
       '<div class="map-track map-track--rel">' +
       segs +
       caravan +
       "</div>" +
-      '<div class="map-node end">New Isil</div>' +
+      '<div class="map-node end">' + currentDestination().label + '</div>' +
       "</div>" +
-      '<p class="map-caption">Five days on the trade road. Each quiet day adds <b>+25%</b> to the next day\'s encounter roll (max 95%). A fight resets tension.</p>' +
+      '<p class="map-caption">' + routeDays + ' days on the trade road. Each quiet day adds <b>+25%</b> to the next day\'s encounter roll (max 95%). A fight resets tension.</p>' +
       "</div>"
     );
   }
@@ -1099,7 +1450,7 @@
   }
 
   function travelSplashMarkup() {
-    var leg = Math.min(Math.max(state.travelDay, 0) + 1, ROUTE_DAYS);
+    var leg = Math.min(Math.max(state.travelDay, 0) + 1, currentRouteDays());
     return (
       '<div class="scene scene-splash scene-travel scene-travel-d' +
       leg +
@@ -1111,18 +1462,19 @@
       '<div class="splash-sub">Leg ' +
       leg +
       " of " +
-      ROUTE_DAYS +
+      currentRouteDays() +
       " - weather and miles change each dawn</div>" +
       "</div>"
     );
   }
 
   function endCitySplash() {
+    var dest = currentDestination();
     return (
-      '<div class="scene scene-splash scene-end-city" role="img" aria-label="Destination city">' +
-      '<div class="splash-badge">Harbor</div>' +
-      '<div class="splash-title">New Isil</div>' +
-      '<div class="splash-sub">End city - spires above the bay</div>' +
+      '<div class="scene scene-splash scene-end-city scene-end-city--' + dest.key + '" role="img" aria-label="Destination city">' +
+      '<div class="splash-badge">' + dest.badge + '</div>' +
+      '<div class="splash-title">' + dest.label + '</div>' +
+      '<div class="splash-sub">' + dest.subtitle + '</div>' +
       "</div>"
     );
   }
@@ -1137,6 +1489,102 @@
     if (role === "priest") return "Priest";
     if (role === "mercenary") return "Mercenary";
     return "Traveler";
+  }
+
+  function headshotUrl(filename) {
+    return filename ? "images/headshot/" + encodeURIComponent(filename) : "";
+  }
+
+  function headshotLabel(filename) {
+    return (filename || "").replace(/\.(jpe?g|png|webp)$/i, "");
+  }
+
+  function headshotGender(file) {
+    var lower = (file || "").toLowerCase();
+    if (lower.indexOf("woman") >= 0 || lower.indexOf("female") >= 0) return "woman";
+    if (lower.indexOf("male") >= 0 || /\bman\b/.test(lower)) return "man";
+    return "unknown";
+  }
+
+  function headshotOptionsForRole(role, gender) {
+    var keys = [];
+    if (role === "soldier") keys = ["soldier"];
+    else if (role === "priest") keys = ["priest", "cleric"];
+    else if (role === "mercenary") keys = ["mercenary"];
+    var roleFiltered = HEADSHOT_FILES.filter(function (file) {
+      var lower = file.toLowerCase();
+      for (var i = 0; i < keys.length; i++) if (lower.indexOf(keys[i]) >= 0) return true;
+      return false;
+    });
+    if (!roleFiltered.length) roleFiltered = HEADSHOT_FILES.slice();
+    var want = gender === "woman" ? "woman" : "man";
+    var genderFiltered = roleFiltered.filter(function (file) {
+      var g = headshotGender(file);
+      if (want === "woman") return g === "woman";
+      return g !== "woman";
+    });
+    return genderFiltered.length ? genderFiltered : roleFiltered;
+  }
+
+  function randomGender() {
+    return Math.random() < 0.5 ? "man" : "woman";
+  }
+
+  function usedHeadshotsMap(extra) {
+    var used = {};
+    var i;
+    for (i = 0; i < state.party.length; i++) {
+      var shot = state.party[i] && state.party[i].headshot ? state.party[i].headshot : "";
+      if (shot) used[shot] = true;
+    }
+    if (state.guest && state.guest.headshot) used[state.guest.headshot] = true;
+    if (extra) {
+      var keys = Object.keys(extra);
+      for (i = 0; i < keys.length; i++) used[keys[i]] = true;
+    }
+    return used;
+  }
+
+  function pickUniquePortrait(role, preferredGender, used) {
+    var usedSet = used || {};
+    var firstGender = preferredGender || randomGender();
+    var genders = firstGender === "woman" ? ["woman", "man"] : ["man", "woman"];
+    for (var gi = 0; gi < genders.length; gi++) {
+      var g = genders[gi];
+      var pool = headshotOptionsForRole(role, g).filter(function (file) {
+        return !usedSet[file];
+      });
+      if (pool.length) {
+        var pick = pool[rollInt(0, pool.length - 1)];
+        return { gender: g, headshot: pick };
+      }
+    }
+    return { gender: firstGender, headshot: "" };
+  }
+
+  function assignMissingPartyPortraits() {
+    var used = usedHeadshotsMap();
+    for (var i = 0; i < state.party.length; i++) {
+      var m = state.party[i];
+      if (!m) continue;
+      if (m.headshot) {
+        used[m.headshot] = true;
+        if (!m.gender || m.gender === "unknown") {
+          var inferred = headshotGender(m.headshot);
+          m.gender = inferred === "woman" ? "woman" : "man";
+        }
+        continue;
+      }
+      var got = pickUniquePortrait(m.role, m.gender, used);
+      m.gender = got.gender;
+      m.headshot = got.headshot;
+      if (got.headshot) used[got.headshot] = true;
+    }
+    if (state.guest && !state.guest.headshot) {
+      var gpick = pickUniquePortrait(state.guest.role || "soldier", state.guest.gender, used);
+      state.guest.gender = gpick.gender;
+      state.guest.headshot = gpick.headshot;
+    }
   }
 
   function roleDollStyles(role) {
@@ -1167,13 +1615,19 @@
   function profileForMember(m) {
     if (m && m.id === "p0" && state.leaderProfile) {
       var st = cloneStats(state.leaderProfile.stats || baseStatsForRole(state.leaderProfile.role));
+      initMemberProgress(m);
       return {
         age: state.leaderProfile.age,
         hometown: state.leaderProfile.hometown,
         bio: state.leaderProfile.bio,
+        gender: state.leaderProfile.gender || "man",
+        headshot: state.leaderProfile.headshot || m.headshot || "",
         skills: m.role === "priest" ? ["Field medicine", "Rite of warding", "Camp counsel"] : m.role === "mercenary" ? ["Trail scouting", "Quick draw", "Loot appraisal"] : ["Shield wall", "Road discipline", "Vanguard drills"],
         traits: m.role === "priest" ? ["Patient", "Observant", "Composed"] : m.role === "mercenary" ? ["Pragmatic", "Bold", "Wry"] : ["Steady", "Protective", "Direct"],
         stats: st,
+        level: m.level,
+        xp: m.xp,
+        xpToLevel: XP_PER_LEVEL,
       };
     }
     var seed = 0;
@@ -1197,10 +1651,13 @@
       priest: ["Patient", "Observant", "Composed"],
       mercenary: ["Pragmatic", "Bold", "Wry"],
     };
+    initMemberProgress(m);
     return {
       age: age,
       hometown: hometown,
       bio: bioByRole[m.role] || "A hardened road traveler.",
+      gender: m.gender || "man",
+      headshot: m.headshot || "",
       skills: skillsByRole[m.role] || ["Adaptable", "Resilient", "Focused"],
       traits: traitsByRole[m.role] || ["Stoic", "Reliable", "Calm"],
       stats: {
@@ -1209,6 +1666,9 @@
         stamina: 4,
         luck: 4,
       },
+      level: m.level,
+      xp: m.xp,
+      xpToLevel: XP_PER_LEVEL,
     };
   }
 
@@ -1237,6 +1697,8 @@
             roleLabel(m.role) +
             " - " +
             memberDollStyle(m) +
+            " - Lv " +
+            (typeof m.level === "number" ? m.level : 1) +
             "</span>" +
             "</span>" +
             "</button>"
@@ -1258,6 +1720,22 @@
 
     var prof = profileForMember(focus);
     var roleStyle = memberDollStyle(focus);
+    var portraitLabel = prof.headshot ? headshotLabel(prof.headshot) : roleStyle;
+    var portraitVisual = prof.headshot
+      ? '<img class="sheet-headshot" src="' +
+        headshotUrl(prof.headshot) +
+        '" alt="' +
+        escapeHtml(focus.name + " headshot") +
+        '" loading="lazy">'
+      : '<div class="sheet-doll avatar avatar-' +
+        focus.role +
+        ' doll-' +
+        focus.role +
+        '-' +
+        roleStyle +
+        '">' +
+        focus.role.charAt(0).toUpperCase() +
+        "</div>";
     var styleChoices = roleDollStyles(focus.role)
       .map(function (st) {
         return (
@@ -1280,18 +1758,8 @@
       '<div class="actions"><button type="button" id="invBack">Back to roster</button></div>' +
       '<div class="sheet-top">' +
       '<div class="sheet-portrait" role="img" aria-label="portrait">' +
-      '<div class="sheet-doll avatar avatar-' +
-      focus.role +
-      ' doll-' +
-      focus.role +
-      '-' +
-      roleStyle +
-      '">' +
-      focus.role.charAt(0).toUpperCase() +
-      "</div>" +
-      '<div class="sheet-style-chip">' +
-      roleStyle +
-      "</div>" +
+      portraitVisual +
+      (prof.headshot ? "" : '<div class="sheet-style-chip">' + escapeHtml(portraitLabel) + "</div>") +
       "</div>" +
       '<div class="sheet-meta">' +
       '<p><b>class</b> ' +
@@ -1308,10 +1776,27 @@
       "</p>" +
       '<p><b>biography</b> ' +
       prof.bio +
-      "</p>" +
-      '<p><b>paper doll</b> <span class="inv-style-btn-row">' +
+      "</p>" +      '<p><b>paper doll</b> <span class="inv-style-btn-row">' +
       styleChoices +
       "</span></p>" +
+      '<p><b>hp</b> ' +
+      focus.hp +
+      "/" +
+      focus.maxHp +
+      "</p>" +
+      '<p><b>mp</b> ' +
+      (typeof focus.mp === "number" ? focus.mp : 0) +
+      "/" +
+      (typeof focus.maxMp === "number" ? focus.maxMp : memberMaxMp(focus)) +
+      "</p>" +
+      '<p><b>level</b> ' +
+      (typeof prof.level === "number" ? prof.level : 1) +
+      "</p>" +
+      '<p><b>xp</b> ' +
+      (typeof prof.xp === "number" ? prof.xp : 0) +
+      "/" +
+      (prof.xpToLevel || XP_PER_LEVEL) +
+      "</p>" +
       "</div>" +
       "</div>" +
       '<div class="sheet-divider"></div>' +
@@ -1386,10 +1871,18 @@
     return '<span class="hpbar" title="HP"><span style="width:' + pct + '%"></span></span>';
   }
 
-  function foeCardHtml(f) {
+  function foeCardHtml(f, canTarget, selectedTarget) {
     var pct = Math.round((100 * f.hp) / f.maxHp);
+    var targetable = !!canTarget && f.hp > 0;
+    var cls = "foe-card" + (targetable ? " foe-card-targetable" : "") + (selectedTarget ? " foe-card-selected" : "");
     return (
-      '<div class="foe-card">' +
+      '<button type="button" class="' +
+      cls +
+      '" data-foe-target="' +
+      f.id +
+      '"' +
+      (targetable ? "" : " disabled") +
+      '>' +
       '<div class="foe-name">' +
       f.name +
       "</div>" +
@@ -1401,22 +1894,24 @@
       " HP - hits for " +
       f.dmg +
       "</div>" +
-      "</div>"
+      "</button>"
     );
   }
 
-  function battlePartyCard(m) {
+  function battlePartyCard(m, activeMemberId) {
     var ref = teamMemberById(m.id);
     if (!ref) return "";
     var pct = Math.round((100 * ref.hp) / ref.maxHp);
-    var ch = state.combat ? state.combat.choices[m.id] : null;
+    var rec = choiceForMember(m.id);
+    var act = rec && rec.action ? rec.action : null;
+    var isActive = activeMemberId === m.id;
     var actions = ["attack", "defend", "spell", "item"];
     var labels = { attack: "Attack", defend: "Defend", spell: "Spell", item: "Item" };
     var btns = "";
     var a;
     for (a = 0; a < actions.length; a++) {
       var key = actions[a];
-      var on = ch === key ? " selected" : "";
+      var on = act === key ? " selected" : "";
       btns +=
         '<button type="button" class="act-btn' +
         on +
@@ -1424,12 +1919,16 @@
         m.id +
         '" data-act="' +
         key +
-        '">' +
+        '"' +
+        (isActive ? "" : " disabled") +
+        '>' +
         labels[key] +
         "</button>";
     }
     return (
-      '<div class="battle-card">' +
+      '<div class="battle-card' +
+      (isActive ? " battle-card-active" : "") +
+      '">' +
       '<div class="battle-doll">' +
       '<div class="battle-card-head">' +
       '<span class="' +
@@ -1519,11 +2018,8 @@
       "<div class=\"stat\">Gems: <b>" +
       state.gems +
       "</b></div>" +
-      "<div class=\"stat\">Food: <b>" +
+      "<div class=\"stat\">Supplies: <b>" +
       state.food +
-      "</b></div>" +
-      "<div class=\"stat\">Water: <b>" +
-      state.water +
       "</b></div>" +
       "<div class=\"stat\">Weapons: <b>" +
       state.weapons +
@@ -1537,11 +2033,91 @@
       "<div class=\"stat\">Ruins: <b>" +
       ru +
       "</b></div>" +
+      "<div class=\"stat\">Version: <b>v" +
+      GAME_VERSION +
+      "</b></div>" +
       "</div>" +
       "<ul class=\"party-list party-list-compact\">" +
       partyBits +
       guestLi +
       "</ul></div>"
+    );
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function compactJson(obj) {
+    return escapeHtml(JSON.stringify(obj, null, 2));
+  }
+
+  function balanceDataScreenHtml() {
+    var classes = (BALANCE_DATA && BALANCE_DATA.classes) || {};
+    var classKeys = Object.keys(classes);
+    var monsters = (BALANCE_DATA && BALANCE_DATA.monsters) || [];
+    var weapons = (BALANCE_DATA && BALANCE_DATA.weapons) || [];
+    var classRows = classKeys
+      .map(function (k) {
+        var c = classes[k] || {};
+        var b = c.base || {};
+        var x = c.bonus || {};
+        var f = c.final || {};
+        return (
+          "<tr>" +
+          "<td>" +
+          roleLabel(k) +
+          "</td>" +
+          "<td>" +
+          [b.strength || 0, b.intelligence || 0, b.stamina || 0, b.luck || 0].join("/") +
+          "</td>" +
+          "<td>" +
+          [x.strength || 0, x.intelligence || 0, x.stamina || 0, x.luck || 0].join("/") +
+          "</td>" +
+          "<td>" +
+          [f.strength || 0, f.intelligence || 0, f.stamina || 0, f.luck || 0].join("/") +
+          "</td>" +
+          "</tr>"
+        );
+      })
+      .join("");
+    var monsterPreview = compactJson(monsters.slice(0, 12));
+    var weaponPreview = compactJson(weapons.slice(0, 12));
+    return (
+      '<section class="data-panel">' +
+      '<div class="stats-grid">' +
+      '<div class="stat">Data version: <b>v' +
+      GAME_VERSION +
+      "</b></div>" +
+      '<div class="stat">Creation bonus points: <b>' +
+      CLASS_BONUS_POINTS +
+      "</b></div>" +
+      '<div class="stat">Classes loaded: <b>' +
+      classKeys.length +
+      "</b></div>" +
+      '<div class="stat">Monsters loaded: <b>' +
+      monsters.length +
+      "</b></div>" +
+      '<div class="stat">Weapons loaded: <b>' +
+      weapons.length +
+      "</b></div>" +
+      "</div>" +
+      '<h3 class="panel-title">Class stat model (STR/INT/STA/LUCK)</h3>' +
+      '<div class="data-table-wrap"><table class="data-table"><thead><tr><th>Class</th><th>Base</th><th>Preset bonus</th><th>Final before +3</th></tr></thead><tbody>' +
+      classRows +
+      "</tbody></table></div>" +
+      '<details class="data-details" open><summary>Monster data preview (first 12)</summary><pre class="data-pre">' +
+      monsterPreview +
+      "</pre></details>" +
+      '<details class="data-details"><summary>Weapon data preview (first 12)</summary><pre class="data-pre">' +
+      weaponPreview +
+      "</pre></details>" +
+      "</section>"
     );
   }
 
@@ -1570,6 +2146,24 @@
     }
   }
 
+  function autoPlanRemainingChoices() {
+    if (!state.combat) return;
+    var guard = 0;
+    while (currentPlannerId() && guard < 64) {
+      guard++;
+      var mid = currentPlannerId();
+      if (!mid) break;
+      var foes = foesAlive();
+      if (!foes.length) {
+        state.combat.choices[mid] = { action: "defend", targetId: null };
+        continue;
+      }
+      var tgt = foes[rollInt(0, foes.length - 1)];
+      state.combat.choices[mid] = { action: "attack", targetId: tgt.id };
+    }
+    render();
+  }
+
   function wireBattleActions(root) {
     var btns = root.querySelectorAll(".act-btn");
     for (var i = 0; i < btns.length; i++) {
@@ -1579,6 +2173,16 @@
         };
       })(btns[i]);
     }
+    var targets = root.querySelectorAll("[data-foe-target]");
+    for (var j = 0; j < targets.length; j++) {
+      targets[j].onclick = (function (t) {
+        return function () {
+          chooseAttackTarget(t.getAttribute("data-foe-target"));
+        };
+      })(targets[j]);
+    }
+    var autoBtn = root.querySelector("#autoRoundBtn");
+    if (autoBtn) autoBtn.onclick = autoPlanRemainingChoices;
   }
 
   function render() {
@@ -1586,9 +2190,10 @@
     if (!app) return;
 
     if (state.phase === "gameover") {
+      var overText = state.gameoverMode === "win" ? "Run complete. New Isil reached." : "Game over.";
       app.innerHTML =
         renderHeader() +
-        "<p>Game over.</p><div class=\"actions\"><button type=\"button\" class=\"primary\" id=\"btnRestart\">Restart</button></div>" +
+        "<p>" + overText + "</p><div class=\"actions\"><button type=\"button\" class=\"primary\" id=\"btnRestart\">Restart</button></div>" +
         renderLog();
       document.getElementById("btnRestart").onclick = function () {
         clearTransitionTimers();
@@ -1622,6 +2227,11 @@
     if (state.phase === "new_character") {
       var draft = currentLeaderDraft();
       var baseStats = baseStatsForRole(draft.role);
+      var headshotChoices = headshotOptionsForRole(draft.role, draft.gender || "man");
+      var showCount = Math.max(5, parseInt(draft.headshotShowCount, 10) || 5);
+      if (draft.headshot && headshotChoices.indexOf(draft.headshot) < 0) headshotChoices.unshift(draft.headshot);
+      var visibleHeadshots = headshotChoices.slice(0, showCount);
+      var canShowMoreHeadshots = showCount < headshotChoices.length;
       var bonus = draft.bonus || { strength: 0, intelligence: 0, stamina: 0, luck: 0 };
       var usedPts = totalBonusPoints(bonus);
       var remainPts = CLASS_BONUS_POINTS - usedPts;
@@ -1657,6 +2267,27 @@
         );
       }
 
+      function headshotOptionHtml(file) {
+        var selected = draft.headshot === file;
+        var label = headshotLabel(file);
+        return (
+          '<button type="button" class="char-headshot-option' +
+          (selected ? ' selected' : '') +
+          '" data-headshot="' +
+          escapeHtml(file) +
+          '">' +
+          '<img src="' +
+          headshotUrl(file) +
+          '" alt="' +
+          escapeHtml(label + ' headshot') +
+          '" loading="lazy">' +
+          '<span>' +
+          escapeHtml(label) +
+          '</span>' +
+          '</button>'
+        );
+      }
+
       app.innerHTML =
         startCitySplash() +
         "<h2 class=\"panel-title\">Create your leader</h2>" +
@@ -1672,6 +2303,11 @@
         '>Priest</option><option value="mercenary"' +
         (draft.role === "mercenary" ? " selected" : "") +
         '>Mercenary</option></select></label>' +
+        '<label>Gender <select id="leadGender"><option value="man"' +
+        ((draft.gender || "man") === "man" ? " selected" : "") +
+        '>Man</option><option value="woman"' +
+        ((draft.gender || "man") === "woman" ? " selected" : "") +
+        '>Woman</option></select></label>' +
         '<label>Age <input id="leadAge" type="number" min="16" max="70" value="' +
         draft.age +
         '"></label>' +
@@ -1681,10 +2317,22 @@
         '<label>Biography <textarea id="leadBio" rows="4" maxlength="240" placeholder="A short backstory...">' +
         (draft.bio || "") +
         '</textarea></label>' +
+        '<div class="char-headshot-wrap">' +
+        '<p class="char-headshot-head">Headshot</p>' +
+        '<div class="char-headshot-grid">' +
+        '<button type="button" class="char-headshot-option char-headshot-option-none' +
+        (!draft.headshot ? ' selected' : '') +
+        '" data-headshot="">No headshot</button>' +
+        visibleHeadshots.map(headshotOptionHtml).join('') +
+        '</div>' +
+        (canShowMoreHeadshots ? '<div class="actions"><button type="button" id="headshotMoreBtn">Show 5 more headshots</button></div>' : '') +
+        '</div>' +
         '<div class="char-stat-wrap">' +
         '<p class="char-stat-head">Bonus points remaining: <b>' +
         remainPts +
-        '</b> / 4</p>' +
+        "</b> / " +
+        CLASS_BONUS_POINTS +
+        "</p>" +
         statRow("strength", "Strength") +
         statRow("intelligence", "Intelligence") +
         statRow("stamina", "Stamina") +
@@ -1702,6 +2350,14 @@
       };
       document.getElementById("leadRole").onchange = function () {
         setLeaderDraftField("role", this.value);
+        setLeaderDraftField("headshot", "");
+        setLeaderDraftField("headshotShowCount", 5);
+        render();
+      };
+      document.getElementById("leadGender").onchange = function () {
+        setLeaderDraftField("gender", this.value || "man");
+        setLeaderDraftField("headshot", "");
+        setLeaderDraftField("headshotShowCount", 5);
         render();
       };
       document.getElementById("leadAge").oninput = function () {
@@ -1714,6 +2370,22 @@
       document.getElementById("leadBio").oninput = function () {
         setLeaderDraftField("bio", this.value);
       };
+      var shotBtns = app.querySelectorAll("[data-headshot]");
+      for (var si = 0; si < shotBtns.length; si++) {
+        shotBtns[si].onclick = (function (btn) {
+          return function () {
+            setLeaderDraftField("headshot", btn.getAttribute("data-headshot") || "");
+            render();
+          };
+        })(shotBtns[si]);
+      }
+      var moreHeadshots = document.getElementById("headshotMoreBtn");
+      if (moreHeadshots) {
+        moreHeadshots.onclick = function () {
+          setLeaderDraftField("headshotShowCount", showCount + 5);
+          render();
+        };
+      }
 
       var plusBtns = app.querySelectorAll("[data-stat-plus]");
       for (var pi = 0; pi < plusBtns.length; pi++) {
@@ -1768,6 +2440,8 @@
           age: ageRaw,
           hometown: hometown,
           bio: bio,
+          gender: latest.gender || "man",
+          headshot: latest.headshot || "",
           stats: leaderDraftFinalStats(latest),
           source: "custom",
         });
@@ -1844,20 +2518,44 @@
         return;
       }
 
+      if (state.illiriView === "data") {
+        app.innerHTML =
+          startCitySplash() +
+          illiriTabStrip() +
+          "<h2 class=\"panel-title\">Balance Data</h2>" +
+          "<p class=\"town-lead\">Review spreadsheet-loaded balancing data in a separate screen.</p>" +
+          balanceDataScreenHtml() +
+          renderLog();
+        wireIlliriTabs(app);
+        return;
+      }
+
       if (state.illiriView === "depart") {
         app.innerHTML =
           startCitySplash() +
           illiriTabStrip() +
           "<h2 class=\"panel-title\">Depart</h2>" +
-          "<p class=\"town-lead\">The east gate opens on the trade road — five days to New Isil if the miles are kind.</p>" +
+          "<p class=\"town-lead\">The east gate opens on the trade road — plan your route to either New Isil or Gustaf.</p>" +
+          '<p><b>Destination:</b> ' + currentDestination().label + ' (' + currentRouteDays() + ' travel days)</p>' +
+          '<div class="actions">' +
+          '<button type="button" data-dest="new_isil"' + (state.travelDestination === "new_isil" ? ' class="primary"' : '') + '>Set route: New Isil</button>' +
+          '<button type="button" data-dest="gustaf"' + (state.travelDestination === "gustaf" ? ' class="primary"' : '') + '>Set route: Gustaf</button>' +
+          "</div>" +
           "<div class=\"actions\">" +
           '<button type="button" class="primary" id="departBtn">Leave Cantebury</button>' +
           "</div>" +
           renderLog();
         wireIlliriTabs(app);
+        var destBtns = app.querySelectorAll("[data-dest]");
+        for (var di = 0; di < destBtns.length; di++) {
+          destBtns[di].onclick = (function (btn) {
+            return function () {
+              state.travelDestination = btn.getAttribute("data-dest") || "new_isil";
+              render();
+            };
+          })(destBtns[di]);
+        }
         document.getElementById("departBtn").onclick = departIllirial;
-        var openInvDepart = document.getElementById("openInvFromDepart");
-        if (openInvDepart) openInvDepart.onclick = openInventoryView;
         return;
       }
 
@@ -1895,7 +2593,22 @@
             state.guest = null;
             logLine("Guest dismissed.", "");
           } else {
-            state.guest = { id: "g1", name: "Guest: Guide", role: "soldier", hp: 10, maxHp: 10 };
+            var guestPortrait = pickUniquePortrait("soldier", null, usedHeadshotsMap());
+            if (!guestPortrait.headshot) {
+              logLine("No unique soldier headshots remain for a guest this session.", "bad");
+              render();
+              return;
+            }
+            state.guest = {
+              id: "g1",
+              name: "Guest: Guide",
+              role: "soldier",
+              gender: guestPortrait.gender,
+              headshot: guestPortrait.headshot,
+              hp: 10,
+              maxHp: 10,
+              staticMember: true,
+            };
             logLine("Guest joins - seventh member alongside your party of " + state.party.length + ".", "good");
           }
           render();
@@ -1908,15 +2621,13 @@
           startCitySplash() +
           illiriTabStrip() +
           "<h2 class=\"panel-title\">Trader's stall</h2>" +
-          "<p class=\"shopkeeper-lead\">A lean shopkeeper counts coins beside sacks of grain and stoppered waterskins. " +
-          "\"Road fare and spare steel—<span class=\"hi\">1 gp</span> each, same as the quartermaster posted.\"</p>" +
+          "<p class=\"shopkeeper-lead\">A lean shopkeeper counts coins beside stacked supply bundles. " +
+          "\"Road fare—<span class=\"hi\">1 gp</span> per supply, same as the quartermaster posted.\"</p>" +
           "<p class=\"shop-gold-line\">Your purse: <b>" +
           state.gold +
           "</b> gp</p>" +
           "<div class=\"shop-block\">" +
-          "<div class=\"shop-row\"><span>Food (rations)</span><button type=\"button\" id=\"buyFood\">Buy 1 gp</button></div>" +
-          "<div class=\"shop-row\"><span>Water (skins)</span><button type=\"button\" id=\"buyWater\">Buy 1 gp</button></div>" +
-          "<div class=\"shop-row\"><span>Weapon (basic blade)</span><button type=\"button\" id=\"buyWeapon\">Buy 1 gp</button></div>" +
+          "<div class=\"shop-row\"><span>Supplies (food + water)</span><button type=\"button\" id=\"buyFood\">Buy 1 gp</button></div>" +
           "</div>" +
           '<div class="actions"><button type="button" id="openInvFromShop">Inventory & dolls</button></div>' +
           renderLog();
@@ -1925,12 +2636,6 @@
         if (openInvShop) openInvShop.onclick = openInventoryView;
         document.getElementById("buyFood").onclick = function () {
           buy("food");
-        };
-        document.getElementById("buyWater").onclick = function () {
-          buy("water");
-        };
-        document.getElementById("buyWeapon").onclick = function () {
-          buy("weapon");
         };
         return;
       }
@@ -1943,7 +2648,7 @@
     if (state.phase === "travel") {
       if (state.transition && state.transition.kind === "depart" && state.transition.stage === "blackout") {
         app.innerHTML =
-          transitionBlackoutHtml("Leaving Cantebury", "Torches, gate chains, then darkness and the open east.") +
+          transitionBlackoutHtml("Leaving " + currentOriginLabel(), "The caravan sets out for " + currentDestination().label + ".") +
           renderLog();
         return;
       }
@@ -1951,7 +2656,7 @@
         app.innerHTML =
           '<div class="travel-map-intro">' +
           '<h2 class="panel-title">The trade road</h2>' +
-          '<p class="map-intro-lead">Your caravan joins the eastbound line. Five days to New Isil on the posted route.</p>' +
+          '<p class="map-intro-lead">Route set: ' + currentOriginLabel() + ' to ' + currentDestination().label + '. ' + currentRouteDays() + ' travel days on this leg.</p>' +
           travelMapHtml(null) +
           "</div>" +
           renderLog();
@@ -1970,15 +2675,22 @@
         "<p>Progress: " +
         state.travelDay +
         " / " +
-        ROUTE_DAYS +
-        " days complete. Each <b>Next day</b> consumes 1 food and 1 water. Encounter chance shown above rises after quiet days.</p>" +
-        "<div class=\"actions\"><button type=\"button\" class=\"primary\" id=\"nextDay\">Next day</button></div>" +
+        currentRouteDays() +
+        " days complete. Each <b>Next day</b> consumes 1 supply. Encounter chance shown above rises after quiet days.</p>" +
+        "<div class=\"actions\">" +
+        '<button type="button" class="primary" id="nextDay">Next day</button>' +
+        '<button type="button" id="travelInventoryBtn">' +
+        (state.travelInventoryOpen ? "Hide travel inventory" : "Open travel inventory") +
+        "</button>" +
+        "</div>" +
+        (state.travelInventoryOpen ? inventoryScreenHtml() : "") +
         renderLog() +
         resumeOverlay;
       document.getElementById("nextDay").onclick = function () {
         if (state.transition) return;
         consumeTravelDaySupplies();
         if (allDead()) {
+          state.gameoverMode = "loss";
           state.phase = "gameover";
           logLine("The expedition is lost.", "bad");
           render();
@@ -1986,6 +2698,90 @@
         }
         beginNextTravelDayMarch();
       };
+      var travelInvBtn = document.getElementById("travelInventoryBtn");
+      if (travelInvBtn)
+        travelInvBtn.onclick = function () {
+          state.travelInventoryOpen = !state.travelInventoryOpen;
+          if (!state.travelInventoryOpen) state.inventoryDetailOpen = false;
+          render();
+        };
+      if (state.travelInventoryOpen) {
+        wireInventoryScreen(app);
+      }
+      return;
+    }
+    if (state.phase === "settlement") {
+      var town = destinationForKey(state.settlementTown || "new_isil");
+      app.innerHTML =
+        endCitySplash() +
+        renderHeader() +
+        settlementTabStrip() +
+        '<h2 class="panel-title">' + town.label + '</h2>' +
+        (state.settlementView === "church"
+          ? '<p class="town-lead">A quiet chapel waits by the market road.</p><div class="actions"><button type="button" id="settlementBless">Receive blessing</button></div>'
+          : state.settlementView === "tavern"
+            ? '<p class="tavern-lead">Fresh crews trade stories and caravan contracts.</p>' +
+              rosterEditHtml(
+                "Tavern roster",
+                "Recruit soldiers, priests, or mercenaries. Up to " + PARTY_MAX + " in the traveling party."
+              )
+            : state.settlementView === "shop"
+              ? '<p class="shopkeeper-lead">Restock before the next leg: supplies, weapons, and gem exchange.</p>' +
+                '<p class="shop-gold-line">Your purse: <b>' +
+                state.gold +
+                '</b> gp | Gems: <b>' +
+                state.gems +
+                '</b></p>' +
+                '<div class="shop-block">' +
+                '<div class="shop-row"><span>Supplies</span><button type="button" id="settlementBuySupply">Buy 1 gp</button></div>' +
+                '<div class="shop-row"><span>Weapon</span><button type="button" id="settlementBuyWeapon">Buy 3 gp</button></div>' +
+                '<div class="shop-row"><span>Sell gem</span><button type="button" id="settlementSellGem">Sell 1 gem (5 gp)</button></div>' +
+                '</div>'
+              : town.key === "gustaf"
+                ? '<p class="town-lead">Gustaf is resupplied. Continue your caravan to New Isil.</p><div class="actions"><button type="button" class="primary" id="continueToIsil">Depart for New Isil</button></div>'
+                : '<p class="town-lead">You reached New Isil. End this run and start another caravan.</p><div class="actions"><button type="button" class="primary" id="restart">Play again</button></div>') +
+        renderLog() +
+        (state.transition && state.transition.kind === "arrive" ? transitionArriveOverlayHtml(state.transition) : "");
+
+      wireSettlementTabs(app);
+      if (state.settlementView === "church") {
+        document.getElementById("settlementBless").onclick = function () {
+          if (state.blessing) {
+            logLine("You already carry a blessing: <span class=\"hi\">" + blessingTypeLabel(state.blessing) + "</span>.", "");
+            render();
+            return;
+          }
+          var r = Math.random();
+          if (r < 0.3) state.blessing = "attack";
+          else if (r < 0.5) state.blessing = "gold";
+          else if (r < 0.6) state.blessing = "ward";
+          else state.blessing = null;
+          if (state.blessing) logLine("Blessing granted: <span class=\"hi\">" + blessingTypeLabel(state.blessing) + "</span>.", "good");
+          else logLine("The prayer brings calm, but no lasting boon this time.", "");
+          render();
+        };
+      } else if (state.settlementView === "tavern") {
+        wireRosterEdit(app);
+      } else if (state.settlementView === "shop") {
+        document.getElementById("settlementBuySupply").onclick = buySettlementSupplies;
+        document.getElementById("settlementBuyWeapon").onclick = buySettlementWeapon;
+        document.getElementById("settlementSellGem").onclick = sellSettlementGem;
+      } else if (state.settlementView === "depart") {
+        if (town.key === "gustaf") {
+          document.getElementById("continueToIsil").onclick = function () {
+            state.travelOrigin = "gustaf";
+            state.travelDestination = "new_isil";
+            departIllirial();
+          };
+        } else {
+          document.getElementById("restart").onclick = function () {
+            clearTransitionTimers();
+            state = initialState();
+            assignMissingPartyPortraits();
+            render();
+          };
+        }
+      }
       return;
     }
 
@@ -2002,7 +2798,7 @@
           "<h2 class=\"panel-title\">Ruins</h2>" +
           "<p>Search uses the day. " +
           Math.round(SKELETON_FIGHT_CHANCE * 100) +
-          "% chance of 1-3 skeletons (5 HP each).</p>" +
+          "% chance of random monsters (1 HP each in this leveling test).</p>" +
           "<div class=\"actions\">" +
           "<button type=\"button\" id=\"searchRuins\">Search ruins</button>" +
           "<button type=\"button\" id=\"skipRuins\">Mark and leave</button>" +
@@ -2010,8 +2806,8 @@
           renderLog();
         document.getElementById("searchRuins").onclick = function () {
           if (Math.random() < SKELETON_FIGHT_CHANCE) {
-            var sk = buildSkeletons();
-            startTacticalCombat({ kind: "ruins_combat", label: sk.label, foes: sk.foes });
+            var pack = buildRandomMonsterEncounter("ruins");
+            startTacticalCombat({ kind: "ruins_combat", label: pack.label, foes: pack.foes });
             render();
           } else {
             resolveRuinsSearchRewards();
@@ -2026,15 +2822,31 @@
       }
 
       if (state.combat) {
-        var foesHtml = state.combat.foes.map(foeCardHtml).join("");
         var team = combatTeam();
-        var cards = team.map(battlePartyCard).join("");
+        var activePlannerId = currentPlannerId();
+        var activeChoice = activePlannerId ? choiceForMember(activePlannerId) : null;
+        var selectingTarget = !!activeChoice && activeChoice.action === "attack" && !activeChoice.targetId;
+        var selectedTargetId = activeChoice && activeChoice.targetId ? activeChoice.targetId : null;
+        var foesHtml = state.combat.foes
+          .map(function (f) {
+            return foeCardHtml(f, selectingTarget, selectedTargetId === f.id);
+          })
+          .join("");
+        var cards = team
+          .map(function (m) {
+            return battlePartyCard(m, activePlannerId);
+          })
+          .join("");
         var ready = allChoicesReady();
+        var activeMember = activePlannerId ? teamMemberById(activePlannerId) : null;
+        var hint = "Pick actions in order, then End round.";
+        if (activeMember && selectingTarget) hint = "Choose a monster target for " + activeMember.name + ".";
+        else if (activeMember) hint = "Choose an action for " + activeMember.name + ".";
         app.innerHTML =
           '<div class="scene scene-splash scene-battle" role="img" aria-label="Battle">' +
           '<div class="splash-badge">Skirmish</div>' +
           '<div class="splash-title">Battle</div>' +
-          '<div class="splash-sub">Choose actions for each fighter, then End round</div>' +
+          '<div class="splash-sub">Select each fighter\'s move in sequence</div>' +
           "</div>" +
           renderHeader() +
           "<h2 class=\"panel-title\">Battle - round " +
@@ -2053,11 +2865,14 @@
           "</div>" +
           "<div class=\"actions battle-actions-row\">" +
           '<button type="button" id="fleeBtn">Flee</button>' +
+          '<button type="button" id="autoRoundBtn">Auto</button>' +
           '<button type="button" class="primary" id="endRoundBtn"' +
           (ready ? "" : " disabled") +
           ">End round</button>" +
           "</div>" +
-          "<p class=\"hint\">Pick Attack, Defend, Spell, or Item for each fighter, then End round.</p>" +
+          "<p class=\"hint\">" +
+          hint +
+          "</p>" +
           renderLog();
         wireBattleActions(app);
         document.getElementById("fleeBtn").onclick = fleeEncounter;
@@ -2065,28 +2880,11 @@
         return;
       }
     }
-
-    if (state.phase === "story_new_isil") {
-      var arriveOv =
-        state.transition && state.transition.kind === "arrive" ? transitionArriveOverlayHtml(state.transition) : "";
-      app.innerHTML =
-        endCitySplash() +
-        renderHeader() +
-        "<h2 class=\"panel-title\">New Isil</h2>" +
-        "<p>Demo complete - you reached the endpoint.</p>" +
-        "<div class=\"actions\"><button type=\"button\" class=\"primary\" id=\"restart\">Play again</button></div>" +
-        renderLog() +
-        arriveOv;
-      document.getElementById("restart").onclick = function () {
-        clearTransitionTimers();
-        state = initialState();
-        render();
-      };
-    }
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    logLine("Prepare in <span class=\"hi\">Cantebury</span>, then depart toward New Isil.", "");
+    logLine("Prepare in <span class=\"hi\">Cantebury</span>, then set a route toward New Isil or Gustaf.", "");
+    trackPlaytest("app_loaded", { version: GAME_VERSION });
     render();
   });
 })();

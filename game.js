@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  var CLASS_HP = { soldier: 10, priest: 5, mercenary: 7 };
+  var CLASS_HP = { soldier: 10, priest: 6, mercenary: 8, farmer: 9, artisan: 8, merchant: 8, mage: 6 };
   var DEFAULT_ROUTE_DAYS = 10;
   var DESTINATIONS = {
     gustaf: { key: "gustaf", label: "Gustaf", subtitle: "Stone quays and wind-bent banners", badge: "Port" },
@@ -16,7 +16,7 @@
     typeof window !== "undefined" && window.ILLIRIAL_BALANCE
       ? window.ILLIRIAL_BALANCE
       : {
-          version: "0.3.0-alpha",
+          version: "0.4.2",
           classCreationBonusPoints: 3,
           classes: {
             soldier: { final: { strength: 7, intelligence: 3, stamina: 5, luck: 4 } },
@@ -26,12 +26,16 @@
           monsters: [],
           weapons: [],
         };
-  var GAME_VERSION = BALANCE_DATA.version || "0.3.0-alpha";
+  var GAME_VERSION = BALANCE_DATA.version || "0.4.2";
   var CLASS_BONUS_POINTS = BALANCE_DATA.classCreationBonusPoints || 3;
   var CLASS_BASE_STATS = {
     soldier: (BALANCE_DATA.classes && BALANCE_DATA.classes.soldier && BALANCE_DATA.classes.soldier.final) || { strength: 7, intelligence: 3, stamina: 5, luck: 4 },
     priest: (BALANCE_DATA.classes && BALANCE_DATA.classes.priest && BALANCE_DATA.classes.priest.final) || { strength: 4, intelligence: 6, stamina: 4, luck: 5 },
     mercenary: (BALANCE_DATA.classes && BALANCE_DATA.classes.mercenary && BALANCE_DATA.classes.mercenary.final) || { strength: 6, intelligence: 3, stamina: 5, luck: 5 },
+    farmer: (BALANCE_DATA.classes && BALANCE_DATA.classes.farmer && BALANCE_DATA.classes.farmer.final) || { strength: 5, intelligence: 4, stamina: 6, luck: 4 },
+    artisan: (BALANCE_DATA.classes && BALANCE_DATA.classes.artisan && BALANCE_DATA.classes.artisan.final) || { strength: 4, intelligence: 6, stamina: 3, luck: 6 },
+    merchant: (BALANCE_DATA.classes && BALANCE_DATA.classes.merchant && BALANCE_DATA.classes.merchant.final) || { strength: 3, intelligence: 5, stamina: 5, luck: 6 },
+    mage: (BALANCE_DATA.classes && BALANCE_DATA.classes.mage && BALANCE_DATA.classes.mage.final) || { strength: 3, intelligence: 7, stamina: 3, luck: 4 },
   };
   var PRESET_LEADER = {
     name: "Captain Elara Vale",
@@ -60,6 +64,8 @@
     { id: "runesword", label: "Runesword", grade: 3 },
   ];
   var XP_PER_LEVEL = 3;
+  var MAX_SUPPLIES = 30;
+  var RUINS_ROOM_MAX = 20;
   var BALANCE_MONSTERS = (BALANCE_DATA && BALANCE_DATA.monsters ? BALANCE_DATA.monsters : []).filter(function (m) {
     return m && m.name;
   });
@@ -163,6 +169,50 @@
     return baseGold + 1;
   }
 
+  function addSupplies(amount) {
+    if (!amount || amount < 1) return 0;
+    var room = Math.max(0, MAX_SUPPLIES - state.food);
+    var gain = Math.min(room, amount);
+    state.food += gain;
+    return gain;
+  }
+
+  function monsterDamageForName(name) {
+    var lower = (name || "").toLowerCase();
+    if (lower.indexOf("dragon") >= 0) return 5;
+    if (lower.indexOf("lich king") >= 0) return 4;
+    if (lower.indexOf("lich") >= 0) return 3;
+    return 2;
+  }
+
+  function rollRuinsRoomCount() {
+    if (Math.random() < 0.8) return rollInt(1, 6);
+    return rollInt(7, RUINS_ROOM_MAX);
+  }
+
+  function rollSettlementRecruitSlots(townKey) {
+    if (townKey === "solem") return rollInt(2, 3);
+    if (townKey === "gustaf" || townKey === "hollow_banks") {
+      var r = Math.random();
+      if (r < 0.65) return 0;
+      if (r < 0.92) return 1;
+      return 2;
+    }
+    return PARTY_MAX;
+  }
+
+  function settlementRecruitMode(townKey) {
+    if (townKey === "solem") return "soldier_only";
+    if (townKey === "gustaf" || townKey === "hollow_banks") return "limited";
+    return "open";
+  }
+
+  function settlementRecruitNote(townKey) {
+    if (townKey === "solem") return "Solem can field 2-3 new soldiers this stay. Slots left: " + (state.settlementRecruitSlots || 0) + ".";
+    if (townKey === "gustaf" || townKey === "hollow_banks") return "Travelers are scarce here. Random local recruits this stay: " + (state.settlementRecruitSlots || 0) + ".";
+    return "Recruit soldiers, priests, mercenaries, farmers, artisans, merchants, or mages.";
+  }
+
   function destinationForKey(key) {
     return DESTINATIONS[key] || DESTINATIONS.gustaf;
   }
@@ -181,10 +231,18 @@
   }
 
   function routeDaysForLeg(originKey, destinationKey) {
-    if (destinationKey === "gustaf") return 10;
+    if (destinationKey === "gustaf") return 6;
     if (destinationKey === "hollow_banks") return 10;
-    if (destinationKey === "solem") return 10;
-    if (destinationKey === "new_isil") return 10;
+    if (destinationKey === "solem") return 8;
+    if (destinationKey === "new_isil") return 9;
+    return DEFAULT_ROUTE_DAYS;
+  }
+
+  function rollRouteDaysForDestination(destinationKey) {
+    if (destinationKey === "gustaf") return rollInt(1, 6);
+    if (destinationKey === "hollow_banks") return rollInt(1, 10);
+    if (destinationKey === "solem") return rollInt(1, 8);
+    if (destinationKey === "new_isil") return rollInt(1, 9);
     return DEFAULT_ROUTE_DAYS;
   }
 
@@ -212,6 +270,7 @@
   }
 
   function currentRouteDays() {
+    if (state && state.legRouteDays && state.legRouteDays > 0) return state.legRouteDays;
     var origin = state && state.travelOrigin ? state.travelOrigin : "cantebury";
     var dest = state && state.travelDestination ? state.travelDestination : "gustaf";
     return routeDaysForLeg(origin, dest);
@@ -233,9 +292,7 @@
   }
 
   function memberMaxMp(member) {
-    var st = memberBaseStats(member);
-    var level = member && typeof member.level === "number" ? member.level : 1;
-    return Math.max(0, 2 + (st.intelligence || 0) + Math.floor((level - 1) / 2));
+    return 25;
   }
 
   function hpGainOnLevel(member) {
@@ -366,12 +423,28 @@
     state.newLeaderDraft = null;
 
     if (lead.source === "preset") {
-      state.party = createParty();
+      var presetRoles = ["soldier", "soldier", "soldier", "priest", "priest", "mercenary"];
+      var presetParty = [];
+      for (var pr = 0; pr < presetRoles.length; pr++) {
+        var role = presetRoles[pr];
+        presetParty.push(
+          initMemberProgress({
+            id: "p" + pr,
+            name: role.charAt(0).toUpperCase() + role.slice(1) + " " + (pr + 1),
+            role: role,
+            hp: CLASS_HP[role] || 8,
+            maxHp: CLASS_HP[role] || 8,
+          })
+        );
+      }
+      state.party = presetParty;
       state.partyIdSeq = state.party.length;
-      state.party[0].name = lead.name;
-      state.party[0].role = lead.role;
-      state.party[0].maxHp = CLASS_HP[lead.role];
-      state.party[0].hp = state.party[0].maxHp;
+      if (state.party[0]) {
+        state.party[0].name = lead.name;
+        state.party[0].role = lead.role;
+        state.party[0].maxHp = CLASS_HP[lead.role] || state.party[0].maxHp || 10;
+        state.party[0].hp = state.party[0].maxHp;
+      }
       logLine("Preset caravan assembled with a full party.", "good");
     } else {
       state.party = [
@@ -387,7 +460,7 @@
       logLine("You begin with only your leader. Recruit companions in the tavern before departure.", "hi");
     }
 
-    state.food += state.water || 0;
+    state.food = Math.min(MAX_SUPPLIES, state.food + (state.water || 0));
     state.water = 0;
     if (state.party[0]) {
       if (!state.party[0].gender) state.party[0].gender = lead.gender || "man";
@@ -416,9 +489,11 @@
   function initialState() {
     return {
       phase: "new_game_setup",
-      gold: 25,
+      gold: 100,
       gems: 0,
       food: 10,
+      healingPotions: 0,
+      lifePotions: 0,
       water: 0,
       weapons: 0,
       weaponInventory: [],
@@ -429,10 +504,13 @@
       travelDestination: "gustaf",
       guest: null,
       travelDay: 0,
+      legRouteDays: 0,
       encounterChance: ENCOUNTER_BASE,
       ruinsDiscovered: false,
       ruinsTravelDay: null,
       ruinsSearched: false,
+      ruinsRoomsTotal: 0,
+      ruinsRoomsRemaining: 0,
       log: [],
       pendingEncounter: null,
       combat: null,
@@ -446,6 +524,8 @@
       travelInventoryOpen: false,
       settlementTown: null,
       settlementView: "church",
+      settlementRecruitSlots: 0,
+      settlementRecruitMode: "open",
       gameoverMode: null,
       finalBossCleared: false,
     };
@@ -505,25 +585,7 @@
   }
 
   function endOfDayPriestHealing() {
-    var priests = state.party.filter(function (p) {
-      return p.role === "priest" && p.hp > 0;
-    });
-    if (!priests.length) return;
-    var healTotal = priests.length * 2;
-    var remaining = healTotal;
-    while (remaining > 0) {
-      var hurt = state.party
-        .filter(function (p) {
-          return p.hp > 0 && p.hp < p.maxHp;
-        })
-        .sort(function (a, b) {
-          return a.hp - b.hp;
-        });
-      if (!hurt.length) break;
-      hurt[0].hp = Math.min(hurt[0].maxHp, hurt[0].hp + 1);
-      remaining--;
-    }
-    logLine("Priests mend wounds (end of day): up to <span class=\"hi\">" + healTotal + " HP</span> restored.", "good");
+    return;
   }
 
   function rollTravelEncounter() {
@@ -535,17 +597,36 @@
     return false;
   }
 
-  function randomBalanceMonster() {
-    if (!BALANCE_MONSTERS.length) return { name: "Bandit", atk: 2 };
-    return BALANCE_MONSTERS[rollInt(0, BALANCE_MONSTERS.length - 1)];
+  function randomBalanceMonster(pool) {
+    var src = pool && pool.length ? pool : BALANCE_MONSTERS;
+    if (!src.length) return { name: "Bandit", atk: 2, hp: 5 };
+    return src[rollInt(0, src.length - 1)];
+  }
+
+  function isWolfMonsterName(name) {
+    return (name || "").toLowerCase().indexOf("wolf") >= 0;
   }
 
   function buildRandomMonsterEncounter(sourceKind) {
-    var n = rollInt(1, 4);
-    if (hasBlessing("ward")) n = Math.max(1, n - 1);
+    var lateLeg = state.travelOrigin === "hollow_banks" || state.travelOrigin === "solem";
+    var pool = BALANCE_MONSTERS.slice();
+    if (lateLeg) {
+      var tough = pool.filter(function (m) {
+        return Math.max(1, parseInt(m && m.hp, 10) || 1) >= 10;
+      });
+      if (tough.length) pool = tough;
+    }
+    var archetype = randomBalanceMonster(pool);
+    var wolfPack = isWolfMonsterName(archetype && archetype.name);
+    var n = wolfPack ? rollInt(3, 6) : rollInt(1, 4);
+    if (hasBlessing("ward")) n = Math.max(wolfPack ? 3 : 1, n - 1);
+    var wolfPool = pool.filter(function (m) {
+      return isWolfMonsterName(m && m.name);
+    });
+    if (!wolfPool.length) wolfPool = [archetype];
     var list = [];
     for (var i = 0; i < n; i++) {
-      var mon = randomBalanceMonster();
+      var mon = wolfPack ? randomBalanceMonster(wolfPool) : randomBalanceMonster(pool);
       var baseMonsterHp = Math.max(1, parseInt(mon && mon.hp, 10) || 1);
       var scaledMonsterHp = Math.max(1, Math.round(baseMonsterHp * monsterHpMultiplierForProgress()));
       list.push({
@@ -553,7 +634,7 @@
         name: mon.name,
         hp: scaledMonsterHp,
         maxHp: scaledMonsterHp,
-        dmg: 2,
+        dmg: monsterDamageForName(mon.name),
       });
     }
     var src = sourceKind || "road";
@@ -580,8 +661,29 @@
   }
 
   function ruinsDiscoveryChance() {
-    var byDay = RUINS_BASE_CHANCE + Math.max(0, state.travelDay - 1) * RUINS_DAY_BONUS;
-    return Math.min(byDay, RUINS_MAX_CHANCE);
+    var destKey = currentDestination().key;
+    var base = RUINS_BASE_CHANCE;
+    var bonus = RUINS_DAY_BONUS;
+    var cap = RUINS_MAX_CHANCE;
+    if (destKey === "gustaf") {
+      base = 0.2;
+      bonus = 0.1;
+      cap = 0.7;
+    } else if (destKey === "hollow_banks") {
+      base = 0.22;
+      bonus = 0.11;
+      cap = 0.74;
+    } else if (destKey === "solem") {
+      base = 0.25;
+      bonus = 0.12;
+      cap = 0.8;
+    } else if (destKey === "new_isil") {
+      base = 0.28;
+      bonus = 0.13;
+      cap = 0.84;
+    }
+    var byDay = base + Math.max(0, state.travelDay - 1) * bonus;
+    return Math.min(byDay, cap);
   }
 
   function rollFieldEncounterType() {
@@ -674,13 +776,51 @@
       logLine("Victory: +" + gold + " gold.", "good");
     }
     if (kind === "wolves" && Math.random() < 0.35) {
-      state.food += 2;
-      logLine("Victory: +2 food.", "good");
+      var wolfSupplies = addSupplies(2);
+      if (wolfSupplies > 0) logLine("Victory: +" + wolfSupplies + " supplies.", "good");
+      else logLine("Victory spoils found, but supplies are already full.", "");
     }
     if (kind === "skeletons" || kind === "ruins_combat") {
       var g2 = roadGoldBonus(rollInt(2, 6));
       state.gold += g2;
       logLine("Victory: +" + g2 + " gold (old coins).", "good");
+    }
+  }
+
+  function applyMonsterDrops(foes) {
+    if (!foes || !foes.length) return;
+    for (var i = 0; i < foes.length; i++) {
+      var name = (foes[i].name || "").toLowerCase();
+      var r = Math.random();
+      if (name.indexOf("bandit") >= 0) {
+        if (r < 0.75) {
+          var g = roadGoldBonus(rollInt(1, 5));
+          state.gold += g;
+          logLine("Bandit drop: +" + g + " gold.", "good");
+        } else if (r < 0.975) {
+          var gm = rollInt(1, 3);
+          state.gems += gm;
+          logLine("Bandit drop: +" + gm + " gem(s).", "good");
+        } else {
+          state.weapons += 1;
+          state.weaponInventory.push("rare_drop");
+          logLine("Bandit drop: rare weapon found.", "good");
+        }
+        continue;
+      }
+      var clericLike =
+        name.indexOf("cleric") >= 0 || name.indexOf("mage") >= 0 || name.indexOf("knight") >= 0 || name.indexOf("soldier") >= 0;
+      if (clericLike) {
+        if (r < 0.99) {
+          var g2 = roadGoldBonus(rollInt(1, 7));
+          state.gold += g2;
+          logLine(foes[i].name + " drop: +" + g2 + " gold.", "good");
+        } else {
+          var gm2 = rollInt(1, 3);
+          state.gems += gm2;
+          logLine(foes[i].name + " drop: +" + gm2 + " gem(s).", "good");
+        }
+      }
     }
   }
 
@@ -762,6 +902,8 @@
     state.phase = "settlement";
     state.settlementTown = dest.key;
     state.settlementView = "church";
+    state.settlementRecruitSlots = rollSettlementRecruitSlots(dest.key);
+    state.settlementRecruitMode = settlementRecruitMode(dest.key);
     state.transition = { kind: "arrive", label: dest.label };
     render();
     scheduleTransition(function () {
@@ -784,18 +926,27 @@
 
   function tacticalWin() {
     var k = state.combat.kind;
-    var foesDefeated = state.combat && state.combat.foes ? state.combat.foes.length : 0;
+    var defeatedFoes = state.combat && state.combat.foes ? state.combat.foes.slice() : [];
+    var foesDefeated = defeatedFoes.length;
     trackPlaytest("combat_won", { kind: k, foesDefeated: foesDefeated, day: state.travelDay });
     if (foesDefeated > 0) grantXp(foesDefeated);
+    applyMonsterDrops(defeatedFoes);
     if (k === "new_isil_gate_boss") {
       state.finalBossCleared = true;
       logLine("SK Kew Kumber is defeated. The road to New Isil is open.", "good");
     }
     winCombatLoot(k);
-    if (k === "ruins_combat") resolveRuinsSearchRewards();
     state.encounterChance = ENCOUNTER_BASE;
     state.combat = null;
     state.pendingEncounter = null;
+    if (k === "ruins_combat" && state.ruinsRoomsRemaining > 0) {
+      logLine("Ruins room cleared. " + state.ruinsRoomsRemaining + " room(s) remain.", "good");
+      state.phase = "action";
+      state.pendingEncounter = { kind: "ruins_discovery", label: "Mysterious ruins", foes: [] };
+      render();
+      return;
+    }
+    if (k === "ruins_combat") resolveRuinsSearchRewards();
     finishEncounterCommon();
   }
 
@@ -824,6 +975,11 @@
     var rec = choiceForMember(memberId);
     if (!rec || !rec.action) return false;
     if (rec.action === "attack") return !!rec.targetId;
+    if (rec.action === "item") return !!rec.itemKind;
+    if (rec.action === "spell") {
+      var mem = teamMemberById(memberId);
+      if (mem && (mem.role === "priest" || mem.role === "mage")) return !!rec.spellKind;
+    }
     return true;
   }
 
@@ -842,6 +998,12 @@
     if (!current || memberId !== current) return;
     if (action === "attack") {
       state.combat.choices[memberId] = { action: "attack", targetId: null };
+    } else if (action === "item") {
+      state.combat.choices[memberId] = { action: "item", targetId: null, itemKind: null };
+    } else if (action === "spell") {
+      var m = teamMemberById(memberId);
+      if (m && (m.role === "priest" || m.role === "mage")) state.combat.choices[memberId] = { action: "spell", targetId: null, spellKind: null };
+      else state.combat.choices[memberId] = { action: "spell", targetId: null };
     } else {
       state.combat.choices[memberId] = { action: action, targetId: null };
     }
@@ -861,6 +1023,26 @@
     }
     if (!target) return;
     state.combat.choices[current] = { action: "attack", targetId: foeId };
+    render();
+  }
+
+  function chooseItemOption(itemKind) {
+    if (!state.combat || !itemKind) return;
+    var current = currentPlannerId();
+    if (!current) return;
+    var rec = choiceForMember(current);
+    if (!rec || rec.action !== "item") return;
+    state.combat.choices[current] = { action: "item", targetId: null, itemKind: itemKind };
+    render();
+  }
+
+  function chooseSpellOption(spellKind) {
+    if (!state.combat || !spellKind) return;
+    var current = currentPlannerId();
+    if (!current) return;
+    var rec = choiceForMember(current);
+    if (!rec || rec.action !== "spell") return;
+    state.combat.choices[current] = { action: "spell", targetId: null, spellKind: spellKind };
     render();
   }
 
@@ -926,11 +1108,35 @@
         continue;
       }
       if (act === "spell") {
+        if ((m.role === "priest" || m.role === "mage") && (ref.mp || 0) < 5) {
+          logLine(m.name + " tries to cast but lacks MP.", "bad");
+          continue;
+        }
         if (m.role === "priest") {
-          var ally = lowestHpAlly();
-          if (ally) {
-            healMember(ally.id, 5);
-            logLine(m.name + " casts Mend on " + ally.name + " (+5 HP).", "good");
+          var priestSpell = rec && rec.spellKind ? rec.spellKind : "";
+          if (priestSpell === "heal") {
+            var ally2 = lowestHpAlly();
+            if (ally2) {
+              ref.mp = Math.max(0, (ref.mp || 0) - 5);
+              healMember(ally2.id, 4);
+              logLine(m.name + " casts Heal on " + ally2.name + " (+4, 5 MP).", "good");
+            } else {
+              logLine(m.name + " casts Heal but no one is injured.", "");
+            }
+          } else {
+            ref.mp = Math.max(0, (ref.mp || 0) - 5);
+            var sparkTarget = randomFoe();
+            if (sparkTarget) {
+              strikeFoe(sparkTarget, 2);
+              logLine(m.name + " casts Spark on " + sparkTarget.name + " (-2, 5 MP).", "hi");
+            }
+          }
+        } else if (m.role === "mage") {
+          ref.mp = Math.max(0, (ref.mp || 0) - 5);
+          var fireTarget = randomFoe();
+          if (fireTarget) {
+            strikeFoe(fireTarget, 2);
+            logLine(m.name + " casts Fire on " + fireTarget.name + " (-2, 5 MP).", "hi");
           }
         } else if (m.role === "soldier") {
           var wk = weakestFoes(2);
@@ -951,23 +1157,55 @@
         continue;
       }
       if (act === "item") {
-        if (state.food > 0) {
-          state.food--;
-          healMember(m.id, 5);
-          logLine(m.name + " uses 1 supply (+5 HP).", "good");
-        } else if (state.weapons > 0) {
-          state.weapons--;
-          var boss = strongestFoe();
-          if (boss) {
-            strikeFoe(boss, 7);
-            logLine(m.name + " uses a spare blade on " + boss.name + " (-7).", "hi");
+        var itemKind = rec && rec.itemKind ? rec.itemKind : "";
+        if (itemKind === "life_potion") {
+          var fallen = state.party.filter(function (p) {
+            return p.hp <= 0;
+          });
+          if (!fallen.length || state.lifePotions <= 0) {
+            logLine(m.name + " cannot use Potion of Life right now.", "bad");
+            continue;
           }
-        } else {
-          logLine(m.name + " has no items to use.", "bad");
+          state.lifePotions--;
+          var revived = fallen[0];
+          revived.hp = Math.max(1, Math.ceil(revived.maxHp * 0.5));
+          logLine(m.name + " uses Potion of Life on " + revived.name + " (revived to " + revived.hp + " HP).", "good");
+          continue;
         }
+        if (itemKind === "heal_potion") {
+          if (state.healingPotions <= 0) {
+            logLine(m.name + " has no Potion of Healing.", "bad");
+            continue;
+          }
+          state.healingPotions--;
+          healMember(m.id, 3);
+          logLine(m.name + " drinks Potion of Healing (+3 HP).", "good");
+          continue;
+        }
+        logLine(m.name + " has no item selected.", "bad");
         continue;
       }
     }
+  }
+
+  function foePrefersSoftTargets(foe) {
+    var lower = (foe && foe.name ? foe.name : "").toLowerCase();
+    return lower.indexOf("dragon") >= 0 || lower.indexOf("lich") >= 0;
+  }
+
+  function pickEnemyTarget(foe, live) {
+    if (!live.length) return null;
+    if (!foePrefersSoftTargets(foe)) return live[rollInt(0, live.length - 1)];
+    var preferredRoles = { priest: true, mage: true, farmer: true, artisan: true, merchant: true };
+    var first = live.filter(function (m) {
+      return preferredRoles[m.role || ""];
+    });
+    if (first.length) return first[rollInt(0, first.length - 1)];
+    var second = live.filter(function (m) {
+      return (m.role || "") !== "soldier";
+    });
+    if (second.length) return second[rollInt(0, second.length - 1)];
+    return live[rollInt(0, live.length - 1)];
   }
 
   function enemyVolley() {
@@ -983,7 +1221,7 @@
         return teamMemberById(m.id) && teamMemberById(m.id).hp > 0;
       });
       if (!live.length) break;
-      var v = live[rollInt(0, live.length - 1)];
+      var v = pickEnemyTarget(f, live);
       var dmg = Math.max(0, parseInt(f.dmg, 10) || 2);
       if (c.defending[v.id]) dmg = Math.max(0, dmg - 2);
       damageMember(v.id, dmg);
@@ -1034,8 +1272,11 @@
   function applyRuinsDiscoveryEncounter() {
     state.ruinsDiscovered = true;
     state.ruinsTravelDay = state.travelDay;
+    state.ruinsRoomsTotal = rollRuinsRoomCount();
+    state.ruinsRoomsRemaining = state.ruinsRoomsTotal;
     state.pendingEncounter = { kind: "ruins_discovery", label: "Mysterious ruins", foes: [] };
     state.phase = "action";
+    logLine("Ruins mapped: " + state.ruinsRoomsTotal + " room(s) detected.", "hi");
   }
 
   function runTravelDayResolution() {
@@ -1059,7 +1300,7 @@
     if (hadEncounter) {
       var t = rollFieldEncounterType();
       if (t === "ruins_discovery") {
-        queueEncounterCutaway("Ruins on the horizon", "Day " + state.travelDay + " - old stonework breaks the skyline", function () {
+        queueEncounterCutaway("Shrine ruins on the horizon", "Day " + state.travelDay + " - old stonework breaks the skyline", function () {
           applyRuinsDiscoveryEncounter();
         });
         return;
@@ -1070,8 +1311,8 @@
       return;
     }
     if (!state.ruinsDiscovered && Math.random() < RUINS_QUIET_DAY_CHANCE) {
-      logLine("Scouts spot old stonework off-road.", "hi");
-      queueEncounterCutaway("Strange ground", "Day " + state.travelDay + " - a side path worth a look", function () {
+      logLine("Scouts spot a shrine ruin off-road.", "hi");
+      queueEncounterCutaway("Shrine ruins", "Day " + state.travelDay + " - a side path worth a look", function () {
         applyRuinsDiscoveryEncounter();
       });
       return;
@@ -1099,27 +1340,80 @@
   }
 
   function buy(item) {
-    if (item !== "food") {
-      logLine("Only supplies can be purchased during this test.", "bad");
+    if (item === "food") {
+      if (state.gold < 1) {
+        logLine("The shopkeeper shrugs: you need at least <span class=\"hi\">1 gp</span>.", "bad");
+        render();
+        return;
+      }
+      if (state.food >= MAX_SUPPLIES) {
+        logLine("Supply packs are full (" + MAX_SUPPLIES + ").", "bad");
+        render();
+        return;
+      }
+      state.gold -= 1;
+      addSupplies(1);
+      logLine("Bought 1 supply.", "");
       render();
       return;
     }
-    if (state.gold < 1) {
-      logLine("The shopkeeper shrugs: you need at least <span class=\"hi\">1 gp</span>.", "bad");
+    if (item === "heal_potion") {
+      if (state.gold < 5) {
+        logLine("Need 5 gp for a Potion of Healing.", "bad");
+        render();
+        return;
+      }
+      state.gold -= 5;
+      state.healingPotions += 1;
+      logLine("Bought Potion of Healing (+3 HP when used).", "good");
+      render();
       return;
     }
-    state.gold--;
-    state.food++;
-    logLine("Bought 1 supply.", "");
+    if (item === "life_potion") {
+      if (state.gold < 15) {
+        logLine("Need 15 gp for a Potion of Life.", "bad");
+        render();
+        return;
+      }
+      state.gold -= 15;
+      state.lifePotions += 1;
+      logLine("Bought Potion of Life (revive to 50% HP).", "good");
+      render();
+      return;
+    }
+    logLine("That item is not sold here.", "bad");
     render();
   }
 
   function restAtInn() {
+    if (state.gold >= 10) {
+      var cost = Math.max(1, Math.ceil(state.gold * 0.1));
+      if (state.gold < cost) {
+        logLine("Not enough gold for an inn room.", "bad");
+        render();
+        return;
+      }
+      state.gold -= cost;
+      state.party.forEach(function (m) {
+        if (m.hp > 0) m.hp = m.maxHp;
+      });
+      if (state.guest && state.guest.hp > 0) state.guest.hp = state.guest.maxHp;
+      logLine("Inn stay complete (-" + cost + " gp). Living members restored to full HP.", "good");
+      render();
+      return;
+    }
+
     state.party.forEach(function (m) {
-      m.hp = m.maxHp;
+      if (m.hp <= 0) return;
+      var missing = Math.max(0, m.maxHp - m.hp);
+      var gain = Math.ceil(missing * 0.5);
+      m.hp = Math.min(m.maxHp, m.hp + gain);
     });
-    if (state.guest) state.guest.hp = state.guest.maxHp;
-    logLine("Full rest at the inn.", "good");
+    if (state.guest && state.guest.hp > 0) {
+      var gMissing = Math.max(0, state.guest.maxHp - state.guest.hp);
+      state.guest.hp = Math.min(state.guest.maxHp, state.guest.hp + Math.ceil(gMissing * 0.5));
+    }
+    logLine("Low funds: the stable grants a rough rest (50% missing HP recovered).", "");
     render();
   }
 
@@ -1137,6 +1431,18 @@
     if (state.party.length >= PARTY_MAX) {
       logLine("Party is full (" + PARTY_MAX + " members).", "bad");
       return;
+    }
+    if (state.phase === "settlement" && state.settlementView === "tavern") {
+      if ((state.settlementRecruitSlots || 0) <= 0) {
+        logLine("No recruits are available in this settlement right now.", "bad");
+        render();
+        return;
+      }
+      if (state.settlementRecruitMode === "soldier_only" && role !== "soldier") {
+        logLine("Solem only has soldiers available for hire.", "bad");
+        render();
+        return;
+      }
     }
     var id = "p" + state.partyIdSeq++;
     var portrait = pickUniquePortrait(role, null, usedHeadshotsMap());
@@ -1157,6 +1463,9 @@
         maxHp: CLASS_HP[role],
       })
     );
+    if (state.phase === "settlement" && state.settlementView === "tavern") {
+      state.settlementRecruitSlots = Math.max(0, (state.settlementRecruitSlots || 0) - 1);
+    }
     logLine("Recruited a " + role + " (" + id + ").", "good");
     render();
   }
@@ -1230,6 +1539,18 @@
       '<button type="button" id="addMercenary"' +
       dis +
       ">+ Mercenary</button>" +
+      '<button type="button" id="addFarmer"' +
+      dis +
+      ">+ Farmer</button>" +
+      '<button type="button" id="addArtisan"' +
+      dis +
+      ">+ Artisan</button>" +
+      '<button type="button" id="addMerchant"' +
+      dis +
+      ">+ Merchant</button>" +
+      '<button type="button" id="addMage"' +
+      dis +
+      ">+ Mage</button>" +
       "</div>"
     );
   }
@@ -1295,6 +1616,7 @@
     return (
       '<div class="illiri-tabs">' +
       tab("church", "Church") +
+      tab("inn", "Inn") +
       tab("tavern", "Tavern") +
       tab("shop", "Shop") +
       tab("depart", "Depart") +
@@ -1321,8 +1643,13 @@
       render();
       return;
     }
+    if (state.food >= MAX_SUPPLIES) {
+      logLine("Supplies are already at max capacity (" + MAX_SUPPLIES + ").", "bad");
+      render();
+      return;
+    }
     state.gold -= 1;
-    state.food += 1;
+    addSupplies(1);
     logLine("Bought 1 supply.", "good");
     render();
   }
@@ -1365,6 +1692,10 @@
     var addS = root.querySelector("#addSoldier");
     var addP = root.querySelector("#addPriest");
     var addM = root.querySelector("#addMercenary");
+    var addF = root.querySelector("#addFarmer");
+    var addA = root.querySelector("#addArtisan");
+    var addMer = root.querySelector("#addMerchant");
+    var addMage = root.querySelector("#addMage");
     if (addS)
       addS.onclick = function () {
         addPartyMember("soldier");
@@ -1377,6 +1708,22 @@
       addM.onclick = function () {
         addPartyMember("mercenary");
       };
+    if (addF)
+      addF.onclick = function () {
+        addPartyMember("farmer");
+      };
+    if (addA)
+      addA.onclick = function () {
+        addPartyMember("artisan");
+      };
+    if (addMer)
+      addMer.onclick = function () {
+        addPartyMember("merchant");
+      };
+    if (addMage)
+      addMage.onclick = function () {
+        addPartyMember("mage");
+      };
   }
 
   function departIllirial() {
@@ -1387,8 +1734,14 @@
     state.phase = "travel";
     state.travelDay = 0;
     state.encounterChance = ENCOUNTER_BASE;
+    state.ruinsDiscovered = false;
+    state.ruinsTravelDay = null;
+    state.ruinsSearched = false;
+    state.ruinsRoomsTotal = 0;
+    state.ruinsRoomsRemaining = 0;
     state.transition = { kind: "depart", stage: "blackout" };
     var dest = currentDestination();
+    state.legRouteDays = rollRouteDaysForDestination(dest.key);
     state.finalBossCleared = dest.key !== "new_isil";
     var originLabel = currentOriginLabel();
     logLine("You depart " + originLabel + " for " + dest.label + ".", "hi");
@@ -1552,6 +1905,10 @@
     if (role === "soldier") return "Soldier";
     if (role === "priest") return "Priest";
     if (role === "mercenary") return "Mercenary";
+    if (role === "farmer") return "Farmer";
+    if (role === "artisan") return "Artisan";
+    if (role === "merchant") return "Merchant";
+    if (role === "mage") return "Mage";
     return "Traveler";
   }
 
@@ -1575,6 +1932,10 @@
     if (role === "soldier") keys = ["soldier"];
     else if (role === "priest") keys = ["priest", "cleric"];
     else if (role === "mercenary") keys = ["mercenary"];
+    else if (role === "farmer") keys = ["farmer"];
+    else if (role === "artisan") keys = ["artisan"];
+    else if (role === "merchant") keys = ["merchant"];
+    else if (role === "mage") keys = ["mage", "wizard"];
     var roleFiltered = HEADSHOT_FILES.filter(function (file) {
       var lower = file.toLowerCase();
       for (var i = 0; i < keys.length; i++) if (lower.indexOf(keys[i]) >= 0) return true;
@@ -1655,6 +2016,10 @@
     if (role === "soldier") return ["classic", "veteran", "warden"];
     if (role === "priest") return ["classic", "scribe", "oracle"];
     if (role === "mercenary") return ["classic", "raider", "ranger"];
+    if (role === "farmer") return ["classic", "homestead", "fieldhand"];
+    if (role === "artisan") return ["classic", "guild", "maker"];
+    if (role === "merchant") return ["classic", "ledger", "broker"];
+    if (role === "mage") return ["classic", "apprentice", "archon"];
     return ["classic"];
   }
 
@@ -1816,6 +2181,16 @@
       })
       .join("");
 
+    var travelPotionActions = "";
+    if (state.phase === "travel") {
+      travelPotionActions =
+        '<div class="actions">' +
+        '<button type="button" id="invUseHealPotion"' + (state.healingPotions > 0 && focus.hp > 0 && focus.hp < focus.maxHp ? "" : " disabled") + '>Use Healing Potion (' + state.healingPotions + ')</button>' +
+        '<button type="button" id="invUseLifePotion"' + (state.lifePotions > 0 && focus.hp <= 0 ? "" : " disabled") + '>Use Life Potion (' + state.lifePotions + ')</button>' +
+        ((focus.role === "priest") ? '<button type="button" id="invCastHeal"' + (((focus.mp || 0) >= 5 && focus.hp > 0 && focus.hp < focus.maxHp) ? "" : " disabled") + '>Cast Heal (+4 HP, 5 MP)</button>' : "") +
+        "</div>";
+    }
+
     return (
       '<section class="sheet-wrap sheet-wrap--single">' +
       '<div class="sheet-card">' +
@@ -1863,6 +2238,7 @@
       "</p>" +
       "</div>" +
       "</div>" +
+      travelPotionActions +
       '<div class="sheet-divider"></div>' +
       '<div class="sheet-sections">' +
       '<h4>-Stats-</h4>' +
@@ -1909,6 +2285,40 @@
     if (back) {
       back.onclick = function () {
         state.inventoryDetailOpen = false;
+        render();
+      };
+    }
+
+    var useHeal = root.querySelector("#invUseHealPotion");
+    if (useHeal) {
+      useHeal.onclick = function () {
+        var m = inventoryMemberById(state.inventoryFocusId);
+        if (!m || m.hp <= 0 || m.hp >= m.maxHp || state.healingPotions <= 0) return;
+        state.healingPotions--;
+        m.hp = Math.min(m.maxHp, m.hp + 3);
+        logLine(m.name + " uses Potion of Healing (+3 HP).", "good");
+        render();
+      };
+    }
+    var useLife = root.querySelector("#invUseLifePotion");
+    if (useLife) {
+      useLife.onclick = function () {
+        var m = inventoryMemberById(state.inventoryFocusId);
+        if (!m || m.hp > 0 || state.lifePotions <= 0) return;
+        state.lifePotions--;
+        m.hp = Math.max(1, Math.ceil(m.maxHp * 0.5));
+        logLine(m.name + " is revived with Potion of Life (" + m.hp + " HP).", "good");
+        render();
+      };
+    }
+    var castHeal = root.querySelector("#invCastHeal");
+    if (castHeal) {
+      castHeal.onclick = function () {
+        var m = inventoryMemberById(state.inventoryFocusId);
+        if (!m || m.role !== "priest" || m.hp <= 0 || m.hp >= m.maxHp || (m.mp || 0) < 5) return;
+        m.mp = Math.max(0, (m.mp || 0) - 5);
+        m.hp = Math.min(m.maxHp, m.hp + 4);
+        logLine(m.name + " casts Heal in camp (+4 HP, 5 MP).", "good");
         render();
       };
     }
@@ -1976,6 +2386,8 @@
     var actions = ["attack", "defend", "spell", "item"];
     var labels = { attack: "Attack", defend: "Defend", spell: "Spell", item: "Item" };
     var btns = "";
+    var itemMenu = "";
+    var spellMenu = "";
     var a;
     for (a = 0; a < actions.length; a++) {
       var key = actions[a];
@@ -1992,6 +2404,33 @@
         '>' +
         labels[key] +
         "</button>";
+    }
+    if (isActive && act === "spell") {
+      var selectedSpell = rec && rec.spellKind ? rec.spellKind : "";
+      if (m.role === "priest") {
+        var spellDisabled = (ref.mp || 0) >= 5 ? "" : " disabled";
+        spellMenu =
+          '<div class="battle-item-menu">' +
+          '<button type="button" class="act-btn' + (selectedSpell === "spark" ? " selected" : "") + '" data-spell-choice="spark"' + spellDisabled + '>Spark (2 dmg, 5 MP)</button>' +
+          '<button type="button" class="act-btn' + (selectedSpell === "heal" ? " selected" : "") + '" data-spell-choice="heal"' + spellDisabled + '>Heal (+4 HP, 5 MP)</button>' +
+          "</div>";
+      } else if (m.role === "mage") {
+        var fireDisabled = (ref.mp || 0) >= 5 ? "" : " disabled";
+        spellMenu =
+          '<div class="battle-item-menu">' +
+          '<button type="button" class="act-btn' + (selectedSpell === "fire" ? " selected" : "") + '" data-spell-choice="fire"' + fireDisabled + '>Fire (2 dmg, 5 MP)</button>' +
+          "</div>";
+      }
+    }
+    if (isActive && act === "item") {
+      var selectedItem = rec && rec.itemKind ? rec.itemKind : "";
+      var healDisabled = state.healingPotions > 0 ? "" : " disabled";
+      var lifeDisabled = state.lifePotions > 0 ? "" : " disabled";
+      itemMenu =
+        '<div class="battle-item-menu">' +
+        '<button type="button" class="act-btn' + (selectedItem === "heal_potion" ? " selected" : "") + '" data-item-choice="heal_potion"' + healDisabled + '>Healing potion (' + state.healingPotions + ')</button>' +
+        '<button type="button" class="act-btn' + (selectedItem === "life_potion" ? " selected" : "") + '" data-item-choice="life_potion"' + lifeDisabled + '>Life potion (' + state.lifePotions + ')</button>' +
+        "</div>";
     }
     return (
       '<div class="battle-card' +
@@ -2017,6 +2456,8 @@
       "</div>" +
       '<div class="battle-actions">' +
       btns +
+      spellMenu +
+      itemMenu +
       "</div>" +
       "</div>"
     );
@@ -2249,6 +2690,22 @@
         };
       })(targets[j]);
     }
+    var itemBtns = root.querySelectorAll("[data-item-choice]");
+    for (var k = 0; k < itemBtns.length; k++) {
+      itemBtns[k].onclick = (function (ib) {
+        return function () {
+          chooseItemOption(ib.getAttribute("data-item-choice"));
+        };
+      })(itemBtns[k]);
+    }
+    var spellBtns = root.querySelectorAll("[data-spell-choice]");
+    for (var si = 0; si < spellBtns.length; si++) {
+      spellBtns[si].onclick = (function (sb) {
+        return function () {
+          chooseSpellOption(sb.getAttribute("data-spell-choice"));
+        };
+      })(spellBtns[si]);
+    }
     var autoBtn = root.querySelector("#autoRoundBtn");
     if (autoBtn) autoBtn.onclick = autoPlanRemainingChoices;
   }
@@ -2286,8 +2743,15 @@
         render();
       };
       document.getElementById("presetLeaderBtn").onclick = function () {
-        beginRunWithLeader(PRESET_LEADER);
-        render();
+        try {
+          beginRunWithLeader(PRESET_LEADER);
+          render();
+        } catch (err) {
+          var msg = err && err.message ? err.message : "Unknown preset start error.";
+          logLine("Preset caravan failed to initialize: " + msg, "bad");
+          if (typeof console !== "undefined" && console.error) console.error(err);
+          render();
+        }
       };
       return;
     }
@@ -2370,7 +2834,15 @@
         (draft.role === "priest" ? " selected" : "") +
         '>Priest</option><option value="mercenary"' +
         (draft.role === "mercenary" ? " selected" : "") +
-        '>Mercenary</option></select></label>' +
+        '>Mercenary</option><option value="farmer"' +
+        (draft.role === "farmer" ? " selected" : "") +
+        '>Farmer</option><option value="artisan"' +
+        (draft.role === "artisan" ? " selected" : "") +
+        '>Artisan</option><option value="merchant"' +
+        (draft.role === "merchant" ? " selected" : "") +
+        '>Merchant</option><option value="mage"' +
+        (draft.role === "mage" ? " selected" : "") +
+        '>Mage</option></select></label>' +
         '<label>Gender <select id="leadGender"><option value="man"' +
         ((draft.gender || "man") === "man" ? " selected" : "") +
         '>Man</option><option value="woman"' +
@@ -2561,7 +3033,7 @@
           "<h2 class=\"panel-title\">Inn</h2>" +
           "<p class=\"town-lead\">Straw beds and a hearth. The host keeps a fair price for a night that mends bone and nerve.</p>" +
           "<div class=\"actions\">" +
-          '<button type="button" id="innRest">Rest (full heal)</button>' +
+          '<button type="button" id="innRest">Rest at inn</button>' +
           "</div>" +
           renderLog();
         wireIlliriTabs(app);
@@ -2628,7 +3100,7 @@
           "</div>" +
           rosterEditHtml(
             "Add / remove party members",
-            "Recruit soldiers, priests, or mercenaries. Up to " +
+            "Recruit soldiers, priests, mercenaries, farmers, artisans, merchants, or mages. Up to " +
               PARTY_MAX +
               " in the traveling party (guest not counted). At least one must stay."
           ) +
@@ -2685,7 +3157,9 @@
           state.gold +
           "</b> gp</p>" +
           "<div class=\"shop-block\">" +
-          "<div class=\"shop-row\"><span>Supplies (food + water)</span><button type=\"button\" id=\"buyFood\">Buy 1 gp</button></div>" +
+          "<div class=\"shop-row\"><span>Supplies</span><button type=\"button\" id=\"buyFood\">Buy 1 gp</button></div>" +
+          "<div class=\"shop-row\"><span>Potion of Healing (+3 HP)</span><button type=\"button\" id=\"buyHealPotion\">Buy 5 gp</button></div>" +
+          "<div class=\"shop-row\"><span>Potion of Life (revive 50%)</span><button type=\"button\" id=\"buyLifePotion\">Buy 15 gp</button></div>" +
           "</div>" +
           '<div class="actions"><button type="button" id="openInvFromShop">Inventory & dolls</button></div>' +
           renderLog();
@@ -2694,6 +3168,12 @@
         if (openInvShop) openInvShop.onclick = openInventoryView;
         document.getElementById("buyFood").onclick = function () {
           buy("food");
+        };
+        document.getElementById("buyHealPotion").onclick = function () {
+          buy("heal_potion");
+        };
+        document.getElementById("buyLifePotion").onclick = function () {
+          buy("life_potion");
         };
         return;
       }
@@ -2777,14 +3257,16 @@
         '<h2 class="panel-title">' + town.label + '</h2>' +
         (state.settlementView === "church"
           ? '<p class="town-lead">A quiet chapel waits by the market road.</p><div class="actions"><button type="button" id="settlementBless">Receive blessing</button></div>'
+          : state.settlementView === "inn"
+            ? '<p class="town-lead">A warm inn offers cots, stew, and a safe night to recover.</p><div class="actions"><button type="button" id="settlementInnRest">Rest at inn</button></div>'
           : state.settlementView === "tavern"
             ? '<p class="tavern-lead">Fresh crews trade stories and caravan contracts.</p>' +
               rosterEditHtml(
                 "Tavern roster",
-                "Recruit soldiers, priests, or mercenaries. Up to " + PARTY_MAX + " in the traveling party."
+                settlementRecruitNote(town.key)
               )
             : state.settlementView === "shop"
-              ? '<p class="shopkeeper-lead">Restock before the next leg: supplies, weapons, and gem exchange.</p>' +
+              ? '<p class="shopkeeper-lead">Restock before the next leg: supplies, weapons, and potions.</p>' +
                 '<p class="shop-gold-line">Your purse: <b>' +
                 state.gold +
                 '</b> gp | Gems: <b>' +
@@ -2792,6 +3274,8 @@
                 '</b></p>' +
                 '<div class="shop-block">' +
                 '<div class="shop-row"><span>Supplies</span><button type="button" id="settlementBuySupply">Buy 1 gp</button></div>' +
+                '<div class="shop-row"><span>Potion of Healing (+3 HP)</span><button type="button" id="settlementBuyHealPotion">Buy 5 gp</button></div>' +
+                '<div class="shop-row"><span>Potion of Life (revive 50%)</span><button type="button" id="settlementBuyLifePotion">Buy 15 gp</button></div>' +
                 '<div class="shop-row"><span>Weapon</span><button type="button" id="settlementBuyWeapon">Buy 3 gp</button></div>' +
                 '<div class="shop-row"><span>Sell gem</span><button type="button" id="settlementSellGem">Sell 1 gem (5 gp)</button></div>' +
                 '</div>'
@@ -2820,10 +3304,14 @@
           else logLine("The prayer brings calm, but no lasting boon this time.", "");
           render();
         };
+      } else if (state.settlementView === "inn") {
+        document.getElementById("settlementInnRest").onclick = restAtInn;
       } else if (state.settlementView === "tavern") {
         wireRosterEdit(app);
       } else if (state.settlementView === "shop") {
         document.getElementById("settlementBuySupply").onclick = buySettlementSupplies;
+        document.getElementById("settlementBuyHealPotion").onclick = function () { buy("heal_potion"); };
+        document.getElementById("settlementBuyLifePotion").onclick = function () { buy("life_potion"); };
         document.getElementById("settlementBuyWeapon").onclick = buySettlementWeapon;
         document.getElementById("settlementSellGem").onclick = sellSettlementGem;
       } else if (state.settlementView === "depart") {
@@ -2857,26 +3345,43 @@
           "</div>" +
           renderHeader() +
           "<h2 class=\"panel-title\">Ruins</h2>" +
-          "<p>Search uses the day. " +
+          "<p>Rooms to explore: <b>" + state.ruinsRoomsRemaining + "</b> / " + state.ruinsRoomsTotal +
+          ". Each room may trigger monsters (" +
           Math.round(SKELETON_FIGHT_CHANCE * 100) +
-          "% chance of random monsters (1 HP each in this leveling test).</p>" +
+          "% chance).</p>" +
           "<div class=\"actions\">" +
           "<button type=\"button\" id=\"searchRuins\">Search ruins</button>" +
           "<button type=\"button\" id=\"skipRuins\">Mark and leave</button>" +
           "</div>" +
           renderLog();
         document.getElementById("searchRuins").onclick = function () {
-          if (Math.random() < SKELETON_FIGHT_CHANCE) {
-            var pack = buildRandomMonsterEncounter("ruins");
-            startTacticalCombat({ kind: "ruins_combat", label: pack.label, foes: pack.foes });
-            render();
-          } else {
+          if (state.ruinsRoomsRemaining <= 0) {
             resolveRuinsSearchRewards();
             finishEncounterCommon();
+            return;
+          }
+          var roomIdx = state.ruinsRoomsTotal - state.ruinsRoomsRemaining + 1;
+          state.ruinsRoomsRemaining -= 1;
+          if (Math.random() < SKELETON_FIGHT_CHANCE) {
+            var pack = buildRandomMonsterEncounter("ruins");
+            startTacticalCombat({ kind: "ruins_combat", label: "Ruins room " + roomIdx + " encounter", foes: pack.foes });
+            render();
+            return;
+          }
+          var roomGold = roadGoldBonus(rollInt(1, 2));
+          var roomGems = Math.random() < 0.25 ? 1 : 0;
+          state.gold += roomGold;
+          state.gems += roomGems;
+          logLine("Ruins room " + roomIdx + " cleared: +" + roomGold + " gold" + (roomGems ? ", +1 gem" : "") + ".", "good");
+          if (state.ruinsRoomsRemaining <= 0) {
+            resolveRuinsSearchRewards();
+            finishEncounterCommon();
+          } else {
+            render();
           }
         };
         document.getElementById("skipRuins").onclick = function () {
-          logLine("Ruins marked on your map (pinned to this day).", "");
+          logLine("Ruins marked on your map (" + state.ruinsRoomsRemaining + " room(s) left unexplored).", "");
           finishEncounterCommon();
         };
         return;

@@ -5,8 +5,10 @@
   var CLASS_HP = { soldier: 10, priest: 5, mercenary: 7 };
   var DEFAULT_ROUTE_DAYS = 10;
   var DESTINATIONS = {
-    new_isil: { key: "new_isil", label: "New Isil", subtitle: "End city - spires above the bay", badge: "Harbor" },
     gustaf: { key: "gustaf", label: "Gustaf", subtitle: "Stone quays and wind-bent banners", badge: "Port" },
+    hollow_banks: { key: "hollow_banks", label: "Hollow Banks", subtitle: "Reed marsh and fogbound piers", badge: "Frontier" },
+    solem: { key: "solem", label: "Solem", subtitle: "Hill citadel above the river forks", badge: "Citadel" },
+    new_isil: { key: "new_isil", label: "New Isil", subtitle: "End city - spires above the bay", badge: "Harbor" },
   };
   var PARTY_MAX = 6;
   var STAT_KEYS = ["strength", "intelligence", "stamina", "luck"];
@@ -162,11 +164,11 @@
   }
 
   function destinationForKey(key) {
-    return DESTINATIONS[key] || DESTINATIONS.new_isil;
+    return DESTINATIONS[key] || DESTINATIONS.gustaf;
   }
 
   function currentDestination() {
-    return destinationForKey(state && state.travelDestination ? state.travelDestination : "new_isil");
+    return destinationForKey(state && state.travelDestination ? state.travelDestination : "gustaf");
   }
 
   function locationLabel(key) {
@@ -179,14 +181,39 @@
   }
 
   function routeDaysForLeg(originKey, destinationKey) {
-    if (destinationKey === "gustaf") return 4;
-    if (destinationKey === "new_isil") return 7;
+    if (destinationKey === "gustaf") return 10;
+    if (destinationKey === "hollow_banks") return 10;
+    if (destinationKey === "solem") return 10;
+    if (destinationKey === "new_isil") return 10;
     return DEFAULT_ROUTE_DAYS;
+  }
+
+  function nextTrailDestinationFrom(originKey) {
+    if (originKey === "cantebury") return DESTINATIONS.gustaf;
+    if (originKey === "gustaf") return DESTINATIONS.hollow_banks;
+    if (originKey === "hollow_banks") return DESTINATIONS.solem;
+    if (originKey === "solem") return DESTINATIONS.new_isil;
+    return null;
+  }
+
+  function trailLegIndex(originKey) {
+    if (originKey === "gustaf") return 1;
+    if (originKey === "hollow_banks") return 2;
+    if (originKey === "solem") return 3;
+    return 0;
+  }
+
+  function monsterHpMultiplierForProgress() {
+    var origin = state && state.travelOrigin ? state.travelOrigin : "cantebury";
+    var legIndex = trailLegIndex(origin);
+    var routeDays = Math.max(1, currentRouteDays());
+    var dayRatio = Math.min(1, Math.max(0, (state && state.travelDay ? state.travelDay : 0) / routeDays));
+    return 1 + legIndex * 0.35 + dayRatio * 0.15;
   }
 
   function currentRouteDays() {
     var origin = state && state.travelOrigin ? state.travelOrigin : "cantebury";
-    var dest = state && state.travelDestination ? state.travelDestination : "new_isil";
+    var dest = state && state.travelDestination ? state.travelDestination : "gustaf";
     return routeDaysForLeg(origin, dest);
   }
 
@@ -399,7 +426,7 @@
       partyIdSeq: 6,
       illiriView: "church",
       travelOrigin: "cantebury",
-      travelDestination: "new_isil",
+      travelDestination: "gustaf",
       guest: null,
       travelDay: 0,
       encounterChance: ENCOUNTER_BASE,
@@ -420,6 +447,7 @@
       settlementTown: null,
       settlementView: "church",
       gameoverMode: null,
+      finalBossCleared: false,
     };
   }
 
@@ -518,17 +546,37 @@
     var list = [];
     for (var i = 0; i < n; i++) {
       var mon = randomBalanceMonster();
-      var monsterHp = Math.max(1, parseInt(mon && mon.hp, 10) || 1);
+      var baseMonsterHp = Math.max(1, parseInt(mon && mon.hp, 10) || 1);
+      var scaledMonsterHp = Math.max(1, Math.round(baseMonsterHp * monsterHpMultiplierForProgress()));
       list.push({
         id: "m" + i,
         name: mon.name,
-        hp: monsterHp,
-        maxHp: monsterHp,
+        hp: scaledMonsterHp,
+        maxHp: scaledMonsterHp,
         dmg: 2,
       });
     }
     var src = sourceKind || "road";
     return { kind: "monster_pack", label: n + " random monster(s) [" + src + "]", foes: list };
+  }
+
+  function buildNewIsilBossEncounter() {
+    return {
+      kind: "new_isil_gate_boss",
+      label: "SK Kew Kumber and his lich kings",
+      foes: [
+        {
+          id: "boss-sk-kumber",
+          name: "SK Kew Kumber",
+          hp: 100,
+          maxHp: 100,
+          dmg: 5,
+          portrait: "SK Kew Kumber.jpeg",
+        },
+        { id: "boss-lich-1", name: "Lich King", hp: 30, maxHp: 30, dmg: 4 },
+        { id: "boss-lich-2", name: "Lich King", hp: 30, maxHp: 30, dmg: 4 },
+      ],
+    };
   }
 
   function ruinsDiscoveryChance() {
@@ -547,7 +595,7 @@
     state.combat = {
       kind: enc.kind,
       foes: enc.foes.map(function (f) {
-        return { id: f.id, name: f.name, hp: f.hp, maxHp: f.maxHp, dmg: f.dmg };
+        return { id: f.id, name: f.name, hp: f.hp, maxHp: f.maxHp, dmg: f.dmg, portrait: f.portrait || "" };
       }),
       choices: {},
       defending: {},
@@ -727,7 +775,7 @@
     state.combat = null;
     endOfDayPriestHealing();
     if (state.travelDay >= currentRouteDays()) {
-      logLine("<span class=\"hi\">You reach New Isil.</span>", "good");
+      logLine("<span class=\"hi\">You reach " + currentDestination().label + ".</span>", "good");
       queueArrivalAtDestination();
     } else {
       queueResumeTravel();
@@ -739,6 +787,10 @@
     var foesDefeated = state.combat && state.combat.foes ? state.combat.foes.length : 0;
     trackPlaytest("combat_won", { kind: k, foesDefeated: foesDefeated, day: state.travelDay });
     if (foesDefeated > 0) grantXp(foesDefeated);
+    if (k === "new_isil_gate_boss") {
+      state.finalBossCleared = true;
+      logLine("SK Kew Kumber is defeated. The road to New Isil is open.", "good");
+    }
     winCombatLoot(k);
     if (k === "ruins_combat") resolveRuinsSearchRewards();
     state.encounterChance = ENCOUNTER_BASE;
@@ -992,6 +1044,17 @@
     state.travelDay++;
     logLine("Day " + state.travelDay + " of " + currentRouteDays() + " on the road.", "");
     trackPlaytest("day_advanced", { day: state.travelDay, routeDays: currentRouteDays() });
+    var preFinalDay = Math.max(1, currentRouteDays() - 1);
+    if (currentDestination().key === "new_isil" && !state.finalBossCleared && state.travelDay === preFinalDay) {
+      queueEncounterCutaway(
+        "Dark standard ahead",
+        "SK Kew Kumber blocks the final road to New Isil",
+        function () {
+          startTacticalCombat(buildNewIsilBossEncounter());
+        }
+      );
+      return;
+    }
     var hadEncounter = rollTravelEncounter();
     if (hadEncounter) {
       var t = rollFieldEncounterType();
@@ -1326,6 +1389,7 @@
     state.encounterChance = ENCOUNTER_BASE;
     state.transition = { kind: "depart", stage: "blackout" };
     var dest = currentDestination();
+    state.finalBossCleared = dest.key !== "new_isil";
     var originLabel = currentOriginLabel();
     logLine("You depart " + originLabel + " for " + dest.label + ".", "hi");
     trackPlaytest("travel_started", {
@@ -1389,7 +1453,7 @@
       '<p class="transition-sheet-title">' +
       tr.label +
       "</p>" +
-      '<p class="transition-sheet-sub">The harbor opens ahead</p></div>'
+      '<p class="transition-sheet-sub">The gates open ahead</p></div>'
     );
   }
 
@@ -1875,6 +1939,9 @@
     var pct = Math.round((100 * f.hp) / f.maxHp);
     var targetable = !!canTarget && f.hp > 0;
     var cls = "foe-card" + (targetable ? " foe-card-targetable" : "") + (selectedTarget ? " foe-card-selected" : "");
+    var portraitHtml = f.portrait
+      ? '<img class="foe-portrait" src="' + headshotUrl(f.portrait) + '" alt="' + escapeHtml(f.name + ' portrait') + '" loading="lazy">'
+      : "";
     return (
       '<button type="button" class="' +
       cls +
@@ -1883,6 +1950,7 @@
       '"' +
       (targetable ? "" : " disabled") +
       '>' +
+      portraitHtml +
       '<div class="foe-name">' +
       f.name +
       "</div>" +
@@ -2529,33 +2597,23 @@
         wireIlliriTabs(app);
         return;
       }
-
       if (state.illiriView === "depart") {
         app.innerHTML =
           startCitySplash() +
           illiriTabStrip() +
           "<h2 class=\"panel-title\">Depart</h2>" +
-          "<p class=\"town-lead\">The east gate opens on the trade road — plan your route to either New Isil or Gustaf.</p>" +
-          '<p><b>Destination:</b> ' + currentDestination().label + ' (' + currentRouteDays() + ' travel days)</p>' +
-          '<div class="actions">' +
-          '<button type="button" data-dest="new_isil"' + (state.travelDestination === "new_isil" ? ' class="primary"' : '') + '>Set route: New Isil</button>' +
-          '<button type="button" data-dest="gustaf"' + (state.travelDestination === "gustaf" ? ' class="primary"' : '') + '>Set route: Gustaf</button>' +
-          "</div>" +
+          "<p class=\"town-lead\">The east gate opens on a fixed trial route: Cantebury to Gustaf to Hollow Banks to Solem to New Isil (40 days total).</p>" +
+          '<p><b>Current leg:</b> Cantebury to Gustaf (10 travel days)</p>' +
           "<div class=\"actions\">" +
           '<button type="button" class="primary" id="departBtn">Leave Cantebury</button>' +
           "</div>" +
           renderLog();
         wireIlliriTabs(app);
-        var destBtns = app.querySelectorAll("[data-dest]");
-        for (var di = 0; di < destBtns.length; di++) {
-          destBtns[di].onclick = (function (btn) {
-            return function () {
-              state.travelDestination = btn.getAttribute("data-dest") || "new_isil";
-              render();
-            };
-          })(destBtns[di]);
-        }
-        document.getElementById("departBtn").onclick = departIllirial;
+        document.getElementById("departBtn").onclick = function () {
+          state.travelOrigin = "cantebury";
+          state.travelDestination = "gustaf";
+          departIllirial();
+        };
         return;
       }
 
@@ -2711,7 +2769,7 @@
       return;
     }
     if (state.phase === "settlement") {
-      var town = destinationForKey(state.settlementTown || "new_isil");
+      var town = destinationForKey(state.settlementTown || "gustaf");
       app.innerHTML =
         endCitySplash() +
         renderHeader() +
@@ -2738,8 +2796,10 @@
                 '<div class="shop-row"><span>Sell gem</span><button type="button" id="settlementSellGem">Sell 1 gem (5 gp)</button></div>' +
                 '</div>'
               : town.key === "gustaf"
-                ? '<p class="town-lead">Gustaf is resupplied. Continue your caravan to New Isil.</p><div class="actions"><button type="button" class="primary" id="continueToIsil">Depart for New Isil</button></div>'
-                : '<p class="town-lead">You reached New Isil. End this run and start another caravan.</p><div class="actions"><button type="button" class="primary" id="restart">Play again</button></div>') +
+                ? '<p class="town-lead">Gustaf is resupplied. Continue your caravan to Hollow Banks.</p><div class="actions"><button type="button" class="primary" id="continueTrailBtn">Depart for Hollow Banks</button></div>'
+                : town.key === "hollow_banks"
+                  ? '<p class="town-lead">Hollow Banks marks the midpoint. Press on to Solem.</p><div class="actions"><button type="button" class="primary" id="continueTrailBtn">Depart for Solem</button></div>'
+                  : '<p class="town-lead">Solem resupplied. One final push leads to New Isil.</p><div class="actions"><button type="button" class="primary" id="continueTrailBtn">Depart for New Isil</button></div>') +
         renderLog() +
         (state.transition && state.transition.kind === "arrive" ? transitionArriveOverlayHtml(state.transition) : "");
 
@@ -2767,10 +2827,11 @@
         document.getElementById("settlementBuyWeapon").onclick = buySettlementWeapon;
         document.getElementById("settlementSellGem").onclick = sellSettlementGem;
       } else if (state.settlementView === "depart") {
-        if (town.key === "gustaf") {
-          document.getElementById("continueToIsil").onclick = function () {
-            state.travelOrigin = "gustaf";
-            state.travelDestination = "new_isil";
+        var nextDest = nextTrailDestinationFrom(town.key);
+        if (nextDest) {
+          document.getElementById("continueTrailBtn").onclick = function () {
+            state.travelOrigin = town.key;
+            state.travelDestination = nextDest.key;
             departIllirial();
           };
         } else {
@@ -2842,6 +2903,7 @@
         var hint = "Pick actions in order, then End round.";
         if (activeMember && selectingTarget) hint = "Choose a monster target for " + activeMember.name + ".";
         else if (activeMember) hint = "Choose an action for " + activeMember.name + ".";
+        var bossFight = state.combat && state.combat.kind === "new_isil_gate_boss";
         app.innerHTML =
           '<div class="scene scene-splash scene-battle" role="img" aria-label="Battle">' +
           '<div class="splash-badge">Skirmish</div>' +
@@ -2864,7 +2926,7 @@
           "</div>" +
           "</div>" +
           "<div class=\"actions battle-actions-row\">" +
-          '<button type="button" id="fleeBtn">Flee</button>' +
+          '<button type="button" id="fleeBtn"' + (bossFight ? " disabled" : "") + '>Flee</button>' +
           '<button type="button" id="autoRoundBtn">Auto</button>' +
           '<button type="button" class="primary" id="endRoundBtn"' +
           (ready ? "" : " disabled") +
@@ -2875,7 +2937,8 @@
           "</p>" +
           renderLog();
         wireBattleActions(app);
-        document.getElementById("fleeBtn").onclick = fleeEncounter;
+        var fleeBtn = document.getElementById("fleeBtn");
+        if (fleeBtn && !bossFight) fleeBtn.onclick = fleeEncounter;
         document.getElementById("endRoundBtn").onclick = commitCombatRound;
         return;
       }
@@ -2883,7 +2946,7 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    logLine("Prepare in <span class=\"hi\">Cantebury</span>, then set a route toward New Isil or Gustaf.", "");
+    logLine("Prepare in <span class=\"hi\">Cantebury</span>, then travel the route to Gustaf, Hollow Banks, Solem, and New Isil.", "");
     trackPlaytest("app_loaded", { version: GAME_VERSION });
     render();
   });

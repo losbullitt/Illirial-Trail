@@ -2,6 +2,8 @@
   /* Scene photos under images/ — your art order: 1=end, 2–3=travel, 4=start */
   --scene-end: url("images/scene-end.jpg");
   --scene-gustaf: url("images/Gustaf.jpeg");
+  --scene-hollow-banks: url("images/Hollow Banks.jpeg");
+  --scene-solem: url("images/Solem.jpeg");
   --scene-field: url("images/scene-field.jpg");
   --scene-field-alt: url("images/scene-field2.jpg");
   --scene-town: url("images/scene-town.jpg");
@@ -561,6 +563,18 @@ code {
     var(--scene-gustaf);
 }
 
+.scene-end-city--hollow_banks {
+  background-image:
+    linear-gradient(185deg, rgba(66, 80, 70, 0.45) 0%, rgba(76, 92, 88, 0.58) 45%, rgba(20, 28, 25, 0.78) 100%),
+    var(--scene-hollow-banks);
+}
+
+.scene-end-city--solem {
+  background-image:
+    linear-gradient(185deg, rgba(70, 74, 92, 0.45) 0%, rgba(86, 84, 108, 0.58) 45%, rgba(24, 22, 34, 0.78) 100%),
+    var(--scene-solem);
+}
+
 .travel-visual {
   margin: 0 0 0.75rem;
   padding: 0.5rem 0.35rem 0.35rem;
@@ -975,6 +989,17 @@ code {
   font-weight: 700;
   font-size: 0.82rem;
   color: #fbb;
+}
+
+.foe-portrait {
+  width: 100%;
+  max-width: 5.2rem;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #5a3030;
+  margin-bottom: 0.3rem;
+  background: #120d0c;
 }
 
 .foe-meta {

@@ -16,7 +16,7 @@
     typeof window !== "undefined" && window.ILLIRIAL_BALANCE
       ? window.ILLIRIAL_BALANCE
       : {
-          version: "0.4.2",
+          version: "4.7.1",
           classCreationBonusPoints: 3,
           classes: {
             soldier: { final: { strength: 7, intelligence: 3, stamina: 5, luck: 4 } },
@@ -26,7 +26,7 @@
           monsters: [],
           weapons: [],
         };
-  var GAME_VERSION = BALANCE_DATA.version || "0.4.2";
+  var GAME_VERSION = BALANCE_DATA.version || "4.7.1";
   var CLASS_BONUS_POINTS = BALANCE_DATA.classCreationBonusPoints || 3;
   var CLASS_BASE_STATS = {
     soldier: (BALANCE_DATA.classes && BALANCE_DATA.classes.soldier && BALANCE_DATA.classes.soldier.final) || { strength: 7, intelligence: 3, stamina: 5, luck: 4 },
@@ -473,6 +473,7 @@
       if (!state.leaderProfile.headshot) state.leaderProfile.headshot = state.party[0].headshot || "";
     }
     state.inventoryFocusId = state.party[0].id;
+    state.inventoryHealTargetId = state.party[0].id;
     state.inventoryDetailOpen = false;
     state.travelInventoryOpen = false;
     state.illiriView = "church";
@@ -519,6 +520,7 @@
       leaderProfile: null,
       newLeaderDraft: null,
       inventoryFocusId: "p0",
+      inventoryHealTargetId: "p0",
       dollStyleByMember: {},
       inventoryDetailOpen: false,
       travelInventoryOpen: false,
@@ -831,6 +833,7 @@
       var m = state.party[i];
       if (!m) continue;
       initMemberProgress(m);
+      if (m.hp <= 0) continue;
       m.xp += amount;
       gained++;
       while (m.xp >= XP_PER_LEVEL) {
@@ -1576,8 +1579,7 @@
       tab("inn", "Inn") +
       tab("shop", "Shop") +
       tab("tavern", "Tavern") +
-      tab("inventory", "Inventory & Dolls") +
-      tab("data", "Balance Data") +
+      tab("inventory", "Inventory") +
       tab("depart", "Depart") +
       "</nav>"
     );
@@ -1619,6 +1621,7 @@
       tab("inn", "Inn") +
       tab("tavern", "Tavern") +
       tab("shop", "Shop") +
+      tab("inventory", "Inventory") +
       tab("depart", "Depart") +
       "</div>"
     );
@@ -2101,6 +2104,26 @@
     };
   }
 
+  function travelHealableTargets() {
+    var targets = state.party.filter(function (m) {
+      return m && m.hp > 0 && m.hp < m.maxHp;
+    });
+    if (state.guest && state.guest.hp > 0 && state.guest.hp < state.guest.maxHp) {
+      targets.push({
+        id: "guest",
+        name: state.guest.name,
+        hp: state.guest.hp,
+        maxHp: state.guest.maxHp,
+      });
+    }
+    return targets;
+  }
+
+  function inventoryActionHealingContext() {
+    if (state.phase === "travel") return true;
+    return !!(state.phase === "action" && state.pendingEncounter && state.pendingEncounter.kind === "ruins_discovery");
+  }
+
   function inventoryScreenHtml() {
     ensureInventoryFocus();
     var focus = inventoryMemberById(state.inventoryFocusId);
@@ -2182,12 +2205,48 @@
       .join("");
 
     var travelPotionActions = "";
-    if (state.phase === "travel") {
+    if (inventoryActionHealingContext()) {
+      var healableTargets = travelHealableTargets();
+      var selectedHealTargetId = state.inventoryHealTargetId || "";
+      var hasSelectedHealableTarget = healableTargets.some(function (m) {
+        return m.id === selectedHealTargetId;
+      });
+      if (!hasSelectedHealableTarget) {
+        selectedHealTargetId = healableTargets.length ? healableTargets[0].id : "";
+      }
+      var healTargetOptions = healableTargets
+        .map(function (m) {
+          return (
+            '<option value="' +
+            m.id +
+            '"' +
+            (m.id === selectedHealTargetId ? " selected" : "") +
+            ">" +
+            escapeHtml(m.name) +
+            " (" +
+            m.hp +
+            "/" +
+            m.maxHp +
+            " HP)</option>"
+          );
+        })
+        .join("");
+      var canPriestCastHeal = focus.role === "priest" && focus.hp > 0 && (focus.mp || 0) >= 5 && healableTargets.length > 0;
+      var priestHealControls =
+        focus.role === "priest"
+          ? '<label class="inv-heal-target">Heal target <select id="invHealTarget"' +
+            (healableTargets.length ? "" : " disabled") +
+            ">" +
+            healTargetOptions +
+            '</select></label><button type="button" id="invCastHeal"' +
+            (canPriestCastHeal ? "" : " disabled") +
+            '>Cast Heal (+4 HP, 5 MP)</button>'
+          : "";
       travelPotionActions =
         '<div class="actions">' +
         '<button type="button" id="invUseHealPotion"' + (state.healingPotions > 0 && focus.hp > 0 && focus.hp < focus.maxHp ? "" : " disabled") + '>Use Healing Potion (' + state.healingPotions + ')</button>' +
         '<button type="button" id="invUseLifePotion"' + (state.lifePotions > 0 && focus.hp <= 0 ? "" : " disabled") + '>Use Life Potion (' + state.lifePotions + ')</button>' +
-        ((focus.role === "priest") ? '<button type="button" id="invCastHeal"' + (((focus.mp || 0) >= 5 && focus.hp > 0 && focus.hp < focus.maxHp) ? "" : " disabled") + '>Cast Heal (+4 HP, 5 MP)</button>' : "") +
+        priestHealControls +
         "</div>";
     }
 
@@ -2314,12 +2373,27 @@
     var castHeal = root.querySelector("#invCastHeal");
     if (castHeal) {
       castHeal.onclick = function () {
-        var m = inventoryMemberById(state.inventoryFocusId);
-        if (!m || m.role !== "priest" || m.hp <= 0 || m.hp >= m.maxHp || (m.mp || 0) < 5) return;
-        m.mp = Math.max(0, (m.mp || 0) - 5);
-        m.hp = Math.min(m.maxHp, m.hp + 4);
-        logLine(m.name + " casts Heal in camp (+4 HP, 5 MP).", "good");
+        var priest = inventoryMemberById(state.inventoryFocusId);
+        var healTargetSel = root.querySelector("#invHealTarget");
+        var targetId = healTargetSel ? healTargetSel.value : "";
+        var target = teamMemberById(targetId);
+        if (!target) {
+          var fallbackTargets = travelHealableTargets();
+          target = fallbackTargets.length ? teamMemberById(fallbackTargets[0].id) : null;
+        }
+        if (!priest || priest.role !== "priest" || priest.hp <= 0 || (priest.mp || 0) < 5) return;
+        if (!target || target.hp <= 0 || target.hp >= target.maxHp) return;
+        priest.mp = Math.max(0, (priest.mp || 0) - 5);
+        target.hp = Math.min(target.maxHp, target.hp + 4);
+        state.inventoryHealTargetId = target.id;
+        logLine(priest.name + " casts Heal on " + target.name + " (+4 HP, 5 MP).", "good");
         render();
+      };
+    }
+    var healTarget = root.querySelector("#invHealTarget");
+    if (healTarget) {
+      healTarget.onchange = function () {
+        state.inventoryHealTargetId = healTarget.value;
       };
     }
 
@@ -3047,7 +3121,7 @@
         app.innerHTML =
           startCitySplash() +
           illiriTabStrip() +
-          "<h2 class=\"panel-title\">Inventory & Paper Doll Studio</h2>" +
+          "<h2 class=\"panel-title\">Inventory</h2>" +
           "<p class=\"town-lead\">Review your party roster, resources, and travel odds before heading out.</p>" +
           renderHeader() +
           inventoryScreenHtml() +
@@ -3161,7 +3235,7 @@
           "<div class=\"shop-row\"><span>Potion of Healing (+3 HP)</span><button type=\"button\" id=\"buyHealPotion\">Buy 5 gp</button></div>" +
           "<div class=\"shop-row\"><span>Potion of Life (revive 50%)</span><button type=\"button\" id=\"buyLifePotion\">Buy 15 gp</button></div>" +
           "</div>" +
-          '<div class="actions"><button type="button" id="openInvFromShop">Inventory & dolls</button></div>' +
+          '<div class="actions"><button type="button" id="openInvFromShop">Inventory</button></div>' +
           renderLog();
         wireIlliriTabs(app);
         var openInvShop = document.getElementById("openInvFromShop");
@@ -3217,9 +3291,7 @@
         " days complete. Each <b>Next day</b> consumes 1 supply. Encounter chance shown above rises after quiet days.</p>" +
         "<div class=\"actions\">" +
         '<button type="button" class="primary" id="nextDay">Next day</button>' +
-        '<button type="button" id="travelInventoryBtn">' +
-        (state.travelInventoryOpen ? "Hide travel inventory" : "Open travel inventory") +
-        "</button>" +
+        '<button type="button" id="travelInventoryBtn">Inventory</button>' +
         "</div>" +
         (state.travelInventoryOpen ? inventoryScreenHtml() : "") +
         renderLog() +
@@ -3279,6 +3351,9 @@
                 '<div class="shop-row"><span>Weapon</span><button type="button" id="settlementBuyWeapon">Buy 3 gp</button></div>' +
                 '<div class="shop-row"><span>Sell gem</span><button type="button" id="settlementSellGem">Sell 1 gem (5 gp)</button></div>' +
                 '</div>'
+            : state.settlementView === "inventory"
+              ? '<h2 class="panel-title">Inventory</h2>' +
+                inventoryScreenHtml()
               : town.key === "gustaf"
                 ? '<p class="town-lead">Gustaf is resupplied. Continue your caravan to Hollow Banks.</p><div class="actions"><button type="button" class="primary" id="continueTrailBtn">Depart for Hollow Banks</button></div>'
                 : town.key === "hollow_banks"
@@ -3314,6 +3389,8 @@
         document.getElementById("settlementBuyLifePotion").onclick = function () { buy("life_potion"); };
         document.getElementById("settlementBuyWeapon").onclick = buySettlementWeapon;
         document.getElementById("settlementSellGem").onclick = sellSettlementGem;
+      } else if (state.settlementView === "inventory") {
+        wireInventoryScreen(app);
       } else if (state.settlementView === "depart") {
         var nextDest = nextTrailDestinationFrom(town.key);
         if (nextDest) {
@@ -3352,7 +3429,9 @@
           "<div class=\"actions\">" +
           "<button type=\"button\" id=\"searchRuins\">Search ruins</button>" +
           "<button type=\"button\" id=\"skipRuins\">Mark and leave</button>" +
+          '<button type="button" id="ruinsInventoryBtn">Inventory</button>' +
           "</div>" +
+          (state.travelInventoryOpen ? inventoryScreenHtml() : "") +
           renderLog();
         document.getElementById("searchRuins").onclick = function () {
           if (state.ruinsRoomsRemaining <= 0) {
@@ -3384,6 +3463,17 @@
           logLine("Ruins marked on your map (" + state.ruinsRoomsRemaining + " room(s) left unexplored).", "");
           finishEncounterCommon();
         };
+        var ruinsInvBtn = document.getElementById("ruinsInventoryBtn");
+        if (ruinsInvBtn) {
+          ruinsInvBtn.onclick = function () {
+            state.travelInventoryOpen = !state.travelInventoryOpen;
+            if (!state.travelInventoryOpen) state.inventoryDetailOpen = false;
+            render();
+          };
+        }
+        if (state.travelInventoryOpen) {
+          wireInventoryScreen(app);
+        }
         return;
       }
 

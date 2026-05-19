@@ -292,7 +292,14 @@
   }
 
   function memberMaxMp(member) {
-    return 25;
+    var bonusInt = (member && member.bonus && member.bonus.intelligence) || 0;
+    return 25 + bonusInt * 5;
+  }
+
+  function memberMaxHp(member) {
+    var bonusStam = (member && member.bonus && member.bonus.stamina) || 0;
+    var role = (member && member.role) || "soldier";
+    return (CLASS_HP[role] || 1) + bonusStam * 2;
   }
 
   function hpGainOnLevel(member) {
@@ -308,7 +315,10 @@
     if (!member) return member;
     if (typeof member.level !== "number" || member.level < 1) member.level = 1;
     if (typeof member.xp !== "number" || member.xp < 0) member.xp = 0;
-    if (typeof member.maxHp !== "number" || member.maxHp < 1) member.maxHp = CLASS_HP[member.role] || 1;
+    if (!member.bonus) {
+      member.bonus = { strength: 0, intelligence: 0, stamina: 0, luck: 0 };
+    }
+    if (typeof member.maxHp !== "number" || member.maxHp < 1) member.maxHp = memberMaxHp(member);
     if (typeof member.hp !== "number" || member.hp < 0) member.hp = member.maxHp;
     var nextMaxMp = memberMaxMp(member);
     member.maxMp = nextMaxMp;
@@ -356,6 +366,7 @@
   }
 
   function cloneLeaderProfile(src) {
+    var b = src && src.bonus ? src.bonus : null;
     return {
       name: src.name,
       role: src.role,
@@ -365,6 +376,12 @@
       gender: src.gender || "man",
       headshot: src.headshot || "",
       stats: src.stats ? cloneStats(src.stats) : baseStatsForRole(src.role),
+      bonus: {
+        strength: (b && b.strength) || 0,
+        intelligence: (b && b.intelligence) || 0,
+        stamina: (b && b.stamina) || 0,
+        luck: (b && b.luck) || 0,
+      },
       source: src.source || "custom",
     };
   }
@@ -442,8 +459,16 @@
       if (state.party[0]) {
         state.party[0].name = lead.name;
         state.party[0].role = lead.role;
-        state.party[0].maxHp = CLASS_HP[lead.role] || state.party[0].maxHp || 10;
+        state.party[0].bonus = {
+          strength: (lead.bonus && lead.bonus.strength) || 0,
+          intelligence: (lead.bonus && lead.bonus.intelligence) || 0,
+          stamina: (lead.bonus && lead.bonus.stamina) || 0,
+          luck: (lead.bonus && lead.bonus.luck) || 0,
+        };
+        state.party[0].maxHp = memberMaxHp(state.party[0]);
         state.party[0].hp = state.party[0].maxHp;
+        state.party[0].maxMp = memberMaxMp(state.party[0]);
+        state.party[0].mp = state.party[0].maxMp;
       }
       logLine("Preset caravan assembled with a full party.", "good");
     } else {
@@ -452,8 +477,12 @@
           id: "p0",
           name: lead.name,
           role: lead.role,
-          hp: CLASS_HP[lead.role],
-          maxHp: CLASS_HP[lead.role],
+          bonus: {
+            strength: (lead.bonus && lead.bonus.strength) || 0,
+            intelligence: (lead.bonus && lead.bonus.intelligence) || 0,
+            stamina: (lead.bonus && lead.bonus.stamina) || 0,
+            luck: (lead.bonus && lead.bonus.luck) || 0,
+          },
         }),
       ];
       state.partyIdSeq = 1;
@@ -530,7 +559,92 @@
       settlementRecruitMode: "open",
       gameoverMode: null,
       finalBossCleared: false,
+      headstones: loadHeadstonesFromStorage(),
+      headstonesIdSeq: 0,
+      runId: "run-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
     };
+  }
+
+  var HEADSTONE_STORAGE_KEY = "illirial.headstones";
+
+  function loadHeadstonesFromStorage() {
+    try {
+      if (typeof localStorage === "undefined") return [];
+      var raw = localStorage.getItem(HEADSTONE_STORAGE_KEY);
+      if (!raw) return [];
+      var parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (e) { /* ignore */ }
+    return [];
+  }
+
+  function saveHeadstonesToStorage() {
+    try {
+      if (typeof localStorage === "undefined") return;
+      localStorage.setItem(HEADSTONE_STORAGE_KEY, JSON.stringify(state.headstones || []));
+    } catch (e) { /* ignore */ }
+  }
+
+  function ensureHeadstonesState() {
+    if (!state.headstones) state.headstones = [];
+    if (typeof state.headstonesIdSeq !== "number") state.headstonesIdSeq = state.headstones.length;
+    if (!state.runId) state.runId = "run-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+  }
+
+  function currentLocationLabelForHeadstone() {
+    var phase = state && state.phase;
+    if (phase === "story_illiri") return locationLabel("cantebury");
+    if (phase === "settlement" && state.settlementTown) return locationLabel(state.settlementTown);
+    var origin = locationLabel(state.travelOrigin || "cantebury");
+    var dest = currentDestination();
+    return "the road between " + origin + " and " + (dest && dest.label ? dest.label : "the next stop");
+  }
+
+  function makeHeadstoneForMember(m) {
+    ensureHeadstonesState();
+    state.headstonesIdSeq += 1;
+    return {
+      id: "hs-" + Date.now() + "-" + state.headstonesIdSeq,
+      runId: state.runId,
+      memberId: m.id,
+      name: m.name,
+      role: m.role,
+      day: state.travelDay,
+      location: currentLocationLabelForHeadstone(),
+      town: null,
+      note: "",
+    };
+  }
+
+  function setHeadstoneNote(hsId, note) {
+    ensureHeadstonesState();
+    for (var i = 0; i < state.headstones.length; i++) {
+      if (state.headstones[i].id === hsId) {
+        state.headstones[i].note = (note || "").slice(0, 200);
+        saveHeadstonesToStorage();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function internPendingHeadstones() {
+    ensureHeadstonesState();
+    var townKey = state && state.settlementTown;
+    if (!townKey) return 0;
+    var any = 0;
+    for (var i = 0; i < state.headstones.length; i++) {
+      var hs = state.headstones[i];
+      if (!hs.town && hs.runId === state.runId) {
+        hs.town = townKey;
+        any++;
+      }
+    }
+    if (any > 0) {
+      saveHeadstonesToStorage();
+      logLine(any + " fallen comrade" + (any > 1 ? "s are" : " is") + " interred at " + locationLabel(townKey) + ".", "");
+    }
+    return any;
   }
 
   var state = initialState();
@@ -609,15 +723,34 @@
     return (name || "").toLowerCase().indexOf("wolf") >= 0;
   }
 
-  function buildRandomMonsterEncounter(sourceKind) {
-    var lateLeg = state.travelOrigin === "hollow_banks" || state.travelOrigin === "solem";
-    var pool = BALANCE_MONSTERS.slice();
-    if (lateLeg) {
-      var tough = pool.filter(function (m) {
-        return Math.max(1, parseInt(m && m.hp, 10) || 1) >= 10;
-      });
-      if (tough.length) pool = tough;
+  // Level gating per the design rules:
+  // - Road, origin in {cantebury, gustaf}: only L1/L2 (you are still approaching Hollow Banks).
+  // - Road, origin in {hollow_banks, solem}: 10% chance for L3 to join the L1/L2 pool.
+  // - Ruins, origin != solem: L1/L2 only.
+  // - Ruins, origin === solem (i.e., past Solem on the way to New Isil): 20% chance L3 joins.
+  function allowedLevelsForRoadEncounter() {
+    var origin = (state && state.travelOrigin) || "cantebury";
+    if (origin === "hollow_banks" || origin === "solem") {
+      if (Math.random() < 0.10) return [1, 2, 3];
     }
+    return [1, 2];
+  }
+
+  function allowedLevelsForRuinsEncounter() {
+    var origin = (state && state.travelOrigin) || "cantebury";
+    if (origin === "solem") {
+      if (Math.random() < 0.20) return [1, 2, 3];
+    }
+    return [1, 2];
+  }
+
+  function buildRandomMonsterEncounter(sourceKind) {
+    var allowed = sourceKind === "ruins" ? allowedLevelsForRuinsEncounter() : allowedLevelsForRoadEncounter();
+    var pool = BALANCE_MONSTERS.filter(function (m) {
+      var lvl = (m && m.level) || 1;
+      return allowed.indexOf(lvl) >= 0;
+    });
+    if (!pool.length) pool = BALANCE_MONSTERS.slice();
     var archetype = randomBalanceMonster(pool);
     var wolfPack = isWolfMonsterName(archetype && archetype.name);
     var n = wolfPack ? rollInt(3, 6) : rollInt(1, 4);
@@ -637,6 +770,7 @@
         hp: scaledMonsterHp,
         maxHp: scaledMonsterHp,
         dmg: monsterDamageForName(mon.name),
+        level: (mon && mon.level) || 1,
       });
     }
     var src = sourceKind || "road";
@@ -655,9 +789,10 @@
           maxHp: 100,
           dmg: 5,
           portrait: "SK Kew Kumber.jpeg",
+          level: 3,
         },
-        { id: "boss-lich-1", name: "Lich King", hp: 30, maxHp: 30, dmg: 4 },
-        { id: "boss-lich-2", name: "Lich King", hp: 30, maxHp: 30, dmg: 4 },
+        { id: "boss-lich-1", name: "Lich King", hp: 30, maxHp: 30, dmg: 4, level: 3 },
+        { id: "boss-lich-2", name: "Lich King", hp: 30, maxHp: 30, dmg: 4, level: 3 },
       ],
     };
   }
@@ -699,7 +834,15 @@
     state.combat = {
       kind: enc.kind,
       foes: enc.foes.map(function (f) {
-        return { id: f.id, name: f.name, hp: f.hp, maxHp: f.maxHp, dmg: f.dmg, portrait: f.portrait || "" };
+        return {
+          id: f.id,
+          name: f.name,
+          hp: f.hp,
+          maxHp: f.maxHp,
+          dmg: f.dmg,
+          portrait: f.portrait || "",
+          level: f.level || 1,
+        };
       }),
       choices: {},
       defending: {},
@@ -771,57 +914,47 @@
     logLine("Ruins search complete: " + goldGain + " gold, " + gemGain + " gems.", "good");
   }
 
-  function winCombatLoot(kind) {
-    if (kind === "bandits") {
-      var gold = roadGoldBonus(rollInt(1, 4) * Math.max(1, mercenaryCount(state.party)));
-      state.gold += gold;
-      logLine("Victory: +" + gold + " gold.", "good");
+  function monsterLevelByName(name) {
+    if (!name) return 1;
+    var monsters = (BALANCE_DATA && BALANCE_DATA.monsters) || [];
+    var target = String(name).toLowerCase().trim();
+    for (var i = 0; i < monsters.length; i++) {
+      var n = String(monsters[i].name || "").toLowerCase().trim();
+      if (n === target) return monsters[i].level || 1;
     }
-    if (kind === "wolves" && Math.random() < 0.35) {
-      var wolfSupplies = addSupplies(2);
-      if (wolfSupplies > 0) logLine("Victory: +" + wolfSupplies + " supplies.", "good");
-      else logLine("Victory spoils found, but supplies are already full.", "");
-    }
-    if (kind === "skeletons" || kind === "ruins_combat") {
-      var g2 = roadGoldBonus(rollInt(2, 6));
-      state.gold += g2;
-      logLine("Victory: +" + g2 + " gold (old coins).", "good");
-    }
+    return 1;
   }
 
-  function applyMonsterDrops(foes) {
+  function foeLevel(foe) {
+    if (foe && typeof foe.level === "number" && foe.level >= 1) return foe.level;
+    return monsterLevelByName(foe && foe.name);
+  }
+
+  function computeXpFromFoes(foes) {
+    if (!foes || !foes.length) return 0;
+    var sum = 0;
+    for (var i = 0; i < foes.length; i++) sum += Math.max(1, foeLevel(foes[i]));
+    return sum;
+  }
+
+  // Level 1: XP only.
+  // Level 2: XP + small gold + 5% weapon drop.
+  // Level 3: XP + better gold + 30% weapon drop.
+  function applyLevelDrops(foes) {
     if (!foes || !foes.length) return;
     for (var i = 0; i < foes.length; i++) {
-      var name = (foes[i].name || "").toLowerCase();
-      var r = Math.random();
-      if (name.indexOf("bandit") >= 0) {
-        if (r < 0.75) {
-          var g = roadGoldBonus(rollInt(1, 5));
-          state.gold += g;
-          logLine("Bandit drop: +" + g + " gold.", "good");
-        } else if (r < 0.975) {
-          var gm = rollInt(1, 3);
-          state.gems += gm;
-          logLine("Bandit drop: +" + gm + " gem(s).", "good");
-        } else {
-          state.weapons += 1;
-          state.weaponInventory.push("rare_drop");
-          logLine("Bandit drop: rare weapon found.", "good");
-        }
-        continue;
+      var lvl = foeLevel(foes[i]);
+      if (lvl <= 1) continue;
+      var goldGain = roadGoldBonus(lvl === 2 ? rollInt(1, 3) : rollInt(3, 6));
+      if (goldGain > 0) {
+        state.gold += goldGain;
+        logLine(foes[i].name + " drop: +" + goldGain + " gold.", "good");
       }
-      var clericLike =
-        name.indexOf("cleric") >= 0 || name.indexOf("mage") >= 0 || name.indexOf("knight") >= 0 || name.indexOf("soldier") >= 0;
-      if (clericLike) {
-        if (r < 0.99) {
-          var g2 = roadGoldBonus(rollInt(1, 7));
-          state.gold += g2;
-          logLine(foes[i].name + " drop: +" + g2 + " gold.", "good");
-        } else {
-          var gm2 = rollInt(1, 3);
-          state.gems += gm2;
-          logLine(foes[i].name + " drop: +" + gm2 + " gem(s).", "good");
-        }
+      var dropChance = lvl === 2 ? 0.05 : 0.30;
+      if (Math.random() < dropChance) {
+        state.weapons += 1;
+        state.weaponInventory.push("rare_drop");
+        logLine(foes[i].name + " drop: weapon found!", "good");
       }
     }
   }
@@ -907,6 +1040,7 @@
     state.settlementView = "church";
     state.settlementRecruitSlots = rollSettlementRecruitSlots(dest.key);
     state.settlementRecruitMode = settlementRecruitMode(dest.key);
+    internPendingHeadstones();
     state.transition = { kind: "arrive", label: dest.label };
     render();
     scheduleTransition(function () {
@@ -931,14 +1065,19 @@
     var k = state.combat.kind;
     var defeatedFoes = state.combat && state.combat.foes ? state.combat.foes.slice() : [];
     var foesDefeated = defeatedFoes.length;
-    trackPlaytest("combat_won", { kind: k, foesDefeated: foesDefeated, day: state.travelDay });
-    if (foesDefeated > 0) grantXp(foesDefeated);
-    applyMonsterDrops(defeatedFoes);
+    var xpAward = computeXpFromFoes(defeatedFoes);
+    trackPlaytest("combat_won", {
+      kind: k,
+      foesDefeated: foesDefeated,
+      xpAward: xpAward,
+      day: state.travelDay,
+    });
+    if (xpAward > 0) grantXp(xpAward);
+    applyLevelDrops(defeatedFoes);
     if (k === "new_isil_gate_boss") {
       state.finalBossCleared = true;
       logLine("SK Kew Kumber is defeated. The road to New Isil is open.", "good");
     }
-    winCombatLoot(k);
     state.encounterChance = ENCOUNTER_BASE;
     state.combat = null;
     state.pendingEncounter = null;
@@ -958,9 +1097,17 @@
       kind: state.combat && state.combat.kind ? state.combat.kind : "unknown",
       day: state.travelDay,
     });
+    ensureHeadstonesState();
+    for (var i = 0; i < state.party.length; i++) {
+      var m = state.party[i];
+      if (!m || m.hp > 0) continue;
+      state.headstones.push(makeHeadstoneForMember(m));
+    }
+    saveHeadstonesToStorage();
+    buryRemainingAtFallbackTown();
     state.gameoverMode = "loss";
     state.phase = "gameover";
-    logLine("The party has fallen.", "bad");
+    logLine("The party has fallen. Headstones rise where they were heading.", "bad");
     state.combat = null;
     state.pendingEncounter = null;
     render();
@@ -990,6 +1137,8 @@
     if (!state.combat) return null;
     var team = combatTeam();
     for (var i = 0; i < team.length; i++) {
+      var ref = teamMemberById(team[i].id);
+      if (!ref || ref.hp <= 0) continue;
       if (!choiceComplete(team[i].id)) return team[i].id;
     }
     return null;
@@ -1163,7 +1312,7 @@
         var itemKind = rec && rec.itemKind ? rec.itemKind : "";
         if (itemKind === "life_potion") {
           var fallen = state.party.filter(function (p) {
-            return p.hp <= 0;
+            return p.hp <= 0 && !p.permadead;
           });
           if (!fallen.length || state.lifePotions <= 0) {
             logLine(m.name + " cannot use Potion of Life right now.", "bad");
@@ -1172,6 +1321,7 @@
           state.lifePotions--;
           var revived = fallen[0];
           revived.hp = Math.max(1, Math.ceil(revived.maxHp * 0.5));
+          revived.deadSinceDay = undefined;
           logLine(m.name + " uses Potion of Life on " + revived.name + " (revived to " + revived.hp + " HP).", "good");
           continue;
         }
@@ -1282,12 +1432,89 @@
     logLine("Ruins mapped: " + state.ruinsRoomsTotal + " room(s) detected.", "hi");
   }
 
+  function applyTravelDayMpRegen() {
+    var regen = 3;
+    var any = 0;
+    for (var i = 0; i < state.party.length; i++) {
+      var m = state.party[i];
+      if (!m || m.permadead) continue;
+      if (m.hp <= 0) continue;
+      initMemberProgress(m);
+      var before = m.mp || 0;
+      m.mp = Math.min(m.maxMp, before + regen);
+      if (m.mp - before > 0) any++;
+    }
+    if (state.guest && !state.guest.permadead && state.guest.hp > 0) {
+      var gBefore = state.guest.mp || 0;
+      state.guest.mp = Math.min(state.guest.maxMp || 25, gBefore + regen);
+    }
+    if (any > 0) logLine("Camp rest: +" + regen + " MP to the party.", "");
+  }
+
+  function processDailyDeath() {
+    ensureHeadstonesState();
+    var droppedIds = [];
+    for (var i = 0; i < state.party.length; i++) {
+      var m = state.party[i];
+      if (!m) continue;
+      if (m.hp > 0) {
+        m.deadSinceDay = undefined;
+        continue;
+      }
+      if (typeof m.deadSinceDay !== "number") {
+        m.deadSinceDay = state.travelDay;
+        logLine(m.name + " lies fallen. Revive within 2 days or they are lost.", "bad");
+        continue;
+      }
+      var daysDead = state.travelDay - m.deadSinceDay;
+      if (daysDead >= 2) {
+        state.headstones.push(makeHeadstoneForMember(m));
+        droppedIds.push(m.id);
+        logLine(m.name + " was not revived in time. The body will be interred at the next town.", "bad");
+        trackPlaytest("member_permadead", { memberId: m.id, role: m.role, day: state.travelDay });
+      }
+    }
+    if (droppedIds.length) {
+      saveHeadstonesToStorage();
+      state.party = state.party.filter(function (p) { return droppedIds.indexOf(p.id) < 0; });
+      if (state.inventoryFocusId && droppedIds.indexOf(state.inventoryFocusId) >= 0) {
+        state.inventoryFocusId = state.party[0] ? state.party[0].id : null;
+      }
+      if (state.inventoryHealTargetId && droppedIds.indexOf(state.inventoryHealTargetId) >= 0) {
+        state.inventoryHealTargetId = state.party[0] ? state.party[0].id : null;
+      }
+    }
+    var anyAlive = state.party.some(function (p) { return p && p.hp > 0; });
+    if (state.party.length === 0 || !anyAlive) {
+      buryRemainingAtFallbackTown();
+      state.gameoverMode = "loss";
+      state.phase = "gameover";
+      logLine("The expedition has ended in tragedy. None remain to carry on.", "bad");
+    }
+  }
+
+  function buryRemainingAtFallbackTown() {
+    ensureHeadstonesState();
+    var fallback = (state && state.travelDestination) || "new_isil";
+    var changed = 0;
+    for (var i = 0; i < state.headstones.length; i++) {
+      var hs = state.headstones[i];
+      if (!hs.town && hs.runId === state.runId) {
+        hs.town = fallback;
+        changed++;
+      }
+    }
+    if (changed > 0) saveHeadstonesToStorage();
+  }
+
   function runTravelDayResolution() {
     if (state.phase !== "travel") return;
     if (state.travelDay >= currentRouteDays()) return;
     state.travelDay++;
     logLine("Day " + state.travelDay + " of " + currentRouteDays() + " on the road.", "");
     trackPlaytest("day_advanced", { day: state.travelDay, routeDays: currentRouteDays() });
+    processDailyDeath();
+    applyTravelDayMpRegen();
     var preFinalDay = Math.max(1, currentRouteDays() - 1);
     if (currentDestination().key === "new_isil" && !state.finalBossCleared && state.travelDay === preFinalDay) {
       queueEncounterCutaway(
@@ -1640,46 +1867,196 @@
     }
   }
 
-  function buySettlementSupplies() {
-    if (state.gold < 1) {
-      logLine("Need 1 gp to buy supplies.", "bad");
+  function shopRowHtml(opts) {
+    var hasBuy = typeof opts.buyPrice === "number";
+    var hasSell = typeof opts.sellPrice === "number";
+    var qtyId = "shopQty-" + opts.id;
+    var buyId = "shopBuy-" + opts.id;
+    var sellId = "shopSell-" + opts.id;
+    var countStr = typeof opts.count === "number" ? " (you have " + opts.count + ")" : "";
+    var maxBuy = opts.maxBuy || 0;
+    var maxSell = opts.maxSell || 0;
+    var qtyCap = Math.max(maxBuy, maxSell, 1);
+    var html =
+      '<div class="shop-row">' +
+      '<span class="shop-row-label">' + opts.label + countStr + '</span>' +
+      '<span class="shop-row-controls">' +
+      'qty <input type="number" min="1" max="' + qtyCap + '" value="1" id="' + qtyId +
+        '" data-max-buy="' + maxBuy + '" data-max-sell="' + maxSell +
+        '" class="shop-qty" style="width:4.5em" />';
+    if (hasBuy) {
+      html += ' <button type="button" id="' + buyId + '"' +
+        (maxBuy > 0 ? "" : " disabled") +
+        '>Buy @ ' + opts.buyPrice + ' gp</button>';
+    }
+    if (hasSell) {
+      html += ' <button type="button" id="' + sellId + '"' +
+        (maxSell > 0 ? "" : " disabled") +
+        '>Sell @ ' + opts.sellPrice + ' gp</button>';
+    }
+    html += '</span></div>';
+    return html;
+  }
+
+  function readShopQty(id) {
+    var el = document.getElementById("shopQty-" + id);
+    if (!el) return 1;
+    var v = parseInt(el.value, 10);
+    if (!(v > 0)) v = 1;
+    var cap = parseInt(el.getAttribute("max"), 10);
+    if (cap > 0 && v > cap) {
+      v = cap;
+      el.value = String(cap);
+    }
+    return v;
+  }
+
+  function buySettlementSupplies(qty) {
+    qty = Math.max(0, parseInt(qty, 10) || 1);
+    var room = Math.max(0, MAX_SUPPLIES - state.food);
+    var actual = Math.min(qty, room, state.gold);
+    if (actual <= 0) {
+      if (state.gold <= 0) logLine("Need at least 1 gp to buy supplies.", "bad");
+      else if (room <= 0) logLine("Supplies are already at max capacity (" + MAX_SUPPLIES + ").", "bad");
       render();
       return;
     }
-    if (state.food >= MAX_SUPPLIES) {
-      logLine("Supplies are already at max capacity (" + MAX_SUPPLIES + ").", "bad");
-      render();
-      return;
-    }
-    state.gold -= 1;
-    addSupplies(1);
-    logLine("Bought 1 supply.", "good");
+    state.gold -= actual;
+    addSupplies(actual);
+    logLine("Bought " + actual + " supply" + (actual > 1 ? " bundles" : "") + " for " + actual + " gp.", "good");
     render();
   }
 
-  function buySettlementWeapon() {
-    if (state.gold < 3) {
+  function buySettlementWeapon(qty) {
+    qty = Math.max(0, parseInt(qty, 10) || 1);
+    var affordable = Math.floor(state.gold / 3);
+    var actual = Math.min(qty, affordable);
+    if (actual <= 0) {
       logLine("Need 3 gp to buy a weapon.", "bad");
       render();
       return;
     }
-    state.gold -= 3;
-    state.weapons += 1;
-    state.weaponInventory.push("settlement_blade");
-    logLine("Bought 1 weapon for 3 gp.", "good");
+    state.gold -= actual * 3;
+    state.weapons += actual;
+    for (var i = 0; i < actual; i++) state.weaponInventory.push("settlement_blade");
+    logLine("Bought " + actual + " weapon" + (actual > 1 ? "s" : "") + " for " + (actual * 3) + " gp.", "good");
     render();
   }
 
-  function sellSettlementGem() {
-    if (state.gems < 1) {
+  function buySettlementHealPotion(qty) {
+    qty = Math.max(0, parseInt(qty, 10) || 1);
+    var affordable = Math.floor(state.gold / 5);
+    var actual = Math.min(qty, affordable);
+    if (actual <= 0) {
+      logLine("Need 5 gp for a Potion of Healing.", "bad");
+      render();
+      return;
+    }
+    state.gold -= actual * 5;
+    state.healingPotions += actual;
+    logLine("Bought " + actual + " Potion of Healing for " + (actual * 5) + " gp.", "good");
+    render();
+  }
+
+  function buySettlementLifePotion(qty) {
+    qty = Math.max(0, parseInt(qty, 10) || 1);
+    var affordable = Math.floor(state.gold / 15);
+    var actual = Math.min(qty, affordable);
+    if (actual <= 0) {
+      logLine("Need 15 gp for a Potion of Life.", "bad");
+      render();
+      return;
+    }
+    state.gold -= actual * 15;
+    state.lifePotions += actual;
+    logLine("Bought " + actual + " Potion of Life for " + (actual * 15) + " gp.", "good");
+    render();
+  }
+
+  function sellSettlementGem(qty) {
+    qty = Math.max(0, parseInt(qty, 10) || 1);
+    var actual = Math.min(qty, state.gems);
+    if (actual <= 0) {
       logLine("No gems to sell.", "bad");
       render();
       return;
     }
-    state.gems -= 1;
-    state.gold += 5;
-    logLine("Sold 1 gem for 5 gp.", "good");
+    state.gems -= actual;
+    state.gold += actual * 5;
+    logLine("Sold " + actual + " gem" + (actual > 1 ? "s" : "") + " for " + (actual * 5) + " gp.", "good");
     render();
+  }
+
+  function sellSettlementWeapon(qty) {
+    qty = Math.max(0, parseInt(qty, 10) || 1);
+    var actual = Math.min(qty, state.weapons, state.weaponInventory.length);
+    if (actual <= 0) {
+      logLine("No weapons to sell.", "bad");
+      render();
+      return;
+    }
+    state.weapons -= actual;
+    for (var i = 0; i < actual; i++) state.weaponInventory.pop();
+    state.gold += actual;
+    logLine("Sold " + actual + " weapon" + (actual > 1 ? "s" : "") + " for " + actual + " gp.", "good");
+    render();
+  }
+
+  function sellSettlementSupplies(qty) {
+    qty = Math.max(0, parseInt(qty, 10) || 1);
+    var actual = Math.min(qty, state.food);
+    if (actual <= 0) {
+      logLine("No supplies to sell.", "bad");
+      render();
+      return;
+    }
+    state.food -= actual;
+    state.gold += actual;
+    logLine("Sold " + actual + " supply" + (actual > 1 ? " bundles" : "") + " for " + actual + " gp.", "good");
+    render();
+  }
+
+  function reviveAtChurch(memberId) {
+    if (state.gold < 25) {
+      logLine("Need 25 gp for revival rites.", "bad");
+      render();
+      return;
+    }
+    var m = null;
+    for (var i = 0; i < state.party.length; i++) {
+      if (state.party[i].id === memberId) { m = state.party[i]; break; }
+    }
+    if (!m) {
+      logLine("Companion not found.", "bad");
+      render();
+      return;
+    }
+    if (m.permadead) {
+      logLine(m.name + " is beyond the church's reach.", "bad");
+      render();
+      return;
+    }
+    if (m.hp > 0) {
+      logLine(m.name + " does not need reviving.", "bad");
+      render();
+      return;
+    }
+    state.gold -= 25;
+    m.hp = m.maxHp;
+    m.deadSinceDay = undefined;
+    logLine(m.name + " is revived at the chapel to full health (" + m.maxHp + "/" + m.maxHp + " HP).", "good");
+    render();
+  }
+
+  function wireShopRow(id, buyFn, sellFn) {
+    if (buyFn) {
+      var buyBtn = document.getElementById("shopBuy-" + id);
+      if (buyBtn) buyBtn.onclick = function () { buyFn(readShopQty(id)); };
+    }
+    if (sellFn) {
+      var sellBtn = document.getElementById("shopSell-" + id);
+      if (sellBtn) sellBtn.onclick = function () { sellFn(readShopQty(id)); };
+    }
   }
 
   function wireRosterEdit(root) {
@@ -2245,7 +2622,7 @@
       travelPotionActions =
         '<div class="actions">' +
         '<button type="button" id="invUseHealPotion"' + (state.healingPotions > 0 && focus.hp > 0 && focus.hp < focus.maxHp ? "" : " disabled") + '>Use Healing Potion (' + state.healingPotions + ')</button>' +
-        '<button type="button" id="invUseLifePotion"' + (state.lifePotions > 0 && focus.hp <= 0 ? "" : " disabled") + '>Use Life Potion (' + state.lifePotions + ')</button>' +
+        '<button type="button" id="invUseLifePotion"' + (state.lifePotions > 0 && focus.hp <= 0 && !focus.permadead ? "" : " disabled") + '>Use Life Potion (' + state.lifePotions + ')</button>' +
         priestHealControls +
         "</div>";
     }
@@ -2363,9 +2740,10 @@
     if (useLife) {
       useLife.onclick = function () {
         var m = inventoryMemberById(state.inventoryFocusId);
-        if (!m || m.hp > 0 || state.lifePotions <= 0) return;
+        if (!m || m.hp > 0 || m.permadead || state.lifePotions <= 0) return;
         state.lifePotions--;
         m.hp = Math.max(1, Math.ceil(m.maxHp * 0.5));
+        m.deadSinceDay = undefined;
         logLine(m.name + " is revived with Potion of Life (" + m.hp + " HP).", "good");
         render();
       };
@@ -3057,6 +3435,7 @@
           gender: latest.gender || "man",
           headshot: latest.headshot || "",
           stats: leaderDraftFinalStats(latest),
+          bonus: latest.bonus || { strength: 0, intelligence: 0, stamina: 0, luck: 0 },
           source: "custom",
         });
         render();
@@ -3328,7 +3707,56 @@
         settlementTabStrip() +
         '<h2 class="panel-title">' + town.label + '</h2>' +
         (state.settlementView === "church"
-          ? '<p class="town-lead">A quiet chapel waits by the market road.</p><div class="actions"><button type="button" id="settlementBless">Receive blessing</button></div>'
+          ? '<p class="town-lead">A quiet chapel waits by the market road.</p>' +
+            '<div class="actions"><button type="button" id="settlementBless">Receive blessing</button></div>' +
+            (function () {
+              var fallen = state.party.filter(function (p) { return p.hp <= 0; });
+              var headstones = (state.headstones || []).filter(function (hs) {
+                return hs && hs.town === state.settlementTown;
+              });
+              var html = '<h3 class="church-section-title" style="margin-top:1rem">Revival rites</h3>' +
+                '<p>Restore a fallen companion to full health for <b>25 gp</b>.</p>';
+              if (fallen.length === 0) {
+                html += '<p class="hint">No one to revive.</p>';
+              } else {
+                html += '<div class="shop-block">';
+                for (var i = 0; i < fallen.length; i++) {
+                  var m = fallen[i];
+                  html += '<div class="shop-row"><span>' + m.name + ' (' + roleLabel(m.role) + ')</span>' +
+                    '<button type="button" id="reviveAtChurch-' + m.id + '"' +
+                    (state.gold >= 25 ? "" : " disabled") +
+                    '>Revive (25 gp)</button></div>';
+                }
+                html += '</div>';
+              }
+              if (headstones.length > 0) {
+                html += '<h3 class="church-section-title" style="margin-top:1.25rem">In memory</h3>' +
+                  '<p>Headstones at ' + locationLabel(state.settlementTown) +
+                  '. Leave a note for travelers who pass after you.</p>' +
+                  '<div class="shop-block">';
+                for (var hi = 0; hi < headstones.length; hi++) {
+                  var hs = headstones[hi];
+                  var safeNote = String(hs.note || "")
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;");
+                  var theirRun = hs.runId === state.runId;
+                  html += '<div class="shop-row" style="flex-direction:column;align-items:stretch">' +
+                    '<div><b>' + hs.name + '</b> (' + roleLabel(hs.role) + ') - lost day ' + hs.day +
+                    ' on ' + hs.location + (theirRun ? '.' : '. <span class="hint">(previous traveler)</span>') +
+                    '</div>' +
+                    '<textarea id="hsNote-' + hs.id + '" maxlength="200" placeholder="A small note for future travelers..." ' +
+                    'style="margin-top:.35rem;width:100%;min-height:3em;background:#1c160e;color:#e8dcc8;border:1px solid #4a3d2a;border-radius:6px;padding:.4rem .5rem;font-family:inherit">' +
+                    safeNote + '</textarea>' +
+                    '<div style="margin-top:.35rem;text-align:right">' +
+                    '<button type="button" id="hsSave-' + hs.id + '">Save note</button>' +
+                    '</div>' +
+                    '</div>';
+                }
+                html += '</div>';
+              }
+              return html;
+            })()
           : state.settlementView === "inn"
             ? '<p class="town-lead">A warm inn offers cots, stew, and a safe night to recover.</p><div class="actions"><button type="button" id="settlementInnRest">Rest at inn</button></div>'
           : state.settlementView === "tavern"
@@ -3338,18 +3766,52 @@
                 settlementRecruitNote(town.key)
               )
             : state.settlementView === "shop"
-              ? '<p class="shopkeeper-lead">Restock before the next leg: supplies, weapons, and potions.</p>' +
+              ? '<p class="shopkeeper-lead">Restock or trade away surplus.</p>' +
                 '<p class="shop-gold-line">Your purse: <b>' +
                 state.gold +
                 '</b> gp | Gems: <b>' +
                 state.gems +
                 '</b></p>' +
                 '<div class="shop-block">' +
-                '<div class="shop-row"><span>Supplies</span><button type="button" id="settlementBuySupply">Buy 1 gp</button></div>' +
-                '<div class="shop-row"><span>Potion of Healing (+3 HP)</span><button type="button" id="settlementBuyHealPotion">Buy 5 gp</button></div>' +
-                '<div class="shop-row"><span>Potion of Life (revive 50%)</span><button type="button" id="settlementBuyLifePotion">Buy 15 gp</button></div>' +
-                '<div class="shop-row"><span>Weapon</span><button type="button" id="settlementBuyWeapon">Buy 3 gp</button></div>' +
-                '<div class="shop-row"><span>Sell gem</span><button type="button" id="settlementSellGem">Sell 1 gem (5 gp)</button></div>' +
+                shopRowHtml({
+                  id: "supplies",
+                  label: "Supplies",
+                  count: state.food,
+                  buyPrice: 1,
+                  sellPrice: 1,
+                  maxBuy: Math.min(Math.max(0, MAX_SUPPLIES - state.food), state.gold),
+                  maxSell: state.food,
+                }) +
+                shopRowHtml({
+                  id: "weapon",
+                  label: "Weapon",
+                  count: state.weapons,
+                  buyPrice: 3,
+                  sellPrice: 1,
+                  maxBuy: Math.floor(state.gold / 3),
+                  maxSell: state.weapons,
+                }) +
+                shopRowHtml({
+                  id: "healPotion",
+                  label: "Potion of Healing (+3 HP)",
+                  count: state.healingPotions,
+                  buyPrice: 5,
+                  maxBuy: Math.floor(state.gold / 5),
+                }) +
+                shopRowHtml({
+                  id: "lifePotion",
+                  label: "Potion of Life (revive 50%)",
+                  count: state.lifePotions,
+                  buyPrice: 15,
+                  maxBuy: Math.floor(state.gold / 15),
+                }) +
+                shopRowHtml({
+                  id: "gem",
+                  label: "Gem",
+                  count: state.gems,
+                  sellPrice: 5,
+                  maxSell: state.gems,
+                }) +
                 '</div>'
             : state.settlementView === "inventory"
               ? '<h2 class="panel-title">Inventory</h2>' +
@@ -3379,16 +3841,39 @@
           else logLine("The prayer brings calm, but no lasting boon this time.", "");
           render();
         };
+        for (var ri = 0; ri < state.party.length; ri++) {
+          (function (m) {
+            if (m.hp > 0) return;
+            var btn = document.getElementById("reviveAtChurch-" + m.id);
+            if (btn) btn.onclick = function () { reviveAtChurch(m.id); };
+          })(state.party[ri]);
+        }
+        var headstones = (state.headstones || []).filter(function (hs) {
+          return hs && hs.town === state.settlementTown;
+        });
+        for (var hi = 0; hi < headstones.length; hi++) {
+          (function (hs) {
+            var btn = document.getElementById("hsSave-" + hs.id);
+            var ta = document.getElementById("hsNote-" + hs.id);
+            if (btn && ta) {
+              btn.onclick = function () {
+                setHeadstoneNote(hs.id, ta.value);
+                logLine("Headstone note saved for " + hs.name + ".", "");
+                render();
+              };
+            }
+          })(headstones[hi]);
+        }
       } else if (state.settlementView === "inn") {
         document.getElementById("settlementInnRest").onclick = restAtInn;
       } else if (state.settlementView === "tavern") {
         wireRosterEdit(app);
       } else if (state.settlementView === "shop") {
-        document.getElementById("settlementBuySupply").onclick = buySettlementSupplies;
-        document.getElementById("settlementBuyHealPotion").onclick = function () { buy("heal_potion"); };
-        document.getElementById("settlementBuyLifePotion").onclick = function () { buy("life_potion"); };
-        document.getElementById("settlementBuyWeapon").onclick = buySettlementWeapon;
-        document.getElementById("settlementSellGem").onclick = sellSettlementGem;
+        wireShopRow("supplies", buySettlementSupplies, sellSettlementSupplies);
+        wireShopRow("weapon", buySettlementWeapon, sellSettlementWeapon);
+        wireShopRow("healPotion", buySettlementHealPotion, null);
+        wireShopRow("lifePotion", buySettlementLifePotion, null);
+        wireShopRow("gem", null, sellSettlementGem);
       } else if (state.settlementView === "inventory") {
         wireInventoryScreen(app);
       } else if (state.settlementView === "depart") {

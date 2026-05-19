@@ -1,5 +1,5 @@
 window.ILLIRIAL_BALANCE = {
-  "version": "4.7.1",
+  "version": "4.7.6",
   "source": "chart for game.xlsx",
   "classCreationBonusPoints": 3,
   "hpGrowthTuning": {

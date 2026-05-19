@@ -64,6 +64,30 @@
     { id: "runesword", label: "Runesword", grade: 3 },
   ];
   var XP_PER_LEVEL = 3;
+  var XP_THRESHOLDS = (BALANCE_DATA && BALANCE_DATA.levelXpThresholds && BALANCE_DATA.levelXpThresholds.length)
+    ? BALANCE_DATA.levelXpThresholds.slice()
+    : [0, 3, 7, 13, 21, 31, 44, 61, 83, 109, 141, 180, 229, 291, 365, 451, 550, 662, 799, 957];
+  var MAX_LEVEL = (BALANCE_DATA && BALANCE_DATA.maxLevel) || (XP_THRESHOLDS.length);
+  var STAT_CAP = (BALANCE_DATA && BALANCE_DATA.statCap) || 50;
+  var STAT_GAINS_PER_CLASS = (BALANCE_DATA && BALANCE_DATA.statGainsPerClass) || {};
+  function xpToNextLevel(level) {
+    var L = Math.max(1, level | 0);
+    if (L >= MAX_LEVEL) return Infinity;
+    if (L >= XP_THRESHOLDS.length) return XP_PER_LEVEL;
+    return XP_THRESHOLDS[L] - XP_THRESHOLDS[L - 1];
+  }
+  function statGainProfile(role) {
+    return STAT_GAINS_PER_CLASS[role] || STAT_GAINS_PER_CLASS.soldier || { strength: 0, intelligence: 0, stamina: 0, luck: 0 };
+  }
+  function rollStatGains(role) {
+    var p = statGainProfile(role);
+    return {
+      strength: rollInt(0, p.strength || 0),
+      intelligence: rollInt(0, p.intelligence || 0),
+      stamina: rollInt(0, p.stamina || 0),
+      luck: rollInt(0, p.luck || 0),
+    };
+  }
   var MAX_SUPPLIES = 30;
   var RUINS_ROOM_MAX = 20;
   var BALANCE_MONSTERS = (BALANCE_DATA && BALANCE_DATA.monsters ? BALANCE_DATA.monsters : []).filter(function (m) {
@@ -285,6 +309,9 @@
   }
 
   function memberBaseStats(member) {
+    if (member && member.stats) {
+      return cloneStats(member.stats);
+    }
     if (member && member.id === "p0" && state && state.leaderProfile && state.leaderProfile.stats) {
       return cloneStats(state.leaderProfile.stats);
     }
@@ -292,14 +319,22 @@
   }
 
   function memberMaxMp(member) {
-    var bonusInt = (member && member.bonus && member.bonus.intelligence) || 0;
+    if (!member) return 25;
+    if (member.stats && typeof member.stats.intelligence === "number") {
+      return 25 + Math.max(0, member.stats.intelligence - 4) * 5;
+    }
+    var bonusInt = (member.bonus && member.bonus.intelligence) || 0;
     return 25 + bonusInt * 5;
   }
 
   function memberMaxHp(member) {
-    var bonusStam = (member && member.bonus && member.bonus.stamina) || 0;
     var role = (member && member.role) || "soldier";
-    return (CLASS_HP[role] || 1) + bonusStam * 2;
+    var baseHp = CLASS_HP[role] || 1;
+    if (member && member.stats && typeof member.stats.stamina === "number") {
+      return baseHp + Math.max(0, member.stats.stamina - 4) * 2;
+    }
+    var bonusStam = (member && member.bonus && member.bonus.stamina) || 0;
+    return baseHp + bonusStam * 2;
   }
 
   function hpGainOnLevel(member) {
@@ -318,10 +353,20 @@
     if (!member.bonus) {
       member.bonus = { strength: 0, intelligence: 0, stamina: 0, luck: 0 };
     }
-    if (typeof member.maxHp !== "number" || member.maxHp < 1) member.maxHp = memberMaxHp(member);
+    if (!member.stats) {
+      var base = baseStatsForRole(member.role || "soldier");
+      member.stats = {
+        strength: (base.strength || 0) + (member.bonus.strength || 0),
+        intelligence: (base.intelligence || 0) + (member.bonus.intelligence || 0),
+        stamina: (base.stamina || 0) + (member.bonus.stamina || 0),
+        luck: (base.luck || 0) + (member.bonus.luck || 0),
+      };
+    }
+    var derivedMaxHp = memberMaxHp(member);
+    if (typeof member.maxHp !== "number" || member.maxHp < derivedMaxHp) member.maxHp = derivedMaxHp;
     if (typeof member.hp !== "number" || member.hp < 0) member.hp = member.maxHp;
-    var nextMaxMp = memberMaxMp(member);
-    member.maxMp = nextMaxMp;
+    var derivedMaxMp = memberMaxMp(member);
+    if (typeof member.maxMp !== "number" || member.maxMp < derivedMaxMp) member.maxMp = derivedMaxMp;
     if (typeof member.mp !== "number" || member.mp < 0) member.mp = member.maxMp;
     if (member.mp > member.maxMp) member.mp = member.maxMp;
     if (member.hp > member.maxHp) member.hp = member.maxHp;
@@ -562,6 +607,14 @@
       headstones: loadHeadstonesFromStorage(),
       headstonesIdSeq: 0,
       runId: "run-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+      adventure: null,
+      elaraDialog: null,
+      elaraDialogShown: false,
+      totalDaysElapsed: 0,
+      stableRestDays: 0,
+      quest: null,
+      questsCompleted: [],
+      questDialog: null,
     };
   }
 
@@ -731,7 +784,7 @@
   function allowedLevelsForRoadEncounter() {
     var origin = (state && state.travelOrigin) || "cantebury";
     if (origin === "hollow_banks" || origin === "solem") {
-      if (Math.random() < 0.10) return [1, 2, 3];
+      if (Math.random() < 0.05) return [1, 2, 3];
     }
     return [1, 2];
   }
@@ -739,13 +792,21 @@
   function allowedLevelsForRuinsEncounter() {
     var origin = (state && state.travelOrigin) || "cantebury";
     if (origin === "solem") {
-      if (Math.random() < 0.20) return [1, 2, 3];
+      if (Math.random() < 0.10) return [1, 2, 3];
     }
     return [1, 2];
   }
 
   function buildRandomMonsterEncounter(sourceKind) {
-    var allowed = sourceKind === "ruins" ? allowedLevelsForRuinsEncounter() : allowedLevelsForRoadEncounter();
+    var allowed;
+    if (sourceKind === "ruins") {
+      allowed = allowedLevelsForRuinsEncounter();
+    } else if (sourceKind === "adventure") {
+      var advTown = (state.adventure && state.adventure.town) || (state.settlementTown || "cantebury");
+      allowed = allowedLevelsForAdventureEncounter(advTown);
+    } else {
+      allowed = allowedLevelsForRoadEncounter();
+    }
     var pool = BALANCE_MONSTERS.filter(function (m) {
       var lvl = (m && m.level) || 1;
       return allowed.indexOf(lvl) >= 0;
@@ -969,9 +1030,18 @@
       if (m.hp <= 0) continue;
       m.xp += amount;
       gained++;
-      while (m.xp >= XP_PER_LEVEL) {
-        m.xp -= XP_PER_LEVEL;
+      while (m.level < MAX_LEVEL) {
+        var needed = xpToNextLevel(m.level);
+        if (!(m.xp >= needed)) break;
+        m.xp -= needed;
         m.level += 1;
+        if (m.level >= MAX_LEVEL) m.xp = 0;
+        var sg = rollStatGains(m.role);
+        if (!m.stats) m.stats = { strength: 0, intelligence: 0, stamina: 0, luck: 0 };
+        m.stats.strength = Math.min(STAT_CAP, (m.stats.strength || 0) + sg.strength);
+        m.stats.intelligence = Math.min(STAT_CAP, (m.stats.intelligence || 0) + sg.intelligence);
+        m.stats.stamina = Math.min(STAT_CAP, (m.stats.stamina || 0) + sg.stamina);
+        m.stats.luck = Math.min(STAT_CAP, (m.stats.luck || 0) + sg.luck);
         var hpGain = hpGainOnLevel(m);
         m.maxHp += hpGain;
         m.hp = Math.min(m.maxHp, m.hp + hpGain);
@@ -979,15 +1049,21 @@
         m.maxMp = memberMaxMp(m);
         var mpGain = Math.max(0, m.maxMp - prevMaxMp);
         m.mp = Math.min(m.maxMp, (m.mp || 0) + mpGain);
+        var gainTokens = [];
+        if (hpGain) gainTokens.push("+" + hpGain + " HP");
+        if (mpGain) gainTokens.push("+" + mpGain + " MP");
+        if (sg.strength) gainTokens.push("+" + sg.strength + " STR");
+        if (sg.intelligence) gainTokens.push("+" + sg.intelligence + " INT");
+        if (sg.stamina) gainTokens.push("+" + sg.stamina + " STAM");
+        if (sg.luck) gainTokens.push("+" + sg.luck + " LUCK");
+        var gainSuffix = gainTokens.length ? " (" + gainTokens.join(", ") + ")" : "";
         logLine(
           m.name +
             " levels up to <span class=\"hi\">" +
             m.level +
-            "</span> (+" +
-            hpGain +
-            " HP, +" +
-            mpGain +
-            " MP).",
+            "</span>" +
+            gainSuffix +
+            ".",
           "good"
         );
         trackPlaytest("member_leveled", {
@@ -996,6 +1072,7 @@
           level: m.level,
           hpGain: hpGain,
           mpGain: mpGain,
+          statGains: sg,
         });
       }
     }
@@ -1013,8 +1090,17 @@
 
   function queueResumeTravel() {
     clearTransitionTimers();
-    state.phase = "travel";
-    state.transition = { kind: "resume", label: "On the road again" };
+    var resumeLabel = "On the road again";
+    if (state.quest && state.quest.status === "active") {
+      state.phase = "quest_trek";
+      resumeLabel = "Pressing into the pass";
+    } else if (state.adventure) {
+      state.phase = "adventure";
+      resumeLabel = "Exploring on";
+    } else {
+      state.phase = "travel";
+    }
+    state.transition = { kind: "resume", label: resumeLabel };
     render();
     scheduleTransition(function () {
       state.transition = null;
@@ -1053,6 +1139,19 @@
     state.pendingEncounter = null;
     state.combat = null;
     endOfDayPriestHealing();
+    if (state.quest && state.quest.status === "active") {
+      queueResumeTravel();
+      return;
+    }
+    if (state.adventure) {
+      if (state.adventure.dir === "out" && state.adventure.daysOut >= state.adventure.maxDays) {
+        state.adventure.dir = "back";
+        state.adventure.returnDays = state.adventure.daysOut;
+        logLine("You've used all 10 adventuring days. Heading back to " + locationLabel(state.adventure.town) + " (" + state.adventure.returnDays + " day(s) home).", "hi");
+      }
+      queueResumeTravel();
+      return;
+    }
     if (state.travelDay >= currentRouteDays()) {
       logLine("<span class=\"hi\">You reach " + currentDestination().label + ".</span>", "good");
       queueArrivalAtDestination();
@@ -1077,6 +1176,12 @@
     if (k === "new_isil_gate_boss") {
       state.finalBossCleared = true;
       logLine("SK Kew Kumber is defeated. The road to New Isil is open.", "good");
+    }
+    if (k === "quest_boss_drakes") {
+      logLine("The drakes lie still. The pass is yours.", "good");
+      state.encounterChance = ENCOUNTER_BASE;
+      completeCurrentQuest();
+      return;
     }
     state.encounterChance = ENCOUNTER_BASE;
     state.combat = null;
@@ -1511,6 +1616,8 @@
     if (state.phase !== "travel") return;
     if (state.travelDay >= currentRouteDays()) return;
     state.travelDay++;
+    tickJourneyDay();
+    state.stableRestDays = 0;
     logLine("Day " + state.travelDay + " of " + currentRouteDays() + " on the road.", "");
     trackPlaytest("day_advanced", { day: state.travelDay, routeDays: currentRouteDays() });
     processDailyDeath();
@@ -1569,6 +1676,403 @@
     }, MARCH_MS);
   }
 
+  function allowedLevelsForAdventureEncounter(townKey) {
+    var key = townKey || "cantebury";
+    if (key === "hollow_banks" || key === "solem" || key === "new_isil") {
+      if (Math.random() < 0.05) return [1, 2, 3];
+    }
+    return [1, 2];
+  }
+
+  function beginAdventure() {
+    var town = state.settlementTown;
+    if (!town) {
+      logLine("There is nowhere to set out from.", "bad");
+      render();
+      return;
+    }
+    if (state.food <= 0) {
+      logLine("You need supplies before venturing out.", "bad");
+      render();
+      return;
+    }
+    var fallen = state.party.filter(function (p) { return p && p.hp <= 0; }).length;
+    if (fallen >= state.party.length) {
+      logLine("No one is fit to walk out the gate.", "bad");
+      render();
+      return;
+    }
+    state.adventure = { dir: "out", daysOut: 0, maxDays: 10, town: town, returnDays: 0 };
+    state.phase = "adventure";
+    state.travelOrigin = town;
+    state.travelInventoryOpen = false;
+    state.inventoryDetailOpen = false;
+    state.encounterChance = ENCOUNTER_BASE;
+    state.elaraDialog = null;
+    state.elaraDialogShown = false;
+    logLine("You strike out from " + locationLabel(town) + " for an adventuring trek (up to 10 days).", "hi");
+    trackPlaytest("adventure_started", { town: town });
+    render();
+  }
+
+  function advanceAdventureDay() {
+    if (state.phase !== "adventure" || !state.adventure || state.adventure.dir !== "out") return;
+    if (state.transition) return;
+    consumeTravelDaySupplies();
+    if (allDead()) {
+      state.gameoverMode = "loss";
+      state.phase = "gameover";
+      logLine("The expedition is lost in the wilds.", "bad");
+      render();
+      return;
+    }
+    state.travelDay++;
+    state.adventure.daysOut++;
+    tickJourneyDay();
+    state.stableRestDays = 0;
+    logLine("Adventure day " + state.adventure.daysOut + " of " + state.adventure.maxDays + " near " + locationLabel(state.adventure.town) + ".", "");
+    trackPlaytest("adventure_day_advanced", { daysOut: state.adventure.daysOut, town: state.adventure.town });
+    processDailyDeath();
+    if (state.phase === "gameover") { render(); return; }
+    applyTravelDayMpRegen();
+    var hadEncounter = rollTravelEncounter();
+    if (hadEncounter) {
+      queueEncounterCutaway("Hostile creatures", "Adventure day " + state.adventure.daysOut + " - a wild pack attacks", function () {
+        startTacticalCombat(buildRandomMonsterEncounter("adventure"));
+      });
+      return;
+    }
+    logLine("Quiet exploration.", "");
+    endOfDayPriestHealing();
+    if (state.adventure.daysOut >= state.adventure.maxDays) {
+      state.adventure.dir = "back";
+      state.adventure.returnDays = state.adventure.daysOut;
+      logLine("You've used all 10 adventuring days. Heading back to " + locationLabel(state.adventure.town) + " (" + state.adventure.returnDays + " day(s) home).", "hi");
+    }
+    render();
+  }
+
+  function turnBackAdventure() {
+    if (state.phase !== "adventure" || !state.adventure || state.adventure.dir !== "out") return;
+    state.adventure.dir = "back";
+    state.adventure.returnDays = state.adventure.daysOut;
+    if (state.adventure.returnDays <= 0) {
+      endAdventureBackInTown();
+      return;
+    }
+    logLine("You turn back toward " + locationLabel(state.adventure.town) + " (" + state.adventure.returnDays + " day(s) home).", "hi");
+    render();
+  }
+
+  function continueAdventureReturn() {
+    if (state.phase !== "adventure" || !state.adventure || state.adventure.dir !== "back") return;
+    if (state.transition) return;
+    consumeTravelDaySupplies();
+    if (allDead()) {
+      state.gameoverMode = "loss";
+      state.phase = "gameover";
+      logLine("The expedition is lost on the way home.", "bad");
+      render();
+      return;
+    }
+    state.adventure.returnDays--;
+    tickJourneyDay();
+    state.stableRestDays = 0;
+    applyTravelDayMpRegen();
+    processDailyDeath();
+    if (state.phase === "gameover") { render(); return; }
+    if (state.adventure.returnDays <= 0) {
+      logLine("You return safely to " + locationLabel(state.adventure.town) + ".", "good");
+      endAdventureBackInTown();
+      return;
+    }
+    logLine("Returning... " + state.adventure.returnDays + " day(s) to " + locationLabel(state.adventure.town) + ".", "");
+    render();
+  }
+
+  var QUEST_CATALOG = {
+    fire_in_sky: {
+      id: "fire_in_sky",
+      name: "Fire in the sky",
+      giver: "barkeep",
+      pitch: "Adventurers, if you would, please find and kill the drakes that are killing our animals!",
+      summary: "A 5-day trek through a dangerous mountain pass guarded by trolls, goblins, and ogres. A pack of 4 drakes nests at the end.",
+      rewardGold: 20,
+      type: "monster_hunt",
+      totalDays: 5,
+      monsterPool: ["Troll", "Goblin", "Ogre"],
+      bossLabel: "Drake nest",
+      bossMonster: "Drake",
+      bossCount: 4,
+    },
+  };
+
+  function questDef(id) {
+    return QUEST_CATALOG[id] || null;
+  }
+
+  function questIsCompleted(id) {
+    return (state.questsCompleted || []).indexOf(id) >= 0;
+  }
+
+  function questIsAvailable(id) {
+    if (state.quest) return false;
+    return !questIsCompleted(id);
+  }
+
+  function questsAvailableFromBarkeep() {
+    var keys = Object.keys(QUEST_CATALOG);
+    return keys.filter(function (k) {
+      return QUEST_CATALOG[k].giver === "barkeep" && questIsAvailable(k);
+    });
+  }
+
+  function offerQuest(questId) {
+    if (!questIsAvailable(questId)) return;
+    var def = questDef(questId);
+    if (!def) return;
+    state.questDialog = { kind: "offer", questId: questId };
+    render();
+  }
+
+  function acceptQuest(questId) {
+    if (!questIsAvailable(questId)) return;
+    var def = questDef(questId);
+    if (!def) return;
+    state.quest = {
+      id: questId,
+      status: "accepted",
+      dayProgress: 0,
+      totalDays: def.totalDays,
+      startedAt: state.settlementTown || "cantebury",
+    };
+    state.questDialog = null;
+    state.settlementView = "quest";
+    logLine("Accepted quest: <span class=\"hi\">" + def.name + "</span>.", "good");
+    trackPlaytest("quest_accepted", { questId: questId });
+    render();
+  }
+
+  function declineQuest() {
+    state.questDialog = null;
+    render();
+  }
+
+  function beginQuestTrek() {
+    if (!state.quest) return;
+    var town = state.settlementTown || state.quest.startedAt || "cantebury";
+    if (state.food <= 0) {
+      logLine("You need supplies before heading into the pass.", "bad");
+      render();
+      return;
+    }
+    var def = questDef(state.quest.id);
+    state.quest.status = "active";
+    state.phase = "quest_trek";
+    state.travelOrigin = town;
+    state.travelInventoryOpen = false;
+    state.inventoryDetailOpen = false;
+    state.encounterChance = ENCOUNTER_BASE;
+    state.stableRestDays = 0;
+    logLine("You set out for the mountain pass. " + (def ? def.totalDays : 5) + " days ahead.", "hi");
+    trackPlaytest("quest_trek_started", { questId: state.quest.id });
+    render();
+  }
+
+  function advanceQuestDay() {
+    if (state.phase !== "quest_trek" || !state.quest) return;
+    if (state.transition) return;
+    consumeTravelDaySupplies();
+    if (allDead()) {
+      state.gameoverMode = "loss";
+      state.phase = "gameover";
+      logLine("The party is lost in the mountain pass.", "bad");
+      render();
+      return;
+    }
+    state.travelDay++;
+    state.quest.dayProgress++;
+    tickJourneyDay();
+    state.stableRestDays = 0;
+    processDailyDeath();
+    if (state.phase === "gameover") { render(); return; }
+    applyTravelDayMpRegen();
+    var def = questDef(state.quest.id);
+    if (!def) {
+      logLine("Quest data missing. Returning to town.", "bad");
+      abandonQuest();
+      return;
+    }
+    if (state.quest.dayProgress >= state.quest.totalDays) {
+      queueEncounterCutaway(def.bossLabel || "Final stand", "Day " + state.quest.dayProgress + " of " + state.quest.totalDays + " - the quarry shows itself", function () {
+        startTacticalCombat(buildQuestBossEncounter(def));
+      });
+      return;
+    }
+    queueEncounterCutaway("Pass ambush", "Day " + state.quest.dayProgress + " of " + state.quest.totalDays + " in the pass", function () {
+      startTacticalCombat(buildQuestEncounter(def));
+    });
+  }
+
+  function abandonQuest() {
+    var def = state.quest ? questDef(state.quest.id) : null;
+    var name = def ? def.name : "the quest";
+    var town = (state.quest && state.quest.startedAt) || state.settlementTown || "cantebury";
+    var qid = state.quest && state.quest.id;
+    state.quest = null;
+    state.phase = "settlement";
+    state.settlementTown = town;
+    state.settlementView = "quest";
+    state.encounterChance = ENCOUNTER_BASE;
+    internPendingHeadstones();
+    logLine("Abandoned " + name + ". You return to " + locationLabel(town) + " empty-handed.", "bad");
+    trackPlaytest("quest_abandoned", { questId: qid });
+    render();
+  }
+
+  function completeCurrentQuest() {
+    if (!state.quest) return;
+    var def = questDef(state.quest.id);
+    if (!def) return;
+    var town = state.quest.startedAt || state.settlementTown || "cantebury";
+    var qid = state.quest.id;
+    var reward = def.rewardGold || 0;
+    state.gold += reward;
+    state.questsCompleted = (state.questsCompleted || []).concat([qid]);
+    logLine("<span class=\"hi\">" + def.name + "</span> complete! Reward: +" + reward + " gp.", "good");
+    trackPlaytest("quest_completed", { questId: qid, reward: reward });
+    state.quest = null;
+    state.phase = "settlement";
+    state.settlementTown = town;
+    state.settlementView = "quest";
+    state.encounterChance = ENCOUNTER_BASE;
+    internPendingHeadstones();
+    render();
+  }
+
+  function buildQuestEncounter(def) {
+    var pool = BALANCE_MONSTERS.filter(function (m) {
+      return m && def.monsterPool.indexOf(m.name) >= 0;
+    });
+    if (!pool.length) pool = BALANCE_MONSTERS.slice();
+    var n = rollInt(1, 3);
+    var list = [];
+    for (var i = 0; i < n; i++) {
+      var mon = randomBalanceMonster(pool);
+      var baseHp = Math.max(1, parseInt(mon && mon.hp, 10) || 1);
+      var scaled = Math.max(1, Math.round(baseHp * monsterHpMultiplierForProgress()));
+      list.push({
+        id: "qm" + i,
+        name: mon.name,
+        hp: scaled,
+        maxHp: scaled,
+        dmg: monsterDamageForName(mon.name),
+        level: (mon && mon.level) || 1,
+      });
+    }
+    return { kind: "quest_combat", label: n + " hostile(s) in the pass", foes: list };
+  }
+
+  function buildQuestBossEncounter(def) {
+    var bossDef = null;
+    for (var i = 0; i < BALANCE_MONSTERS.length; i++) {
+      if (BALANCE_MONSTERS[i] && BALANCE_MONSTERS[i].name === def.bossMonster) {
+        bossDef = BALANCE_MONSTERS[i];
+        break;
+      }
+    }
+    if (!bossDef) bossDef = { name: def.bossMonster || "Drake", hp: 25, atk: 8, level: 3 };
+    var foes = [];
+    var count = def.bossCount || 1;
+    for (var j = 0; j < count; j++) {
+      var baseHp = Math.max(1, parseInt(bossDef.hp, 10) || 25);
+      foes.push({
+        id: "qb" + j,
+        name: bossDef.name,
+        hp: baseHp,
+        maxHp: baseHp,
+        dmg: monsterDamageForName(bossDef.name),
+        level: bossDef.level || 3,
+      });
+    }
+    return { kind: "quest_boss_drakes", label: def.bossLabel || (count + " " + bossDef.name), foes: foes };
+  }
+
+  function endAdventureBackInTown() {
+    var town = state.adventure ? state.adventure.town : (state.settlementTown || "cantebury");
+    trackPlaytest("adventure_ended", { town: town });
+    state.adventure = null;
+    state.phase = "settlement";
+    state.settlementTown = town;
+    state.settlementView = "church";
+    state.encounterChance = ENCOUNTER_BASE;
+    state.elaraDialog = null;
+    state.elaraDialogShown = false;
+    internPendingHeadstones();
+    render();
+  }
+
+  function findElaraInParty() {
+    for (var i = 0; i < state.party.length; i++) {
+      var m = state.party[i];
+      if (m && m.name === "Captain Elara Vale" && m.hp > 0) return m;
+    }
+    return null;
+  }
+
+  function maybeTriggerElaraDialog() {
+    if (state.phase !== "adventure") return;
+    if (state.elaraDialog) return;
+    if (state.elaraDialogShown) return;
+    var elara = findElaraInParty();
+    if (!elara) return;
+    if (!elara.maxHp || elara.hp / elara.maxHp >= 0.5) return;
+    state.elaraDialog = {
+      portrait: elara.headshot || "Vale.jpeg",
+      speaker: elara.name,
+      text: "Man, this is tough."
+    };
+    state.elaraDialogShown = true;
+    trackPlaytest("elara_dialog_triggered", { hp: elara.hp, maxHp: elara.maxHp });
+  }
+
+  function questDialogOverlayHtml(dlg) {
+    var def = dlg && dlg.questId ? questDef(dlg.questId) : null;
+    if (!def) return "";
+    return (
+      '<div class="quest-dialog-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;z-index:50;padding:1rem">' +
+        '<div class="quest-dialog" style="background:#2a2218;border:2px solid #c89c3f;border-radius:12px;padding:1rem 1.25rem;max-width:32rem;width:100%;box-shadow:0 8px 30px rgba(0,0,0,0.6)">' +
+          '<div style="color:#c89c3f;font-weight:600;margin-bottom:.35rem">Barkeep</div>' +
+          '<div style="color:#e8dcc8;margin-bottom:.5rem;font-style:italic">"' + escapeHtml(def.pitch) + '"</div>' +
+          '<div style="color:#9a8b78;margin-bottom:.75rem">' + escapeHtml(def.summary) +
+          ' Reward: <b style="color:#e8dcc8">' + def.rewardGold + ' gp</b>.</div>' +
+          '<div style="text-align:right;display:flex;justify-content:flex-end;gap:.4rem;flex-wrap:wrap">' +
+            '<button type="button" id="questDecline">Not interested</button>' +
+            '<button type="button" class="primary" id="questAccept-' + def.id + '">Accept quest</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function elaraDialogOverlayHtml(dlg) {
+    var portraitUrl = headshotUrl(dlg.portrait || "Vale.jpeg");
+    return (
+      '<div class="elara-dialog-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;z-index:50;padding:1rem">' +
+        '<div class="elara-dialog" style="background:#2a2218;border:2px solid #c89c3f;border-radius:12px;padding:1rem 1.25rem;max-width:28rem;width:100%;display:flex;gap:1rem;align-items:flex-start;box-shadow:0 8px 30px rgba(0,0,0,0.6)">' +
+          '<img src="' + portraitUrl + '" alt="' + escapeHtml(dlg.speaker || "") + '" style="width:84px;height:84px;border-radius:8px;object-fit:cover;border:1px solid #4a3d2a;flex-shrink:0">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="color:#c89c3f;font-weight:600;margin-bottom:.35rem">' + escapeHtml(dlg.speaker || "") + '</div>' +
+            '<div style="color:#e8dcc8;margin-bottom:.75rem;font-style:italic">"' + escapeHtml(dlg.text || "") + '"</div>' +
+            '<div style="text-align:right">' +
+              '<button type="button" id="elaraDialogClose">Continue</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
   function buy(item) {
     if (item === "food") {
       if (state.gold < 1) {
@@ -1615,35 +2119,57 @@
     render();
   }
 
+  function innRestCost() {
+    return Math.max(1, Math.ceil(state.gold * 0.1));
+  }
+
   function restAtInn() {
-    if (state.gold >= 10) {
-      var cost = Math.max(1, Math.ceil(state.gold * 0.1));
-      if (state.gold < cost) {
-        logLine("Not enough gold for an inn room.", "bad");
-        render();
-        return;
-      }
-      state.gold -= cost;
-      state.party.forEach(function (m) {
-        if (m.hp > 0) m.hp = m.maxHp;
-      });
-      if (state.guest && state.guest.hp > 0) state.guest.hp = state.guest.maxHp;
-      logLine("Inn stay complete (-" + cost + " gp). Living members restored to full HP.", "good");
+    var cost = innRestCost();
+    if (state.gold < cost) {
+      logLine("Not enough gold for an inn room. Try the stables instead.", "bad");
       render();
       return;
     }
+    state.gold -= cost;
+    state.party.forEach(function (m) {
+      if (m.hp > 0) m.hp = m.maxHp;
+    });
+    if (state.guest && state.guest.hp > 0) state.guest.hp = state.guest.maxHp;
+    state.stableRestDays = 0;
+    tickJourneyDay();
+    logLine("Inn stay complete (-" + cost + " gp). Living members restored to full HP.", "good");
+    render();
+  }
 
+  function stableRestEfficiency() {
+    var consec = state.stableRestDays || 0;
+    var eff = 0.5 - 0.25 * consec;
+    return Math.max(0, eff);
+  }
+
+  function restAtStables() {
+    var eff = stableRestEfficiency();
+    if (eff <= 0) {
+      logLine("The stables are picked clean of hay. Another night here will not help (0% HP).", "bad");
+      state.stableRestDays = (state.stableRestDays || 0) + 1;
+      tickJourneyDay();
+      render();
+      return;
+    }
+    var pct = Math.round(eff * 100);
     state.party.forEach(function (m) {
       if (m.hp <= 0) return;
       var missing = Math.max(0, m.maxHp - m.hp);
-      var gain = Math.ceil(missing * 0.5);
+      var gain = Math.ceil(missing * eff);
       m.hp = Math.min(m.maxHp, m.hp + gain);
     });
     if (state.guest && state.guest.hp > 0) {
       var gMissing = Math.max(0, state.guest.maxHp - state.guest.hp);
-      state.guest.hp = Math.min(state.guest.maxHp, state.guest.hp + Math.ceil(gMissing * 0.5));
+      state.guest.hp = Math.min(state.guest.maxHp, state.guest.hp + Math.ceil(gMissing * eff));
     }
-    logLine("Low funds: the stable grants a rough rest (50% missing HP recovered).", "");
+    state.stableRestDays = (state.stableRestDays || 0) + 1;
+    tickJourneyDay();
+    logLine("Stable rest (" + pct + "% of missing HP recovered).", "");
     render();
   }
 
@@ -1655,6 +2181,75 @@
       });
       logLine("No supplies (-2 HP each).", "bad");
     }
+  }
+
+  function tickJourneyDay() {
+    if (typeof state.totalDaysElapsed !== "number") state.totalDaysElapsed = 0;
+    state.totalDaysElapsed++;
+  }
+
+  function applyCampHealing() {
+    state.party.forEach(function (m) {
+      if (!m || m.hp <= 0) return;
+      var missing = Math.max(0, m.maxHp - m.hp);
+      if (missing <= 0) return;
+      var gain = Math.ceil(missing * 0.5);
+      m.hp = Math.min(m.maxHp, m.hp + gain);
+    });
+    if (state.guest && state.guest.hp > 0) {
+      var gMissing = Math.max(0, state.guest.maxHp - state.guest.hp);
+      if (gMissing > 0) state.guest.hp = Math.min(state.guest.maxHp, state.guest.hp + Math.ceil(gMissing * 0.5));
+    }
+    logLine("Camp is quiet. Each living member recovers 50% of missing HP.", "good");
+  }
+
+  function campRest() {
+    if (state.transition) return;
+    var phase = state.phase;
+    if (phase !== "travel" && phase !== "adventure" && phase !== "quest_trek") return;
+    consumeTravelDaySupplies();
+    if (allDead()) {
+      state.gameoverMode = "loss";
+      state.phase = "gameover";
+      logLine("The party is lost at camp.", "bad");
+      render();
+      return;
+    }
+    state.travelDay++;
+    tickJourneyDay();
+    state.stableRestDays = 0;
+    processDailyDeath();
+    if (state.phase === "gameover") { render(); return; }
+    applyTravelDayMpRegen();
+    if (phase === "travel") {
+      logLine("You camp on the road. Day " + state.travelDay + " of " + currentRouteDays() + ".", "");
+    } else if (phase === "adventure" && state.adventure) {
+      logLine("You hold camp near " + locationLabel(state.adventure.town) + ".", "");
+    } else {
+      logLine("You camp in the pass.", "");
+    }
+    if (Math.random() < 0.20) {
+      var encBuilder;
+      if (phase === "quest_trek" && state.quest) {
+        var qDefRest = questDef(state.quest.id);
+        if (qDefRest) encBuilder = function () { return buildQuestEncounter(qDefRest); };
+      }
+      if (!encBuilder) {
+        var sourceKind = phase === "adventure" ? "adventure" : "road";
+        encBuilder = function () { return buildRandomMonsterEncounter(sourceKind); };
+      }
+      queueEncounterCutaway("Camp ambush", "Watch fires draw eyes", function () {
+        startTacticalCombat(encBuilder());
+      });
+      return;
+    }
+    applyCampHealing();
+    if (phase === "travel" && state.travelDay >= currentRouteDays()) {
+      logLine("You drift into " + currentDestination().label + " on rest legs.", "good");
+      queueArrivalAtDestination();
+      return;
+    }
+    render();
   }
 
   function addPartyMember(role) {
@@ -1849,6 +2444,8 @@
       tab("tavern", "Tavern") +
       tab("shop", "Shop") +
       tab("inventory", "Inventory") +
+      tab("quest", "Quest" + (state.quest ? " *" : "")) +
+      tab("adventure", "Adventure") +
       tab("depart", "Depart") +
       "</div>"
     );
@@ -1973,6 +2570,34 @@
     render();
   }
 
+  function sellSettlementHealPotion(qty) {
+    qty = Math.max(0, parseInt(qty, 10) || 1);
+    var actual = Math.min(qty, state.healingPotions);
+    if (actual <= 0) {
+      logLine("No Potions of Healing to sell.", "bad");
+      render();
+      return;
+    }
+    state.healingPotions -= actual;
+    state.gold += actual * 2;
+    logLine("Sold " + actual + " Potion of Healing for " + (actual * 2) + " gp.", "good");
+    render();
+  }
+
+  function sellSettlementLifePotion(qty) {
+    qty = Math.max(0, parseInt(qty, 10) || 1);
+    var actual = Math.min(qty, state.lifePotions);
+    if (actual <= 0) {
+      logLine("No Potions of Life to sell.", "bad");
+      render();
+      return;
+    }
+    state.lifePotions -= actual;
+    state.gold += actual * 7;
+    logLine("Sold " + actual + " Potion of Life for " + (actual * 7) + " gp.", "good");
+    render();
+  }
+
   function sellSettlementGem(qty) {
     qty = Math.max(0, parseInt(qty, 10) || 1);
     var actual = Math.min(qty, state.gems);
@@ -2045,6 +2670,70 @@
     m.hp = m.maxHp;
     m.deadSinceDay = undefined;
     logLine(m.name + " is revived at the chapel to full health (" + m.maxHp + "/" + m.maxHp + " HP).", "good");
+    render();
+  }
+
+  function reviveWithLifePotionInField(memberId) {
+    if (state.lifePotions <= 0) {
+      logLine("No Potion of Life on hand.", "bad");
+      render();
+      return;
+    }
+    var m = null;
+    for (var i = 0; i < state.party.length; i++) {
+      if (state.party[i].id === memberId) { m = state.party[i]; break; }
+    }
+    if (!m) {
+      logLine("Companion not found.", "bad");
+      render();
+      return;
+    }
+    if (m.permadead) {
+      logLine(m.name + " is beyond help.", "bad");
+      render();
+      return;
+    }
+    if (m.hp > 0) {
+      logLine(m.name + " is already standing.", "bad");
+      render();
+      return;
+    }
+    state.lifePotions--;
+    m.hp = Math.max(1, Math.ceil(m.maxHp * 0.5));
+    m.deadSinceDay = undefined;
+    logLine(m.name + " is revived with a Potion of Life in the field (" + m.hp + "/" + m.maxHp + " HP).", "good");
+    render();
+  }
+
+  function reviveWithLifePotionAtChurch(memberId) {
+    if (state.lifePotions <= 0) {
+      logLine("No Potion of Life on hand.", "bad");
+      render();
+      return;
+    }
+    var m = null;
+    for (var i = 0; i < state.party.length; i++) {
+      if (state.party[i].id === memberId) { m = state.party[i]; break; }
+    }
+    if (!m) {
+      logLine("Companion not found.", "bad");
+      render();
+      return;
+    }
+    if (m.permadead) {
+      logLine(m.name + " is beyond the church's reach.", "bad");
+      render();
+      return;
+    }
+    if (m.hp > 0) {
+      logLine(m.name + " does not need reviving.", "bad");
+      render();
+      return;
+    }
+    state.lifePotions--;
+    m.hp = Math.max(1, Math.ceil(m.maxHp * 0.5));
+    m.deadSinceDay = undefined;
+    logLine(m.name + " is revived with a Potion of Life at the chapel (" + m.hp + "/" + m.maxHp + " HP).", "good");
     render();
   }
 
@@ -2423,8 +3112,8 @@
 
   function profileForMember(m) {
     if (m && m.id === "p0" && state.leaderProfile) {
-      var st = cloneStats(state.leaderProfile.stats || baseStatsForRole(state.leaderProfile.role));
       initMemberProgress(m);
+      var st = cloneStats(m.stats || state.leaderProfile.stats || baseStatsForRole(state.leaderProfile.role));
       return {
         age: state.leaderProfile.age,
         hometown: state.leaderProfile.hometown,
@@ -2436,7 +3125,7 @@
         stats: st,
         level: m.level,
         xp: m.xp,
-        xpToLevel: XP_PER_LEVEL,
+        xpToLevel: xpToNextLevel(m.level),
       };
     }
     var seed = 0;
@@ -2469,15 +3158,10 @@
       headshot: m.headshot || "",
       skills: skillsByRole[m.role] || ["Adaptable", "Resilient", "Focused"],
       traits: traitsByRole[m.role] || ["Stoic", "Reliable", "Calm"],
-      stats: {
-        strength: 4,
-        intelligence: 4,
-        stamina: 4,
-        luck: 4,
-      },
+      stats: cloneStats(m.stats || baseStatsForRole(m.role || "soldier")),
       level: m.level,
       xp: m.xp,
-      xpToLevel: XP_PER_LEVEL,
+      xpToLevel: xpToNextLevel(m.level),
     };
   }
 
@@ -2497,7 +3181,7 @@
   }
 
   function inventoryActionHealingContext() {
-    if (state.phase === "travel") return true;
+    if (state.phase === "travel" || state.phase === "adventure" || state.phase === "quest_trek") return true;
     return !!(state.phase === "action" && state.pendingEncounter && state.pendingEncounter.kind === "ruins_discovery");
   }
 
@@ -2528,6 +3212,11 @@
             memberDollStyle(m) +
             " - Lv " +
             (typeof m.level === "number" ? m.level : 1) +
+            " - " +
+            (typeof m.hp === "number" ? m.hp : 0) +
+            "/" +
+            (typeof m.maxHp === "number" ? m.maxHp : 0) +
+            " HP" +
             "</span>" +
             "</span>" +
             "</button>"
@@ -2670,7 +3359,7 @@
       '<p><b>xp</b> ' +
       (typeof prof.xp === "number" ? prof.xp : 0) +
       "/" +
-      (prof.xpToLevel || XP_PER_LEVEL) +
+      (isFinite(prof.xpToLevel) ? prof.xpToLevel : "max") +
       "</p>" +
       "</div>" +
       "</div>" +
@@ -2942,7 +3631,7 @@
           m.hp +
           "/" +
           m.maxHp +
-          "</span></li>"
+          " HP</span></li>"
         );
       })
       .join("");
@@ -2958,7 +3647,7 @@
         state.guest.hp +
         "/" +
         state.guest.maxHp +
-        "</span></li>"
+        " HP</span></li>"
       : '<li class="role-guest"><em>Guest slot empty.</em></li>';
 
     var marchForMap =
@@ -2993,6 +3682,9 @@
       "%</b> <span class=\"stat-hint\">(+25% per quiet day)</span></div>" +
       "<div class=\"stat\">Ruins: <b>" +
       ru +
+      "</b></div>" +
+      "<div class=\"stat\">Journey: <b>day " +
+      (state.totalDaysElapsed || 0) +
       "</b></div>" +
       "<div class=\"stat\">Version: <b>v" +
       GAME_VERSION +
@@ -3670,6 +4362,7 @@
         " days complete. Each <b>Next day</b> consumes 1 supply. Encounter chance shown above rises after quiet days.</p>" +
         "<div class=\"actions\">" +
         '<button type="button" class="primary" id="nextDay">Next day</button>' +
+        '<button type="button" id="travelCampBtn"' + (state.food > 0 ? "" : " disabled") + '>Camp and rest (1 supply, ~20% ambush, +50% HP)</button>' +
         '<button type="button" id="travelInventoryBtn">Inventory</button>' +
         "</div>" +
         (state.travelInventoryOpen ? inventoryScreenHtml() : "") +
@@ -3687,6 +4380,8 @@
         }
         beginNextTravelDayMarch();
       };
+      var travelCampBtn = document.getElementById("travelCampBtn");
+      if (travelCampBtn) travelCampBtn.onclick = campRest;
       var travelInvBtn = document.getElementById("travelInventoryBtn");
       if (travelInvBtn)
         travelInvBtn.onclick = function () {
@@ -3694,6 +4389,169 @@
           if (!state.travelInventoryOpen) state.inventoryDetailOpen = false;
           render();
         };
+      if (state.travelInventoryOpen) {
+        wireInventoryScreen(app);
+      }
+      return;
+    }
+    if (state.phase === "quest_trek") {
+      if (state.transition && state.transition.kind === "encounter") {
+        app.innerHTML = transitionEncounterHtml(state.transition) + renderLog();
+        return;
+      }
+      var qResumeOverlay =
+        state.transition && state.transition.kind === "resume" ? transitionResumeOverlayHtml(state.transition) : "";
+      var qDef = state.quest ? questDef(state.quest.id) : null;
+      var qDay = state.quest ? state.quest.dayProgress : 0;
+      var qTotal = state.quest ? state.quest.totalDays : 5;
+      var qBody =
+        "<p>" + (qDef ? "<b>" + escapeHtml(qDef.name) + "</b> - " : "") +
+        "Day <b>" + qDay + "</b> of <b>" + qTotal + "</b> through the mountain pass. " +
+        "Each <b>Press on</b> consumes 1 supply and triggers an encounter. The final day reveals the quarry.</p>";
+      var qActions =
+        '<button type="button" class="primary" id="questAdvanceBtn"' +
+        (state.food > 0 ? "" : " disabled") +
+        '>Press on (day ' + (qDay + 1) + ')</button>' +
+        '<button type="button" id="questCampBtn"' + (state.food > 0 ? "" : " disabled") + '>Camp and rest (1 supply, ~20% ambush, +50% HP)</button>' +
+        '<button type="button" id="questRetreatBtn">Retreat (abandon quest)</button>' +
+        '<button type="button" id="questInventoryBtn">Inventory</button>';
+      var qFallen = state.party.filter(function (p) { return p && p.hp <= 0; });
+      var qReviveBlock = "";
+      if (qFallen.length > 0) {
+        qReviveBlock = '<h3 class="church-section-title" style="margin-top:1rem">Revival in the field</h3>' +
+          '<p>Spend a <b>Potion of Life</b> to bring a companion back at half HP.</p>' +
+          '<div class="shop-block">';
+        for (var qfi = 0; qfi < qFallen.length; qfi++) {
+          var qfm = qFallen[qfi];
+          qReviveBlock += '<div class="shop-row" style="flex-wrap:wrap;gap:.4rem">' +
+            '<span>' + qfm.name + ' (' + roleLabel(qfm.role) + ')</span>' +
+            '<button type="button" id="qstLifePot-' + qfm.id + '"' +
+            (state.lifePotions > 0 ? "" : " disabled") +
+            '>Use Life Potion (' + state.lifePotions + ')</button>' +
+            '</div>';
+        }
+        qReviveBlock += '</div>';
+      }
+      app.innerHTML =
+        renderHeader() +
+        "<h2 class=\"panel-title\">Quest: mountain pass</h2>" +
+        qBody +
+        '<div class="actions">' + qActions + "</div>" +
+        qReviveBlock +
+        (state.travelInventoryOpen ? inventoryScreenHtml() : "") +
+        renderLog() +
+        qResumeOverlay;
+      var qAdvBtn = document.getElementById("questAdvanceBtn");
+      if (qAdvBtn) qAdvBtn.onclick = advanceQuestDay;
+      var qCampBtn = document.getElementById("questCampBtn");
+      if (qCampBtn) qCampBtn.onclick = campRest;
+      var qRetBtn = document.getElementById("questRetreatBtn");
+      if (qRetBtn) qRetBtn.onclick = abandonQuest;
+      var qInvBtn = document.getElementById("questInventoryBtn");
+      if (qInvBtn)
+        qInvBtn.onclick = function () {
+          state.travelInventoryOpen = !state.travelInventoryOpen;
+          if (!state.travelInventoryOpen) state.inventoryDetailOpen = false;
+          render();
+        };
+      for (var qfi2 = 0; qfi2 < qFallen.length; qfi2++) {
+        (function (fm) {
+          var b = document.getElementById("qstLifePot-" + fm.id);
+          if (b) b.onclick = function () { reviveWithLifePotionInField(fm.id); };
+        })(qFallen[qfi2]);
+      }
+      if (state.travelInventoryOpen) {
+        wireInventoryScreen(app);
+      }
+      return;
+    }
+    if (state.phase === "adventure") {
+      maybeTriggerElaraDialog();
+      if (state.transition && state.transition.kind === "encounter") {
+        app.innerHTML = transitionEncounterHtml(state.transition) + renderLog();
+        return;
+      }
+      var advResumeOverlay =
+        state.transition && state.transition.kind === "resume" ? transitionResumeOverlayHtml(state.transition) : "";
+      var adv = state.adventure || { dir: "out", daysOut: 0, maxDays: 10, town: state.settlementTown, returnDays: 0 };
+      var advTownLabel = locationLabel(adv.town || state.settlementTown || "cantebury");
+      var advFallen = state.party.filter(function (p) { return p && p.hp <= 0; });
+      var advReviveBlock = "";
+      if (advFallen.length > 0) {
+        advReviveBlock = '<h3 class="church-section-title" style="margin-top:1rem">Revival in the field</h3>' +
+          '<p>Use a <b>Potion of Life</b> to bring a fallen companion back at half HP. Without one they must wait for the next town\'s chapel.</p>' +
+          '<div class="shop-block">';
+        for (var fi = 0; fi < advFallen.length; fi++) {
+          var fm = advFallen[fi];
+          advReviveBlock += '<div class="shop-row" style="flex-wrap:wrap;gap:.4rem">' +
+            '<span>' + fm.name + ' (' + roleLabel(fm.role) + ')</span>' +
+            '<button type="button" id="advLifePot-' + fm.id + '"' +
+            (state.lifePotions > 0 ? "" : " disabled") +
+            '>Use Life Potion (' + state.lifePotions + ')</button>' +
+            '</div>';
+        }
+        advReviveBlock += '</div>';
+      }
+      var advBody, advActions;
+      if (adv.dir === "out") {
+        advBody =
+          "<p>Adventuring near <b>" + advTownLabel + "</b>. Day " + adv.daysOut +
+          " of up to " + adv.maxDays + ". Each <b>Push deeper</b> consumes 1 supply and rolls an encounter. Encounter chance: <b>" +
+          (state.encounterChance * 100).toFixed(0) + "%</b>.</p>" +
+          (adv.daysOut > 0
+            ? "<p class=\"hint\">Return trip will be " + adv.daysOut + " day(s), no encounters, 1 supply per day.</p>"
+            : "");
+        advActions =
+          '<button type="button" class="primary" id="advancePushBtn"' +
+          (state.food > 0 ? "" : " disabled") +
+          '>Push deeper (day ' + (adv.daysOut + 1) + ')</button>' +
+          '<button type="button" id="advCampBtn"' + (state.food > 0 ? "" : " disabled") + '>Camp and rest (1 supply, ~20% ambush, +50% HP)</button>' +
+          '<button type="button" id="turnBackBtn">Turn back (' + adv.daysOut + " day(s) home)</button>" +
+          '<button type="button" id="advInventoryBtn">Inventory</button>';
+      } else {
+        advBody =
+          "<p>Heading back to <b>" + advTownLabel + "</b>. <b>" + Math.max(0, adv.returnDays) +
+          "</b> day(s) remain on the way home. No encounters on return, but each day still costs 1 supply.</p>";
+        advActions =
+          '<button type="button" class="primary" id="advanceReturnBtn"' +
+          (state.food > 0 ? "" : " disabled") +
+          '>Continue return (1 day)</button>' +
+          '<button type="button" id="advCampBtn"' + (state.food > 0 ? "" : " disabled") + '>Camp and rest (1 supply, ~20% ambush, +50% HP)</button>' +
+          '<button type="button" id="advInventoryBtn">Inventory</button>';
+      }
+      app.innerHTML =
+        renderHeader() +
+        "<h2 class=\"panel-title\">Adventuring trek</h2>" +
+        advBody +
+        '<div class="actions">' + advActions + "</div>" +
+        advReviveBlock +
+        (state.travelInventoryOpen ? inventoryScreenHtml() : "") +
+        renderLog() +
+        advResumeOverlay +
+        (state.elaraDialog ? elaraDialogOverlayHtml(state.elaraDialog) : "");
+      var pushBtn = document.getElementById("advancePushBtn");
+      if (pushBtn) pushBtn.onclick = function () { advanceAdventureDay(); };
+      var backBtn = document.getElementById("turnBackBtn");
+      if (backBtn) backBtn.onclick = function () { turnBackAdventure(); };
+      var retBtn = document.getElementById("advanceReturnBtn");
+      if (retBtn) retBtn.onclick = function () { continueAdventureReturn(); };
+      var advCampBtn = document.getElementById("advCampBtn");
+      if (advCampBtn) advCampBtn.onclick = campRest;
+      var advInvBtn = document.getElementById("advInventoryBtn");
+      if (advInvBtn)
+        advInvBtn.onclick = function () {
+          state.travelInventoryOpen = !state.travelInventoryOpen;
+          if (!state.travelInventoryOpen) state.inventoryDetailOpen = false;
+          render();
+        };
+      for (var afi = 0; afi < advFallen.length; afi++) {
+        (function (fm) {
+          var b = document.getElementById("advLifePot-" + fm.id);
+          if (b) b.onclick = function () { reviveWithLifePotionInField(fm.id); };
+        })(advFallen[afi]);
+      }
+      var elaraClose = document.getElementById("elaraDialogClose");
+      if (elaraClose) elaraClose.onclick = function () { state.elaraDialog = null; render(); };
       if (state.travelInventoryOpen) {
         wireInventoryScreen(app);
       }
@@ -3715,17 +4573,23 @@
                 return hs && hs.town === state.settlementTown;
               });
               var html = '<h3 class="church-section-title" style="margin-top:1rem">Revival rites</h3>' +
-                '<p>Restore a fallen companion to full health for <b>25 gp</b>.</p>';
+                '<p>Restore a fallen companion to full health for <b>25 gp</b>, or use a <b>Potion of Life</b> to bring them back at half HP.</p>';
               if (fallen.length === 0) {
                 html += '<p class="hint">No one to revive.</p>';
               } else {
                 html += '<div class="shop-block">';
                 for (var i = 0; i < fallen.length; i++) {
                   var m = fallen[i];
-                  html += '<div class="shop-row"><span>' + m.name + ' (' + roleLabel(m.role) + ')</span>' +
+                  html += '<div class="shop-row" style="flex-wrap:wrap;gap:.4rem">' +
+                    '<span>' + m.name + ' (' + roleLabel(m.role) + ')</span>' +
+                    '<span style="display:flex;gap:.4rem;flex-wrap:wrap">' +
                     '<button type="button" id="reviveAtChurch-' + m.id + '"' +
                     (state.gold >= 25 ? "" : " disabled") +
-                    '>Revive (25 gp)</button></div>';
+                    '>Revive (25 gp)</button>' +
+                    '<button type="button" id="reviveLifeAtChurch-' + m.id + '"' +
+                    (state.lifePotions > 0 ? "" : " disabled") +
+                    '>Use Life Potion (' + state.lifePotions + ')</button>' +
+                    '</span></div>';
                 }
                 html += '</div>';
               }
@@ -3758,9 +4622,50 @@
               return html;
             })()
           : state.settlementView === "inn"
-            ? '<p class="town-lead">A warm inn offers cots, stew, and a safe night to recover.</p><div class="actions"><button type="button" id="settlementInnRest">Rest at inn</button></div>'
+            ? (function () {
+                var cost = innRestCost();
+                var eff = stableRestEfficiency();
+                var pct = Math.round(eff * 100);
+                var consec = state.stableRestDays || 0;
+                var consecNote = consec > 0
+                  ? " <span class=\"hint\">(consecutive stays: " + consec + ")</span>"
+                  : "";
+                return '<p class="town-lead">A warm inn offers cots, stew, and a safe night to recover. ' +
+                  'A bed costs <b>' + cost + ' gp</b> and restores everyone to full health. ' +
+                  'The stables out back are free but rest there is rough — the more nights in a row, the less you recover.' + consecNote + '</p>' +
+                  '<div class="actions">' +
+                  '<button type="button" id="settlementInnRest"' + (state.gold >= cost ? "" : " disabled") + '>Rest at inn (' + cost + ' gp, full)</button>' +
+                  '<button type="button" id="settlementStableRest">Rest at stables (free, ' + pct + '%)</button>' +
+                  '</div>';
+              })()
           : state.settlementView === "tavern"
-            ? '<p class="tavern-lead">Fresh crews trade stories and caravan contracts.</p>' +
+            ? '<p class="tavern-lead">Fresh crews trade stories and caravan contracts. The barkeep eyes you over a mug.</p>' +
+              (function () {
+                var offers = questsAvailableFromBarkeep();
+                if (state.quest) {
+                  var qd = questDef(state.quest.id);
+                  return '<div class="shop-block"><div class="shop-row" style="flex-direction:column;align-items:stretch">' +
+                    '<div><b>Barkeep:</b> "How fares your quest, ' + (qd ? '<i>' + escapeHtml(qd.name) + '</i>' : "traveler") + '? Come back when it\'s done."</div>' +
+                    '</div></div>';
+                }
+                if (offers.length === 0) {
+                  return '<p class="hint">The barkeep has no leads tonight.</p>';
+                }
+                var html = '<div class="shop-block">';
+                for (var i = 0; i < offers.length; i++) {
+                  var qd2 = questDef(offers[i]);
+                  if (!qd2) continue;
+                  html += '<div class="shop-row" style="flex-direction:column;align-items:stretch">' +
+                    '<div><b>Barkeep:</b> "' + escapeHtml(qd2.pitch) + '"</div>' +
+                    '<div class="hint" style="margin-top:.25rem">' + escapeHtml(qd2.summary) + ' Reward: <b>' + qd2.rewardGold + ' gp</b>.</div>' +
+                    '<div style="margin-top:.4rem;text-align:right">' +
+                    '<button type="button" id="questHear-' + qd2.id + '">Hear them out</button>' +
+                    '</div>' +
+                    '</div>';
+                }
+                html += '</div>';
+                return html;
+              })() +
               rosterEditHtml(
                 "Tavern roster",
                 settlementRecruitNote(town.key)
@@ -3796,14 +4701,18 @@
                   label: "Potion of Healing (+3 HP)",
                   count: state.healingPotions,
                   buyPrice: 5,
+                  sellPrice: 2,
                   maxBuy: Math.floor(state.gold / 5),
+                  maxSell: state.healingPotions,
                 }) +
                 shopRowHtml({
                   id: "lifePotion",
                   label: "Potion of Life (revive 50%)",
                   count: state.lifePotions,
                   buyPrice: 15,
+                  sellPrice: 7,
                   maxBuy: Math.floor(state.gold / 15),
+                  maxSell: state.lifePotions,
                 }) +
                 shopRowHtml({
                   id: "gem",
@@ -3816,15 +4725,59 @@
             : state.settlementView === "inventory"
               ? '<h2 class="panel-title">Inventory</h2>' +
                 inventoryScreenHtml()
+            : state.settlementView === "quest"
+              ? (function () {
+                  if (!state.quest) {
+                    var completed = (state.questsCompleted || []).map(function (qid) {
+                      var qd = questDef(qid);
+                      return qd ? '<li>' + escapeHtml(qd.name) + ' <span class="hint">(complete)</span></li>' : '';
+                    }).join("");
+                    return '<p class="town-lead">No active quest. Ask around the tavern for work.</p>' +
+                      (completed
+                        ? '<h3 class="church-section-title" style="margin-top:1rem">Past deeds</h3><ul class="roster-edit">' + completed + '</ul>'
+                        : '');
+                  }
+                  var qd = questDef(state.quest.id);
+                  if (!qd) return '<p class="town-lead">Quest data missing.</p>';
+                  return '<p class="town-lead"><b>' + escapeHtml(qd.name) + '</b> - ' + escapeHtml(qd.summary) + '</p>' +
+                    '<div class="shop-block"><div class="shop-row" style="flex-direction:column;align-items:stretch">' +
+                    '<div>Progress: <b>' + state.quest.dayProgress + ' / ' + state.quest.totalDays + '</b> days into the pass.</div>' +
+                    '<div class="hint">Reward on completion: ' + qd.rewardGold + ' gp.</div>' +
+                    '<div style="margin-top:.5rem;display:flex;gap:.4rem;flex-wrap:wrap">' +
+                    '<button type="button" class="primary" id="questBegin"' + (state.food > 0 ? "" : " disabled") + '>' +
+                    (state.quest.dayProgress > 0 ? "Resume trek" : "Set out for the pass") +
+                    '</button>' +
+                    '<button type="button" id="questAbandon">Abandon quest</button>' +
+                    '</div>' +
+                    '</div></div>';
+                })()
+            : state.settlementView === "adventure"
+              ? '<p class="town-lead">Strike out for an adventuring trek. Up to <b>10 days</b> exploring the wilds near ' + locationLabel(town.key) + '. Each day spent outbound rolls an encounter. Turn back any time; the return trip takes the same days you spent (no encounters) and still consumes supplies.</p>' +
+                '<p class="hint">Tip: Make sure your party is rested and stocked. Encounter level scales with how far past Hollow Banks you are.</p>' +
+                '<div class="actions">' +
+                '<button type="button" class="primary" id="beginAdventureBtn"' +
+                (state.food > 0 ? "" : " disabled") +
+                '>Venture out (begin trek)</button>' +
+                '</div>'
               : town.key === "gustaf"
                 ? '<p class="town-lead">Gustaf is resupplied. Continue your caravan to Hollow Banks.</p><div class="actions"><button type="button" class="primary" id="continueTrailBtn">Depart for Hollow Banks</button></div>'
                 : town.key === "hollow_banks"
                   ? '<p class="town-lead">Hollow Banks marks the midpoint. Press on to Solem.</p><div class="actions"><button type="button" class="primary" id="continueTrailBtn">Depart for Solem</button></div>'
                   : '<p class="town-lead">Solem resupplied. One final push leads to New Isil.</p><div class="actions"><button type="button" class="primary" id="continueTrailBtn">Depart for New Isil</button></div>') +
         renderLog() +
-        (state.transition && state.transition.kind === "arrive" ? transitionArriveOverlayHtml(state.transition) : "");
+        (state.transition && state.transition.kind === "arrive" ? transitionArriveOverlayHtml(state.transition) : "") +
+        (state.questDialog ? questDialogOverlayHtml(state.questDialog) : "");
 
       wireSettlementTabs(app);
+      var qAcceptBtn = app.querySelector('[id^="questAccept-"]');
+      if (qAcceptBtn) {
+        qAcceptBtn.onclick = function () {
+          var qid = qAcceptBtn.id.replace("questAccept-", "");
+          acceptQuest(qid);
+        };
+      }
+      var qDeclineBtn = document.getElementById("questDecline");
+      if (qDeclineBtn) qDeclineBtn.onclick = declineQuest;
       if (state.settlementView === "church") {
         document.getElementById("settlementBless").onclick = function () {
           if (state.blessing) {
@@ -3846,6 +4799,8 @@
             if (m.hp > 0) return;
             var btn = document.getElementById("reviveAtChurch-" + m.id);
             if (btn) btn.onclick = function () { reviveAtChurch(m.id); };
+            var lifeBtn = document.getElementById("reviveLifeAtChurch-" + m.id);
+            if (lifeBtn) lifeBtn.onclick = function () { reviveWithLifePotionAtChurch(m.id); };
           })(state.party[ri]);
         }
         var headstones = (state.headstones || []).filter(function (hs) {
@@ -3865,17 +4820,35 @@
           })(headstones[hi]);
         }
       } else if (state.settlementView === "inn") {
-        document.getElementById("settlementInnRest").onclick = restAtInn;
+        var innBtn = document.getElementById("settlementInnRest");
+        if (innBtn) innBtn.onclick = restAtInn;
+        var stableBtn = document.getElementById("settlementStableRest");
+        if (stableBtn) stableBtn.onclick = restAtStables;
       } else if (state.settlementView === "tavern") {
         wireRosterEdit(app);
+        var offerBtns = app.querySelectorAll('[id^="questHear-"]');
+        for (var qbi = 0; qbi < offerBtns.length; qbi++) {
+          (function (btn) {
+            var qid = btn.id.replace("questHear-", "");
+            btn.onclick = function () { offerQuest(qid); };
+          })(offerBtns[qbi]);
+        }
+      } else if (state.settlementView === "quest") {
+        var qBegin = document.getElementById("questBegin");
+        if (qBegin) qBegin.onclick = beginQuestTrek;
+        var qAban = document.getElementById("questAbandon");
+        if (qAban) qAban.onclick = abandonQuest;
       } else if (state.settlementView === "shop") {
         wireShopRow("supplies", buySettlementSupplies, sellSettlementSupplies);
         wireShopRow("weapon", buySettlementWeapon, sellSettlementWeapon);
-        wireShopRow("healPotion", buySettlementHealPotion, null);
-        wireShopRow("lifePotion", buySettlementLifePotion, null);
+        wireShopRow("healPotion", buySettlementHealPotion, sellSettlementHealPotion);
+        wireShopRow("lifePotion", buySettlementLifePotion, sellSettlementLifePotion);
         wireShopRow("gem", null, sellSettlementGem);
       } else if (state.settlementView === "inventory") {
         wireInventoryScreen(app);
+      } else if (state.settlementView === "adventure") {
+        var advBtn = document.getElementById("beginAdventureBtn");
+        if (advBtn) advBtn.onclick = function () { beginAdventure(); };
       } else if (state.settlementView === "depart") {
         var nextDest = nextTrailDestinationFrom(town.key);
         if (nextDest) {

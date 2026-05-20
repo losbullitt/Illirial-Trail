@@ -1,5 +1,5 @@
 window.ILLIRIAL_BALANCE = {
-  "version": "5.1.1",
+  "version": "5.4.2",
   "source": "chart for game.xlsx",
   "classCreationBonusPoints": 3,
   "hpGrowthTuning": {
@@ -148,224 +148,256 @@ window.ILLIRIAL_BALANCE = {
       "hp": 3,
       "mp": 2,
       "atk": 3,
-      "type": "Wildlife"
+      "type": "Wildlife",
+      "level": 1
     },
     {
       "name": "Goblin",
       "hp": 5,
       "mp": null,
       "atk": 4,
-      "type": "Demon"
+      "type": "Demon",
+      "level": 1
     },
     {
       "name": "Bandit",
       "hp": 6,
       "mp": null,
       "atk": 5,
-      "type": "Humanoid"
+      "type": "Humanoid",
+      "level": 2
     },
     {
       "name": "Bandit Leader",
       "hp": 8,
       "mp": null,
       "atk": 7,
-      "type": "Undead"
+      "type": "Undead",
+      "level": 2
     },
     {
       "name": "Bandit caster",
       "hp": 4,
       "mp": 10,
       "atk": 6,
-      "type": "Mystical"
+      "type": "Mystical",
+      "level": 2
     },
     {
       "name": "Skeleton",
       "hp": 3,
       "mp": null,
       "atk": 4,
-      "type": null
+      "type": null,
+      "level": 1
     },
     {
       "name": "Skeleton King",
       "hp": 15,
       "mp": 30,
       "atk": 7,
-      "type": null
+      "type": null,
+      "level": 3
     },
     {
       "name": "Undead",
       "hp": 6,
       "mp": null,
       "atk": 5,
-      "type": null
+      "type": null,
+      "level": 2
     },
     {
       "name": "Wraith",
       "hp": 8,
       "mp": null,
       "atk": 6,
-      "type": null
+      "type": null,
+      "level": 2
     },
     {
       "name": "Lich",
       "hp": 10,
       "mp": 20,
       "atk": 9,
-      "type": null
+      "type": null,
+      "level": 2
     },
     {
       "name": "Lich King",
       "hp": 25,
       "mp": 40,
       "atk": 13,
-      "type": null
+      "type": null,
+      "level": 3
     },
     {
       "name": "Wolf",
       "hp": 4,
       "mp": null,
       "atk": 3,
-      "type": null
+      "type": null,
+      "level": 1
     },
     {
       "name": "Dire Wolf",
       "hp": 8,
       "mp": null,
       "atk": 5,
-      "type": null
+      "type": null,
+      "level": 2
     },
     {
       "name": "Dread Wolf",
       "hp": 12,
       "mp": null,
       "atk": 7,
-      "type": null
+      "type": null,
+      "level": 3
     },
     {
       "name": "Bear",
       "hp": 6,
       "mp": null,
       "atk": 4,
-      "type": null
+      "type": null,
+      "level": 1
     },
     {
       "name": "Grizzly Bear",
       "hp": 12,
       "mp": null,
       "atk": 6,
-      "type": null
+      "type": null,
+      "level": 1
     },
     {
       "name": "Golden Bear",
       "hp": 15,
       "mp": null,
       "atk": 8,
-      "type": null
+      "type": null,
+      "level": 2
     },
     {
       "name": "Ghost Bear",
       "hp": 20,
       "mp": null,
       "atk": 12,
-      "type": null
+      "type": null,
+      "level": 3
     },
     {
       "name": "Drake",
       "hp": 25,
       "mp": null,
       "atk": 8,
-      "type": null
+      "type": null,
+      "level": 3
     },
     {
       "name": "Dragon",
       "hp": 45,
       "mp": 45,
       "atk": 15,
-      "type": null
+      "type": null,
+      "level": 3
     },
     {
       "name": "Greater Dragon",
       "hp": 65,
       "mp": 60,
       "atk": 23,
-      "type": null
+      "type": null,
+      "level": 3
     },
     {
       "name": "Titan",
       "hp": 60,
       "mp": 50,
       "atk": 26,
-      "type": null
+      "type": null,
+      "level": 3
     },
     {
       "name": "Ghost",
       "hp": 5,
       "mp": null,
       "atk": 2,
-      "type": null
+      "type": null,
+      "level": 1
     },
     {
       "name": "Demon",
       "hp": 13,
       "mp": 15,
       "atk": 6,
-      "type": null
+      "type": null,
+      "level": 2
     },
     {
       "name": "Balor",
       "hp": 25,
       "mp": 32,
       "atk": 13,
-      "type": null
+      "type": null,
+      "level": 2
     },
     {
       "name": "Troll",
       "hp": 6,
       "mp": null,
       "atk": 5,
-      "type": null
+      "type": null,
+      "level": 1
     },
     {
       "name": "Ogre",
       "hp": 9,
       "mp": null,
       "atk": 8,
-      "type": null
+      "type": null,
+      "level": 2
     },
     {
       "name": "soldiers",
       "hp": 9,
       "mp": null,
       "atk": 4,
-      "type": null
+      "type": null,
+      "level": 2
     },
     {
       "name": "knight",
       "hp": 14,
       "mp": null,
       "atk": 5,
-      "type": null
+      "type": null,
+      "level": 2
     },
     {
       "name": "mage",
       "hp": 7,
       "mp": 12,
       "atk": 5,
-      "type": null
+      "type": null,
+      "level": 2
     },
     {
       "name": "cleric",
       "hp": 8,
       "mp": 8,
       "atk": 4,
-      "type": null
+      "type": null,
+      "level": 2
     },
     {
       "name": "priest",
       "hp": 6,
       "mp": 10,
       "atk": 3,
-      "type": null
+      "type": null,
+      "level": 2
     }
   ],
   "weapons": [
@@ -718,5 +750,74 @@ window.ILLIRIAL_BALANCE = {
         "1 luck"
       ]
     }
-  ]
+  ],
+  "statGainsPerClass": {
+    "soldier": {
+      "strength": 3,
+      "intelligence": 1,
+      "stamina": 2,
+      "luck": 1
+    },
+    "merchant": {
+      "strength": 1,
+      "intelligence": 2,
+      "stamina": 1,
+      "luck": 3
+    },
+    "artisan": {
+      "strength": 1,
+      "intelligence": 1,
+      "stamina": 1,
+      "luck": 3
+    },
+    "farmer": {
+      "strength": 2,
+      "intelligence": 1,
+      "stamina": 2,
+      "luck": 2
+    },
+    "mercenary": {
+      "strength": 3,
+      "intelligence": 2,
+      "stamina": 1,
+      "luck": 2
+    },
+    "priest": {
+      "strength": 1,
+      "intelligence": 3,
+      "stamina": 3,
+      "luck": 3
+    },
+    "mage": {
+      "strength": 1,
+      "intelligence": 4,
+      "stamina": 2,
+      "luck": 4
+    }
+  },
+  "levelXpThresholds": [
+    0,
+    3,
+    7,
+    13,
+    21,
+    31,
+    44,
+    61,
+    83,
+    109,
+    141,
+    180,
+    229,
+    291,
+    365,
+    451,
+    550,
+    662,
+    799,
+    957,
+    1142
+  ],
+  "maxLevel": 20,
+  "statCap": 50
 };

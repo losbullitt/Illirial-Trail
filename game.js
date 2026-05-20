@@ -57,6 +57,9 @@
   var RUINS_MAX_CHANCE = 0.72;
   var RUINS_QUIET_DAY_CHANCE = 0.06;
   var SKELETON_FIGHT_CHANCE = 0.45;
+  var RUINS_GOLD_FIND_CHANCE = 0.25;
+  var RUINS_GOLD_MIN = 8;
+  var RUINS_GOLD_MAX = 20;
   var WEAPON_TIERS = [
     { id: "knife", label: "Knife", grade: 0 },
     { id: "shortsword", label: "Shortsword", grade: 1 },
@@ -214,6 +217,70 @@
     return rollInt(7, RUINS_ROOM_MAX);
   }
 
+  function initRuinsMap() {
+    var width = rollInt(4, 6);
+    var height = rollInt(4, 6);
+    state.ruinsMap = {
+      width: width,
+      height: height,
+      playerX: Math.floor(width / 2),
+      playerY: Math.floor(height / 2),
+      explored: {},
+    };
+    markRuinsTileExplored(state.ruinsMap.playerX, state.ruinsMap.playerY);
+  }
+
+  function ruinsTileKey(x, y) {
+    return x + "," + y;
+  }
+
+  function markRuinsTileExplored(x, y) {
+    if (!state.ruinsMap) return;
+    if (!state.ruinsMap.explored) state.ruinsMap.explored = {};
+    state.ruinsMap.explored[ruinsTileKey(x, y)] = true;
+  }
+
+  function ruinsMinimapHtml() {
+    var map = state.ruinsMap;
+    if (!map) {
+      return '<p class="hint">Ruins map initializing...</p>';
+    }
+    var rows = "";
+    for (var y = 0; y < map.height; y++) {
+      var cells = "";
+      for (var x = 0; x < map.width; x++) {
+        var explored = map.explored && map.explored[ruinsTileKey(x, y)];
+        var isPlayer = x === map.playerX && y === map.playerY;
+        var glyph = isPlayer ? "@" : explored ? "." : "?";
+        cells += '<span style="display:inline-block;width:1.4rem;text-align:center;color:' +
+          (isPlayer ? "#c89c3f" : explored ? "#9a8b78" : "#4a3d2a") + '">' + glyph + "</span>";
+      }
+      rows += '<div style="font-family:monospace;line-height:1.35">' + cells + "</div>";
+    }
+    return (
+      '<div class="ruins-minimap" style="margin:1rem 0;padding:.75rem;background:#1c160e;border:1px solid #4a3d2a;border-radius:8px;display:inline-block">' +
+        '<div style="color:#c89c3f;font-weight:600;margin-bottom:.35rem">Ruins map (prototype)</div>' +
+        rows +
+        '<div class="hint" style="margin-top:.5rem">@ = party, ? = unexplored, . = cleared</div>' +
+      "</div>"
+    );
+  }
+
+  function ruinsNavigationPlaceholderHtml() {
+    return (
+      '<div class="ruins-nav-placeholder" style="margin:.75rem 0">' +
+        '<div style="color:#9a8b78;margin-bottom:.35rem">Directional exploration (coming soon)</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(3,max-content);gap:.35rem;justify-content:start">' +
+          '<span></span><button type="button" disabled title="Coming soon">Up</button><span></span>' +
+          '<button type="button" disabled title="Coming soon">Left</button>' +
+          '<button type="button" disabled title="Coming soon">Down</button>' +
+          '<button type="button" disabled title="Coming soon">Right</button>' +
+        '</div>' +
+        '<p class="hint" style="margin-top:.35rem">Future update: wander the grid, get lost, and burn supplies. For now, explore the current room below.</p>' +
+      "</div>"
+    );
+  }
+
   function rollSettlementRecruitSlots(townKey) {
     if (townKey === "solem") return rollInt(2, 3);
     if (townKey === "gustaf" || townKey === "hollow_banks") {
@@ -318,8 +385,11 @@
     return baseStatsForRole(member && member.role ? member.role : "soldier");
   }
 
+  var NON_SPELLCASTER_ROLES = { mercenary: true };
+
   function memberMaxMp(member) {
     if (!member) return 25;
+    if (NON_SPELLCASTER_ROLES[member.role]) return 25;
     if (member.stats && typeof member.stats.intelligence === "number") {
       return 25 + Math.max(0, member.stats.intelligence - 4) * 5;
     }
@@ -373,8 +443,18 @@
     return member;
   }
 
-  function createParty() {
-    var roles = ["soldier", "soldier", "soldier", "priest", "priest", "mercenary"];
+  var PARTY_ROLES = ["soldier", "priest", "mercenary", "farmer", "artisan", "merchant", "mage"];
+
+  function rollRandomPartyRoles(count) {
+    var n = count || PARTY_MAX;
+    var roles = [];
+    for (var i = 0; i < n; i++) {
+      roles.push(PARTY_ROLES[rollInt(0, PARTY_ROLES.length - 1)]);
+    }
+    return roles;
+  }
+
+  function buildPartyFromRoles(roles) {
     var out = [];
     var used = {};
     for (var i = 0; i < roles.length; i++) {
@@ -394,6 +474,10 @@
       if (portrait.headshot) used[portrait.headshot] = true;
     }
     return out;
+  }
+
+  function createParty() {
+    return buildPartyFromRoles(rollRandomPartyRoles(PARTY_MAX));
   }
 
 
@@ -485,21 +569,19 @@
     state.newLeaderDraft = null;
 
     if (lead.source === "preset") {
-      var presetRoles = ["soldier", "soldier", "soldier", "priest", "priest", "mercenary"];
-      var presetParty = [];
-      for (var pr = 0; pr < presetRoles.length; pr++) {
-        var role = presetRoles[pr];
-        presetParty.push(
-          initMemberProgress({
-            id: "p" + pr,
-            name: role.charAt(0).toUpperCase() + role.slice(1) + " " + (pr + 1),
-            role: role,
-            hp: CLASS_HP[role] || 8,
-            maxHp: CLASS_HP[role] || 8,
-          })
-        );
+      var presetRoles = rollRandomPartyRoles(PARTY_MAX);
+      var roleCounts = {};
+      for (var prc = 0; prc < presetRoles.length; prc++) {
+        var rname = presetRoles[prc];
+        roleCounts[rname] = (roleCounts[rname] || 0) + 1;
       }
-      state.party = presetParty;
+      var countParts = [];
+      for (var rk in roleCounts) {
+        if (roleCounts.hasOwnProperty(rk)) {
+          countParts.push(roleCounts[rk] + " " + roleLabel(rk) + (roleCounts[rk] > 1 ? "s" : ""));
+        }
+      }
+      state.party = buildPartyFromRoles(presetRoles);
       state.partyIdSeq = state.party.length;
       if (state.party[0]) {
         state.party[0].name = lead.name;
@@ -510,12 +592,19 @@
           stamina: (lead.bonus && lead.bonus.stamina) || 0,
           luck: (lead.bonus && lead.bonus.luck) || 0,
         };
+        var leadBase0 = baseStatsForRole(state.party[0].role);
+        state.party[0].stats = {
+          strength: (leadBase0.strength || 0) + state.party[0].bonus.strength,
+          intelligence: (leadBase0.intelligence || 0) + state.party[0].bonus.intelligence,
+          stamina: (leadBase0.stamina || 0) + state.party[0].bonus.stamina,
+          luck: (leadBase0.luck || 0) + state.party[0].bonus.luck,
+        };
         state.party[0].maxHp = memberMaxHp(state.party[0]);
         state.party[0].hp = state.party[0].maxHp;
         state.party[0].maxMp = memberMaxMp(state.party[0]);
         state.party[0].mp = state.party[0].maxMp;
       }
-      logLine("Preset caravan assembled with a full party.", "good");
+      logLine("Preset caravan assembled: <span class=\"hi\">" + countParts.join(", ") + "</span>.", "good");
     } else {
       state.party = [
         initMemberProgress({
@@ -540,7 +629,12 @@
       if (!state.party[0].gender) state.party[0].gender = lead.gender || "man";
       if (!state.party[0].headshot && lead.headshot) state.party[0].headshot = lead.headshot;
     }
-    for (var pi = 0; pi < state.party.length; pi++) initMemberProgress(state.party[pi]);
+    for (var pi = 0; pi < state.party.length; pi++) {
+      var pm = state.party[pi];
+      initMemberProgress(pm);
+      pm.hp = pm.maxHp;
+      pm.mp = pm.maxMp;
+    }
     assignMissingPartyPortraits();
     if (state.party[0] && state.leaderProfile) {
       if (!state.leaderProfile.gender) state.leaderProfile.gender = state.party[0].gender || "man";
@@ -586,6 +680,7 @@
       ruinsSearched: false,
       ruinsRoomsTotal: 0,
       ruinsRoomsRemaining: 0,
+      ruinsMap: null,
       log: [],
       pendingEncounter: null,
       combat: null,
@@ -619,6 +714,8 @@
   }
 
   var HEADSTONE_STORAGE_KEY = "illirial.headstones";
+  var HEADSTONE_STORAGE_BACKUP_KEY = "illirial.headstones.backup";
+  var HEADSTONE_RELEASE_PHASE = "alpha";
 
   function loadHeadstonesFromStorage() {
     try {
@@ -627,14 +724,31 @@
       if (!raw) return [];
       var parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) return parsed;
+      if (parsed && Array.isArray(parsed.entries)) return parsed.entries;
     } catch (e) { /* ignore */ }
+    try {
+      if (typeof localStorage === "undefined") return [];
+      var rawBackup = localStorage.getItem(HEADSTONE_STORAGE_BACKUP_KEY);
+      if (!rawBackup) return [];
+      var parsedBackup = JSON.parse(rawBackup);
+      if (Array.isArray(parsedBackup)) return parsedBackup;
+      if (parsedBackup && Array.isArray(parsedBackup.entries)) return parsedBackup.entries;
+    } catch (e2) { /* ignore */ }
     return [];
   }
 
   function saveHeadstonesToStorage() {
     try {
       if (typeof localStorage === "undefined") return;
-      localStorage.setItem(HEADSTONE_STORAGE_KEY, JSON.stringify(state.headstones || []));
+      var payload = {
+        schemaVersion: 1,
+        phase: HEADSTONE_RELEASE_PHASE,
+        savedAt: Date.now(),
+        entries: state.headstones || [],
+      };
+      var serialized = JSON.stringify(payload);
+      localStorage.setItem(HEADSTONE_STORAGE_KEY, serialized);
+      localStorage.setItem(HEADSTONE_STORAGE_BACKUP_KEY, serialized);
     } catch (e) { /* ignore */ }
   }
 
@@ -674,10 +788,18 @@
     for (var i = 0; i < state.headstones.length; i++) {
       if (state.headstones[i].id === hsId) {
         state.headstones[i].note = (note || "").slice(0, 200);
+        state.headstones[i].frozen = true;
         saveHeadstonesToStorage();
         return true;
       }
     }
+    return false;
+  }
+
+  function isHeadstoneFrozen(hs) {
+    if (!hs) return false;
+    if (hs.frozen === true) return true;
+    if (typeof hs.note === "string" && hs.note.length > 0) return true;
     return false;
   }
 
@@ -892,6 +1014,7 @@
   function startTacticalCombat(enc) {
     state.phase = "action";
     state.pendingEncounter = enc;
+    var ambushed = rollAmbush(enc.foes || []);
     state.combat = {
       kind: enc.kind,
       foes: enc.foes.map(function (f) {
@@ -908,14 +1031,21 @@
       choices: {},
       defending: {},
       round: 1,
+      ambushed: ambushed,
     };
-    logLine("<span class=\"hi\">Battle:</span> " + enc.label + ". Choose actions, then End round.", "");
+    if (ambushed) {
+      logLine("<span class=\"hi\">Battle:</span> " + enc.label + " — the enemy got the drop on you!", "bad");
+    } else {
+      logLine("<span class=\"hi\">Battle:</span> " + enc.label + ". Choose actions, then End round.", "");
+    }
     trackPlaytest("combat_started", {
       kind: enc.kind,
       label: enc.label,
       foeCount: enc.foes ? enc.foes.length : 0,
       day: state.travelDay,
+      ambushed: ambushed,
     });
+    if (ambushed && resolveAmbushOpening()) return;
   }
 
   function foesAlive() {
@@ -935,6 +1065,15 @@
     return state.combat && (state.combat.kind === "skeletons" || state.combat.kind === "ruins_combat");
   }
 
+  function strDamageBonus(member) {
+    if (!member || !member.stats) return 0;
+    var str = member.stats.strength || 0;
+    var excess = Math.max(0, str - 4);
+    var level = member.level || 1;
+    var mult = level >= 10 ? 2 : 1;
+    return excess * mult;
+  }
+
   function attackDamage(member) {
     var d;
     if (member.role === "soldier") d = 4;
@@ -942,7 +1081,65 @@
     else if (member.role === "priest") d = isUndeadFight() ? 3 : 2;
     else d = 2;
     if (hasBlessing("attack")) d += 1;
+    d += strDamageBonus(member);
     return d;
+  }
+
+  function intSpellBonus(member) {
+    if (!member || !member.stats) return 0;
+    var intel = member.stats.intelligence || 0;
+    var excess = Math.max(0, intel - 4);
+    var level = member.level || 1;
+    var perPoint = level >= 10 ? 1 : 0.5;
+    return Math.max(0, Math.floor(excess * perPoint));
+  }
+
+  function spellDamage(member) {
+    return Math.max(1, 1 + intSpellBonus(member));
+  }
+
+  function spellHealAmount(member) {
+    return Math.max(2, 2 + intSpellBonus(member));
+  }
+
+  function partyTotalLuck() {
+    var sum = 0;
+    for (var i = 0; i < state.party.length; i++) {
+      var m = state.party[i];
+      if (!m) continue;
+      initMemberProgress(m);
+      sum += (m.stats && m.stats.luck) || 0;
+    }
+    return sum;
+  }
+
+  function ambushBaseChanceForFoes(foes) {
+    if (!foes || !foes.length) return 0;
+    var maxLvl = 1;
+    for (var i = 0; i < foes.length; i++) {
+      maxLvl = Math.max(maxLvl, foeLevel(foes[i]));
+    }
+    if (maxLvl <= 1) return 0.30;
+    if (maxLvl === 2) return 0.40;
+    return 0.50;
+  }
+
+  function rollAmbush(foes) {
+    var base = ambushBaseChanceForFoes(foes);
+    var luck = partyTotalLuck();
+    var chance = base * Math.max(0, 1 - luck * 0.02);
+    return Math.random() < chance;
+  }
+
+  function resolveAmbushOpening() {
+    if (!state.combat || !state.combat.ambushed) return;
+    logLine("<span class=\"hi\">Ambush!</span> The enemy strikes before you can react.", "bad");
+    enemyVolley();
+    if (!partyAlive().length) {
+      tacticalLoss();
+      return true;
+    }
+    return false;
   }
 
   function rollWeaponLoot(fromRuins) {
@@ -1005,13 +1202,18 @@
     if (!foes || !foes.length) return;
     for (var i = 0; i < foes.length; i++) {
       var lvl = foeLevel(foes[i]);
-      if (lvl <= 1) continue;
-      var goldGain = roadGoldBonus(lvl === 2 ? rollInt(1, 3) : rollInt(3, 6));
+      var goldGain;
+      if (lvl <= 1) goldGain = roadGoldBonus(rollInt(0, 2));
+      else if (lvl === 2) goldGain = roadGoldBonus(rollInt(1, 3));
+      else goldGain = roadGoldBonus(rollInt(3, 6));
       if (goldGain > 0) {
         state.gold += goldGain;
         logLine(foes[i].name + " drop: +" + goldGain + " gold.", "good");
       }
-      var dropChance = lvl === 2 ? 0.05 : 0.30;
+      var dropChance;
+      if (lvl <= 1) dropChance = 0.02;
+      else if (lvl === 2) dropChance = 0.05;
+      else dropChance = 0.30;
       if (Math.random() < dropChance) {
         state.weapons += 1;
         state.weaponInventory.push("rare_drop");
@@ -1194,7 +1396,25 @@
       return;
     }
     if (k === "ruins_combat") resolveRuinsSearchRewards();
+    maybePostBattleDialog();
     finishEncounterCommon();
+  }
+
+  var POST_BATTLE_LINES = [
+    "These monsters keep strange bed-fellows.",
+  ];
+
+  function maybePostBattleDialog() {
+    if (Math.random() >= 0.15) return;
+    var alive = (state.party || []).filter(function (m) { return m && m.hp > 0; });
+    if (!alive.length) return;
+    var speaker = alive[Math.floor(Math.random() * alive.length)];
+    var line = POST_BATTLE_LINES[Math.floor(Math.random() * POST_BATTLE_LINES.length)];
+    state.postBattleDialog = {
+      speaker: speaker.name || roleLabel(speaker.role) || "Adventurer",
+      portrait: speaker.headshot || "Vale.jpeg",
+      text: line,
+    };
   }
 
   function tacticalLoss() {
@@ -1226,6 +1446,16 @@
     return raw;
   }
 
+  function spellNeedsFoeTarget(role, spellKind) {
+    if (role === "priest" && spellKind === "spark") return true;
+    if (role === "mage" && spellKind === "fire") return true;
+    return false;
+  }
+  function spellNeedsAllyTarget(role, spellKind) {
+    if (role === "priest" && spellKind === "heal") return true;
+    return false;
+  }
+
   function choiceComplete(memberId) {
     var rec = choiceForMember(memberId);
     if (!rec || !rec.action) return false;
@@ -1233,7 +1463,13 @@
     if (rec.action === "item") return !!rec.itemKind;
     if (rec.action === "spell") {
       var mem = teamMemberById(memberId);
-      if (mem && (mem.role === "priest" || mem.role === "mage")) return !!rec.spellKind;
+      if (mem && (mem.role === "priest" || mem.role === "mage")) {
+        if (!rec.spellKind) return false;
+        if (spellNeedsFoeTarget(mem.role, rec.spellKind) || spellNeedsAllyTarget(mem.role, rec.spellKind)) {
+          return !!rec.targetId;
+        }
+        return true;
+      }
     }
     return true;
   }
@@ -1272,14 +1508,29 @@
     var current = currentPlannerId();
     if (!current) return;
     var rec = choiceForMember(current);
-    if (!rec || rec.action !== "attack") return;
+    if (!rec) return;
+    if (rec.action !== "attack" && rec.action !== "spell") return;
     var foes = foesAlive();
     var target = null;
     for (var i = 0; i < foes.length; i++) {
       if (foes[i].id === foeId) target = foes[i];
     }
     if (!target) return;
-    state.combat.choices[current] = { action: "attack", targetId: foeId };
+    var next = { action: rec.action, targetId: foeId };
+    if (rec.action === "spell") next.spellKind = rec.spellKind || null;
+    state.combat.choices[current] = next;
+    render();
+  }
+
+  function chooseSpellAllyTarget(allyId) {
+    if (!state.combat || !allyId) return;
+    var current = currentPlannerId();
+    if (!current) return;
+    var rec = choiceForMember(current);
+    if (!rec || rec.action !== "spell") return;
+    var ally = teamMemberById(allyId);
+    if (!ally || ally.hp <= 0) return;
+    state.combat.choices[current] = { action: "spell", targetId: allyId, spellKind: rec.spellKind || null };
     render();
   }
 
@@ -1372,28 +1623,41 @@
         if (m.role === "priest") {
           var priestSpell = rec && rec.spellKind ? rec.spellKind : "";
           if (priestSpell === "heal") {
-            var ally2 = lowestHpAlly();
+            var chosenAllyId = rec && rec.targetId ? rec.targetId : null;
+            var ally2 = chosenAllyId ? teamMemberById(chosenAllyId) : null;
+            if (!ally2 || ally2.hp <= 0) ally2 = lowestHpAlly();
             if (ally2) {
+              var healAmt = spellHealAmount(m);
               ref.mp = Math.max(0, (ref.mp || 0) - 5);
-              healMember(ally2.id, 4);
-              logLine(m.name + " casts Heal on " + ally2.name + " (+4, 5 MP).", "good");
+              healMember(ally2.id, healAmt);
+              logLine(m.name + " casts Heal on " + ally2.name + " (+" + healAmt + ", 5 MP).", "good");
             } else {
               logLine(m.name + " casts Heal but no one is injured.", "");
             }
           } else {
             ref.mp = Math.max(0, (ref.mp || 0) - 5);
-            var sparkTarget = randomFoe();
+            var sparkDmg = spellDamage(m);
+            var chosenSparkId = rec && rec.targetId ? rec.targetId : null;
+            var sparkTarget = chosenSparkId
+              ? state.combat.foes.find(function (f) { return f.id === chosenSparkId && f.hp > 0; })
+              : null;
+            if (!sparkTarget) sparkTarget = randomFoe();
             if (sparkTarget) {
-              strikeFoe(sparkTarget, 2);
-              logLine(m.name + " casts Spark on " + sparkTarget.name + " (-2, 5 MP).", "hi");
+              strikeFoe(sparkTarget, sparkDmg);
+              logLine(m.name + " casts Spark on " + sparkTarget.name + " (-" + sparkDmg + ", 5 MP).", "hi");
             }
           }
         } else if (m.role === "mage") {
           ref.mp = Math.max(0, (ref.mp || 0) - 5);
-          var fireTarget = randomFoe();
+          var fireDmg = spellDamage(m);
+          var chosenFireId = rec && rec.targetId ? rec.targetId : null;
+          var fireTarget = chosenFireId
+            ? state.combat.foes.find(function (f) { return f.id === chosenFireId && f.hp > 0; })
+            : null;
+          if (!fireTarget) fireTarget = randomFoe();
           if (fireTarget) {
-            strikeFoe(fireTarget, 2);
-            logLine(m.name + " casts Fire on " + fireTarget.name + " (-2, 5 MP).", "hi");
+            strikeFoe(fireTarget, fireDmg);
+            logLine(m.name + " casts Fire on " + fireTarget.name + " (-" + fireDmg + ", 5 MP).", "hi");
           }
         } else if (m.role === "soldier") {
           var wk = weakestFoes(2);
@@ -1532,6 +1796,7 @@
     state.ruinsTravelDay = state.travelDay;
     state.ruinsRoomsTotal = rollRuinsRoomCount();
     state.ruinsRoomsRemaining = state.ruinsRoomsTotal;
+    initRuinsMap();
     state.pendingEncounter = { kind: "ruins_discovery", label: "Mysterious ruins", foes: [] };
     state.phase = "action";
     logLine("Ruins mapped: " + state.ruinsRoomsTotal + " room(s) detected.", "hi");
@@ -1752,42 +2017,78 @@
     render();
   }
 
-  function turnBackAdventure() {
-    if (state.phase !== "adventure" || !state.adventure || state.adventure.dir !== "out") return;
-    state.adventure.dir = "back";
-    state.adventure.returnDays = state.adventure.daysOut;
-    if (state.adventure.returnDays <= 0) {
+  function openAdventureReturnConfirm() {
+    if (!state.adventure) return;
+    var daysCost = state.adventure.dir === "out"
+      ? state.adventure.daysOut
+      : state.adventure.returnDays;
+    if (daysCost <= 0) {
       endAdventureBackInTown();
       return;
     }
-    logLine("You turn back toward " + locationLabel(state.adventure.town) + " (" + state.adventure.returnDays + " day(s) home).", "hi");
+    state.confirmDialog = {
+      kind: "adventure_return",
+      title: "Return to " + locationLabel(state.adventure.town) + "?",
+      message: "The trip home will cost <b>" + daysCost + " day(s)</b> and <b>" + daysCost + " supply" + (daysCost > 1 ? " bundles" : "") + "</b>. No encounters on the way back.",
+      confirmLabel: "Return home",
+      cancelLabel: "Stay out",
+      onConfirm: "executeAdventureReturn",
+    };
     render();
   }
 
-  function continueAdventureReturn() {
-    if (state.phase !== "adventure" || !state.adventure || state.adventure.dir !== "back") return;
-    if (state.transition) return;
-    consumeTravelDaySupplies();
-    if (allDead()) {
-      state.gameoverMode = "loss";
-      state.phase = "gameover";
-      logLine("The expedition is lost on the way home.", "bad");
+  function executeAdventureReturn() {
+    if (!state.adventure) {
+      state.confirmDialog = null;
       render();
       return;
     }
-    state.adventure.returnDays--;
-    tickJourneyDay();
-    state.stableRestDays = 0;
-    applyTravelDayMpRegen();
-    processDailyDeath();
-    if (state.phase === "gameover") { render(); return; }
-    if (state.adventure.returnDays <= 0) {
-      logLine("You return safely to " + locationLabel(state.adventure.town) + ".", "good");
+    var daysCost = state.adventure.dir === "out"
+      ? state.adventure.daysOut
+      : state.adventure.returnDays;
+    if (daysCost <= 0) {
+      state.confirmDialog = null;
       endAdventureBackInTown();
       return;
     }
-    logLine("Returning... " + state.adventure.returnDays + " day(s) to " + locationLabel(state.adventure.town) + ".", "");
+    state.adventure.dir = "back";
+    state.adventure.returnDays = 0;
+    state.confirmDialog = null;
+    for (var i = 0; i < daysCost; i++) {
+      consumeTravelDaySupplies();
+      if (allDead()) {
+        state.gameoverMode = "loss";
+        state.phase = "gameover";
+        logLine("The expedition is lost on the way home.", "bad");
+        render();
+        return;
+      }
+      state.travelDay++;
+      tickJourneyDay();
+      applyTravelDayMpRegen();
+      processDailyDeath();
+      if (state.phase === "gameover") {
+        render();
+        return;
+      }
+    }
+    state.stableRestDays = 0;
+    logLine("After " + daysCost + " day(s) of march, you return to " + locationLabel(state.adventure.town) + ".", "good");
+    endAdventureBackInTown();
+  }
+
+  function cancelConfirmDialog() {
+    state.confirmDialog = null;
     render();
+  }
+
+  function turnBackAdventure() {
+    if (state.phase !== "adventure" || !state.adventure) return;
+    openAdventureReturnConfirm();
+  }
+
+  function continueAdventureReturn() {
+    openAdventureReturnConfirm();
   }
 
   var QUEST_CATALOG = {
@@ -1845,9 +2146,11 @@
       dayProgress: 0,
       totalDays: def.totalDays,
       startedAt: state.settlementTown || "cantebury",
+      encountersDone: 0,
+      minEncounters: typeof def.minEncounters === "number" ? def.minEncounters : 2,
     };
     state.questDialog = null;
-    state.settlementView = "quest";
+    state.settlementView = "inventory";
     logLine("Accepted quest: <span class=\"hi\">" + def.name + "</span>.", "good");
     trackPlaytest("quest_accepted", { questId: questId });
     render();
@@ -1909,9 +2212,21 @@
       });
       return;
     }
-    queueEncounterCutaway("Pass ambush", "Day " + state.quest.dayProgress + " of " + state.quest.totalDays + " in the pass", function () {
-      startTacticalCombat(buildQuestEncounter(def));
-    });
+    var doneSoFar = state.quest.encountersDone || 0;
+    var minNeeded = typeof state.quest.minEncounters === "number" ? state.quest.minEncounters : 2;
+    var daysLeftAfterToday = (state.quest.totalDays - 1) - state.quest.dayProgress;
+    var stillNeeded = Math.max(0, minNeeded - doneSoFar);
+    var forceEncounter = stillNeeded > daysLeftAfterToday;
+    var encounterToday = forceEncounter || Math.random() < 0.5;
+    if (encounterToday) {
+      state.quest.encountersDone = doneSoFar + 1;
+      queueEncounterCutaway("Pass ambush", "Day " + state.quest.dayProgress + " of " + state.quest.totalDays + " in the pass", function () {
+        startTacticalCombat(buildQuestEncounter(def));
+      });
+    } else {
+      logLine("Day " + state.quest.dayProgress + " of " + state.quest.totalDays + " in the pass passes quietly.", "");
+      render();
+    }
   }
 
   function abandonQuest() {
@@ -1922,7 +2237,7 @@
     state.quest = null;
     state.phase = "settlement";
     state.settlementTown = town;
-    state.settlementView = "quest";
+    state.settlementView = "inventory";
     state.encounterChance = ENCOUNTER_BASE;
     internPendingHeadstones();
     logLine("Abandoned " + name + ". You return to " + locationLabel(town) + " empty-handed.", "bad");
@@ -1944,7 +2259,7 @@
     state.quest = null;
     state.phase = "settlement";
     state.settlementTown = town;
-    state.settlementView = "quest";
+    state.settlementView = "inventory";
     state.encounterChance = ENCOUNTER_BASE;
     internPendingHeadstones();
     render();
@@ -2036,6 +2351,76 @@
     trackPlaytest("elara_dialog_triggered", { hp: elara.hp, maxHp: elara.maxHp });
   }
 
+  function confirmDialogOverlayHtml(dlg) {
+    if (!dlg) return "";
+    var title = dlg.title || "Confirm";
+    var message = dlg.message || "Are you sure?";
+    var confirmLabel = dlg.confirmLabel || "Yes";
+    var cancelLabel = dlg.cancelLabel || "Cancel";
+    return (
+      '<div class="confirm-dialog-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;z-index:60;padding:1rem">' +
+        '<div class="confirm-dialog" style="background:#2a2218;border:2px solid #c89c3f;border-radius:12px;padding:1rem 1.25rem;max-width:30rem;width:100%;box-shadow:0 8px 30px rgba(0,0,0,0.6)">' +
+          '<div style="color:#c89c3f;font-weight:600;margin-bottom:.35rem">' + escapeHtml(title) + '</div>' +
+          '<div style="color:#e8dcc8;margin-bottom:.75rem">' + message + '</div>' +
+          '<div style="text-align:right;display:flex;justify-content:flex-end;gap:.4rem;flex-wrap:wrap">' +
+            '<button type="button" id="confirmDialogCancel">' + escapeHtml(cancelLabel) + '</button>' +
+            '<button type="button" class="primary" id="confirmDialogYes">' + escapeHtml(confirmLabel) + '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  var CONFIRM_HANDLERS = {
+    executeAdventureReturn: function () { executeAdventureReturn(); },
+  };
+
+  function campDialogOverlayHtml() {
+    var dlg = state.campDialog;
+    if (!dlg) return "";
+    var forageDisabled = dlg.hasForage ? "" : " disabled";
+    return (
+      '<div class="camp-dialog-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;z-index:60;padding:1rem">' +
+        '<div class="camp-dialog" style="background:#2a2218;border:2px solid #c89c3f;border-radius:12px;padding:1rem 1.25rem;max-width:32rem;width:100%;box-shadow:0 8px 30px rgba(0,0,0,0.6)">' +
+          '<div style="color:#c89c3f;font-weight:600;margin-bottom:.35rem">Set up camp?</div>' +
+          '<div style="color:#e8dcc8;margin-bottom:.5rem">Pick how the night unfolds. There is always a ~20% chance the watch fires draw eyes.</div>' +
+          '<ul style="color:#9a8b78;margin:0 0 .75rem 1rem;padding:0;list-style:disc">' +
+            '<li><b>Rest only</b>: lose 1 supply, recover 50% of missing HP.</li>' +
+            '<li><b>Rest & forage</b>: lose 2 supplies, recover 25% of missing HP, chance to find supplies, gold, or gear.</li>' +
+          '</ul>' +
+          '<div style="display:flex;justify-content:flex-end;gap:.4rem;flex-wrap:wrap">' +
+            '<button type="button" id="campDialogCancel">Cancel</button>' +
+            '<button type="button" id="campDialogForage"' + forageDisabled + '>Rest & forage</button>' +
+            '<button type="button" class="primary" id="campDialogRest">Rest only</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function wireCampDialog(root) {
+    if (!state.campDialog) return;
+    var rest = root.querySelector("#campDialogRest");
+    var forage = root.querySelector("#campDialogForage");
+    var cancel = root.querySelector("#campDialogCancel");
+    if (rest) rest.onclick = function () { campRest("rest"); };
+    if (forage) forage.onclick = function () { campRest("forage"); };
+    if (cancel) cancel.onclick = cancelCampDialog;
+  }
+
+  function wireConfirmDialog(root) {
+    var dlg = state.confirmDialog;
+    if (!dlg) return;
+    var yes = root.querySelector("#confirmDialogYes");
+    var no = root.querySelector("#confirmDialogCancel");
+    if (yes) yes.onclick = function () {
+      var h = CONFIRM_HANDLERS[dlg.onConfirm];
+      if (h) h();
+      else { state.confirmDialog = null; render(); }
+    };
+    if (no) no.onclick = cancelConfirmDialog;
+  }
+
   function questDialogOverlayHtml(dlg) {
     var def = dlg && dlg.questId ? questDef(dlg.questId) : null;
     if (!def) return "";
@@ -2053,6 +2438,32 @@
         '</div>' +
       '</div>'
     );
+  }
+
+  function postBattleDialogOverlayHtml() {
+    var dlg = state.postBattleDialog;
+    if (!dlg) return "";
+    var portraitUrl = headshotUrl(dlg.portrait || "Vale.jpeg");
+    return (
+      '<div class="post-battle-dialog-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;z-index:55;padding:1rem">' +
+        '<div class="post-battle-dialog" style="background:#2a2218;border:2px solid #c89c3f;border-radius:12px;padding:1rem 1.25rem;max-width:28rem;width:100%;display:flex;gap:1rem;align-items:flex-start;box-shadow:0 8px 30px rgba(0,0,0,0.6)">' +
+          '<img src="' + portraitUrl + '" alt="' + escapeHtml(dlg.speaker || "") + '" style="width:84px;height:84px;border-radius:8px;object-fit:cover;border:1px solid #4a3d2a;flex-shrink:0">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="color:#c89c3f;font-weight:600;margin-bottom:.35rem">' + escapeHtml(dlg.speaker || "") + '</div>' +
+            '<div style="color:#e8dcc8;margin-bottom:.75rem;font-style:italic">"' + escapeHtml(dlg.text || "") + '"</div>' +
+            '<div style="text-align:right">' +
+              '<button type="button" id="postBattleDialogClose">Continue</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function wirePostBattleDialog(root) {
+    if (!state.postBattleDialog) return;
+    var b = root.querySelector("#postBattleDialogClose");
+    if (b) b.onclick = function () { state.postBattleDialog = null; render(); };
   }
 
   function elaraDialogOverlayHtml(dlg) {
@@ -2188,26 +2599,75 @@
     state.totalDaysElapsed++;
   }
 
-  function applyCampHealing() {
+  function applyCampHealing(percent) {
+    if (typeof percent !== "number") percent = 0.5;
+    var pctLabel = Math.round(percent * 100);
     state.party.forEach(function (m) {
       if (!m || m.hp <= 0) return;
       var missing = Math.max(0, m.maxHp - m.hp);
       if (missing <= 0) return;
-      var gain = Math.ceil(missing * 0.5);
+      var gain = Math.ceil(missing * percent);
       m.hp = Math.min(m.maxHp, m.hp + gain);
     });
     if (state.guest && state.guest.hp > 0) {
       var gMissing = Math.max(0, state.guest.maxHp - state.guest.hp);
-      if (gMissing > 0) state.guest.hp = Math.min(state.guest.maxHp, state.guest.hp + Math.ceil(gMissing * 0.5));
+      if (gMissing > 0) state.guest.hp = Math.min(state.guest.maxHp, state.guest.hp + Math.ceil(gMissing * percent));
     }
-    logLine("Camp is quiet. Each living member recovers 50% of missing HP.", "good");
+    logLine("Camp is quiet. Each living member recovers " + pctLabel + "% of missing HP.", "good");
   }
 
-  function campRest() {
+  function applyForageRewards() {
+    var bag = [];
+    if (Math.random() < 0.60) { state.food = Math.min(MAX_SUPPLIES, state.food + 1); bag.push("+1 supply"); }
+    if (Math.random() < 0.30) { state.gold += 1; bag.push("+1 gold"); }
+    if (Math.random() < 0.20) {
+      var w = WEAPON_TIERS[0];
+      state.weaponInventory.push(w.id);
+      state.weapons++;
+      bag.push("+1 " + w.label);
+    }
+    if (Math.random() < 0.15) { state.healingPotions++; bag.push("+1 healing potion"); }
+    if (Math.random() < 0.05) { state.lifePotions++; bag.push("+1 life potion"); }
+    if (bag.length) logLine("Forage spoils: " + bag.join(", ") + ".", "good");
+    else logLine("Nothing useful turns up in the brush.", "");
+  }
+
+  function openCampDialog() {
     if (state.transition) return;
     var phase = state.phase;
     if (phase !== "travel" && phase !== "adventure" && phase !== "quest_trek") return;
+    if (state.food <= 0) {
+      logLine("You have no supplies left to make camp.", "bad");
+      render();
+      return;
+    }
+    state.campDialog = {
+      hasForage: state.food >= 2,
+    };
+    render();
+  }
+
+  function cancelCampDialog() {
+    state.campDialog = null;
+    render();
+  }
+
+  function campRest(mode) {
+    if (state.transition) return;
+    state.campDialog = null;
+    var phase = state.phase;
+    if (phase !== "travel" && phase !== "adventure" && phase !== "quest_trek") return;
+    var foraging = mode === "forage";
+    var hpPercent = foraging ? 0.25 : 0.5;
     consumeTravelDaySupplies();
+    if (foraging) {
+      if (state.food <= 0) {
+        logLine("Not enough supplies to forage at camp.", "bad");
+        render();
+        return;
+      }
+      state.food--;
+    }
     if (allDead()) {
       state.gameoverMode = "loss";
       state.phase = "gameover";
@@ -2243,7 +2703,8 @@
       });
       return;
     }
-    applyCampHealing();
+    applyCampHealing(hpPercent);
+    if (foraging) applyForageRewards();
     if (phase === "travel" && state.travelDay >= currentRouteDays()) {
       logLine("You drift into " + currentDestination().label + " on rest legs.", "good");
       queueArrivalAtDestination();
@@ -2277,21 +2738,22 @@
       render();
       return;
     }
-    state.party.push(
-      initMemberProgress({
-        id: id,
-        name: role.charAt(0).toUpperCase() + role.slice(1) + " " + id.slice(1),
-        role: role,
-        gender: portrait.gender,
-        headshot: portrait.headshot,
-        hp: CLASS_HP[role],
-        maxHp: CLASS_HP[role],
-      })
-    );
+    var fresh = initMemberProgress({
+      id: id,
+      name: role.charAt(0).toUpperCase() + role.slice(1) + " " + id.slice(1),
+      role: role,
+      gender: portrait.gender,
+      headshot: portrait.headshot,
+      hp: CLASS_HP[role],
+      maxHp: CLASS_HP[role],
+    });
+    fresh.hp = fresh.maxHp;
+    fresh.mp = fresh.maxMp;
+    state.party.push(fresh);
     if (state.phase === "settlement" && state.settlementView === "tavern") {
       state.settlementRecruitSlots = Math.max(0, (state.settlementRecruitSlots || 0) - 1);
     }
-    logLine("Recruited a " + role + " (" + id + ").", "good");
+    logLine("Recruited a " + role + " (" + id + "). Joins at full health.", "good");
     render();
   }
 
@@ -2401,7 +2863,7 @@
       tab("inn", "Inn") +
       tab("shop", "Shop") +
       tab("tavern", "Tavern") +
-      tab("inventory", "Inventory") +
+      tab("inventory", "Party") +
       tab("depart", "Depart") +
       "</nav>"
     );
@@ -2425,6 +2887,66 @@
     }
   }
 
+  function questPanelHtml() {
+    var heading = '<h3 class="church-section-title" style="margin-top:1.5rem">Quest log</h3>';
+    if (!state.quest) {
+      var completed = (state.questsCompleted || []).map(function (qid) {
+        var qd = questDef(qid);
+        return qd ? '<li>' + escapeHtml(qd.name) + ' <span class="hint">(complete)</span></li>' : '';
+      }).join("");
+      return heading +
+        '<p class="hint">No active quest. Ask around the tavern for work.</p>' +
+        (completed
+          ? '<h4 class="church-section-title" style="margin-top:.75rem">Past deeds</h4><ul class="roster-edit">' + completed + '</ul>'
+          : '');
+    }
+    var qd = questDef(state.quest.id);
+    if (!qd) return heading + '<p class="hint">Quest data missing.</p>';
+    return heading +
+      '<p><b>' + escapeHtml(qd.name) + '</b> - ' + escapeHtml(qd.summary) + '</p>' +
+      '<div class="shop-block"><div class="shop-row" style="flex-direction:column;align-items:stretch">' +
+      '<div>Progress: <b>' + state.quest.dayProgress + ' / ' + state.quest.totalDays + '</b> days into the pass.</div>' +
+      '<div class="hint">Reward on completion: ' + qd.rewardGold + ' gp.</div>' +
+      '<div style="margin-top:.5rem;display:flex;gap:.4rem;flex-wrap:wrap">' +
+      '<button type="button" class="primary" id="questBegin"' + (state.food > 0 ? "" : " disabled") + '>' +
+      (state.quest.dayProgress > 0 ? "Resume trek" : "Set out for the pass") +
+      '</button>' +
+      '<button type="button" id="questAbandon">Abandon quest</button>' +
+      '</div>' +
+      '</div></div>';
+  }
+
+  function memorialPanelHtml(townKey) {
+    var frozenStones = (state.headstones || []).filter(function (hs) {
+      return hs && hs.town === townKey && isHeadstoneFrozen(hs);
+    });
+    if (frozenStones.length === 0) return "";
+    var memHtml = '<h3 class="church-section-title" style="margin-top:1.5rem">In Memoriam</h3>' +
+      '<p class="hint">Sealed memorials at ' + locationLabel(townKey) +
+      '. Each headstone is set in stone &mdash; final words for fallen comrades.</p>' +
+      '<div class="shop-block">';
+    for (var mi = 0; mi < frozenStones.length; mi++) {
+      var fhs = frozenStones[mi];
+      var fNote = String(fhs.note || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      var fTheirs = fhs.runId === state.runId;
+      memHtml += '<div class="shop-row" style="flex-direction:column;align-items:stretch">' +
+        '<div style="display:flex;gap:.75rem;align-items:flex-start">' +
+        '<div style="font-size:1.75rem;line-height:1;color:#9a8b78" aria-hidden="true">\u2020</div>' +
+        '<div style="flex:1">' +
+        '<div><b>' + escapeHtml(fhs.name) + '</b> (' + roleLabel(fhs.role) + ')</div>' +
+        '<div class="hint">Lost day ' + fhs.day + ' on ' + escapeHtml(fhs.location) +
+          (fTheirs ? '.' : '. (previous traveler)') + '</div>' +
+        '<div style="margin-top:.5rem;padding:.5rem .6rem;background:#1c160e;border:1px solid #4a3d2a;border-radius:6px;font-style:italic;color:#e8dcc8;min-height:2.5em">' +
+          (fNote || '<span class="hint">[No inscription left.]</span>') +
+        '</div>' +
+        '</div>' +
+        '</div>' +
+        '</div>';
+    }
+    memHtml += '</div>';
+    return memHtml;
+  }
+
   function settlementTabStrip() {
     function tab(id, label) {
       return (
@@ -2443,8 +2965,7 @@
       tab("inn", "Inn") +
       tab("tavern", "Tavern") +
       tab("shop", "Shop") +
-      tab("inventory", "Inventory") +
-      tab("quest", "Quest" + (state.quest ? " *" : "")) +
+      tab("inventory", "Party" + (state.quest ? " *" : "")) +
       tab("adventure", "Adventure") +
       tab("depart", "Depart") +
       "</div>"
@@ -2808,6 +3329,7 @@
     state.ruinsSearched = false;
     state.ruinsRoomsTotal = 0;
     state.ruinsRoomsRemaining = 0;
+    state.ruinsMap = null;
     state.transition = { kind: "depart", stage: "blackout" };
     var dest = currentDestination();
     state.legRouteDays = rollRouteDaysForDestination(dest.key);
@@ -3193,6 +3715,9 @@
     if (!state.inventoryDetailOpen) {
       var cards = state.party
         .map(function (m) {
+          var ms = (m && m.stats) || { strength: 0, intelligence: 0, stamina: 0, luck: 0 };
+          var statsLine = "STR " + (ms.strength || 0) + " | INT " + (ms.intelligence || 0)
+            + " | STAM " + (ms.stamina || 0) + " | LUCK " + (ms.luck || 0);
           return (
             '<button type="button" class="inv-open-char" data-open-char="' +
             m.id +
@@ -3218,6 +3743,7 @@
             (typeof m.maxHp === "number" ? m.maxHp : 0) +
             " HP" +
             "</span>" +
+            '<span class="inv-open-sub" style="color:#c89c3f">' + statsLine + "</span>" +
             "</span>" +
             "</button>"
           );
@@ -3298,6 +3824,7 @@
         })
         .join("");
       var canPriestCastHeal = focus.role === "priest" && focus.hp > 0 && (focus.mp || 0) >= 5 && healableTargets.length > 0;
+      var focusHealAmt = spellHealAmount(focus);
       var priestHealControls =
         focus.role === "priest"
           ? '<label class="inv-heal-target">Heal target <select id="invHealTarget"' +
@@ -3306,7 +3833,7 @@
             healTargetOptions +
             '</select></label><button type="button" id="invCastHeal"' +
             (canPriestCastHeal ? "" : " disabled") +
-            '>Cast Heal (+4 HP, 5 MP)</button>'
+            '>Cast Heal (+' + focusHealAmt + ' HP, 5 MP)</button>'
           : "";
       travelPotionActions =
         '<div class="actions">' +
@@ -3451,9 +3978,10 @@
         if (!priest || priest.role !== "priest" || priest.hp <= 0 || (priest.mp || 0) < 5) return;
         if (!target || target.hp <= 0 || target.hp >= target.maxHp) return;
         priest.mp = Math.max(0, (priest.mp || 0) - 5);
-        target.hp = Math.min(target.maxHp, target.hp + 4);
+        var healAmt = spellHealAmount(priest);
+        target.hp = Math.min(target.maxHp, target.hp + healAmt);
         state.inventoryHealTargetId = target.id;
-        logLine(priest.name + " casts Heal on " + target.name + " (+4 HP, 5 MP).", "good");
+        logLine(priest.name + " casts Heal on " + target.name + " (+" + healAmt + " HP, 5 MP).", "good");
         render();
       };
     }
@@ -3517,13 +4045,17 @@
     );
   }
 
-  function battlePartyCard(m, activeMemberId) {
+  function battlePartyCard(m, activeMemberId, allyTargetMode) {
     var ref = teamMemberById(m.id);
     if (!ref) return "";
     var pct = Math.round((100 * ref.hp) / ref.maxHp);
     var rec = choiceForMember(m.id);
     var act = rec && rec.action ? rec.action : null;
     var isActive = activeMemberId === m.id;
+    var canBeAllyTarget = !!allyTargetMode && ref.hp > 0;
+    var allyTargetBtn = canBeAllyTarget
+      ? '<button type="button" class="act-btn primary" data-ally-target="' + m.id + '" style="margin-top:.35rem">Target heal</button>'
+      : "";
     var actions = ["attack", "defend", "spell", "item"];
     var labels = { attack: "Attack", defend: "Defend", spell: "Spell", item: "Item" };
     var btns = "";
@@ -3548,18 +4080,20 @@
     }
     if (isActive && act === "spell") {
       var selectedSpell = rec && rec.spellKind ? rec.spellKind : "";
+      var spellDmgAmt = spellDamage(m);
+      var spellHealAmt = spellHealAmount(m);
       if (m.role === "priest") {
         var spellDisabled = (ref.mp || 0) >= 5 ? "" : " disabled";
         spellMenu =
           '<div class="battle-item-menu">' +
-          '<button type="button" class="act-btn' + (selectedSpell === "spark" ? " selected" : "") + '" data-spell-choice="spark"' + spellDisabled + '>Spark (2 dmg, 5 MP)</button>' +
-          '<button type="button" class="act-btn' + (selectedSpell === "heal" ? " selected" : "") + '" data-spell-choice="heal"' + spellDisabled + '>Heal (+4 HP, 5 MP)</button>' +
+          '<button type="button" class="act-btn' + (selectedSpell === "spark" ? " selected" : "") + '" data-spell-choice="spark"' + spellDisabled + '>Spark (' + spellDmgAmt + ' dmg, 5 MP)</button>' +
+          '<button type="button" class="act-btn' + (selectedSpell === "heal" ? " selected" : "") + '" data-spell-choice="heal"' + spellDisabled + '>Heal (+' + spellHealAmt + ' HP, 5 MP)</button>' +
           "</div>";
       } else if (m.role === "mage") {
         var fireDisabled = (ref.mp || 0) >= 5 ? "" : " disabled";
         spellMenu =
           '<div class="battle-item-menu">' +
-          '<button type="button" class="act-btn' + (selectedSpell === "fire" ? " selected" : "") + '" data-spell-choice="fire"' + fireDisabled + '>Fire (2 dmg, 5 MP)</button>' +
+          '<button type="button" class="act-btn' + (selectedSpell === "fire" ? " selected" : "") + '" data-spell-choice="fire"' + fireDisabled + '>Fire (' + spellDmgAmt + ' dmg, 5 MP)</button>' +
           "</div>";
       }
     }
@@ -3599,6 +4133,7 @@
       btns +
       spellMenu +
       itemMenu +
+      allyTargetBtn +
       "</div>" +
       "</div>"
     );
@@ -3849,6 +4384,14 @@
           chooseSpellOption(sb.getAttribute("data-spell-choice"));
         };
       })(spellBtns[si]);
+    }
+    var allyTargets = root.querySelectorAll("[data-ally-target]");
+    for (var at = 0; at < allyTargets.length; at++) {
+      allyTargets[at].onclick = (function (ab) {
+        return function () {
+          chooseSpellAllyTarget(ab.getAttribute("data-ally-target"));
+        };
+      })(allyTargets[at]);
     }
     var autoBtn = root.querySelector("#autoRoundBtn");
     if (autoBtn) autoBtn.onclick = autoPlanRemainingChoices;
@@ -4362,12 +4905,14 @@
         " days complete. Each <b>Next day</b> consumes 1 supply. Encounter chance shown above rises after quiet days.</p>" +
         "<div class=\"actions\">" +
         '<button type="button" class="primary" id="nextDay">Next day</button>' +
-        '<button type="button" id="travelCampBtn"' + (state.food > 0 ? "" : " disabled") + '>Camp and rest (1 supply, ~20% ambush, +50% HP)</button>' +
+        '<button type="button" id="travelCampBtn"' + (state.food > 0 ? "" : " disabled") + '>Camp...</button>' +
         '<button type="button" id="travelInventoryBtn">Inventory</button>' +
         "</div>" +
         (state.travelInventoryOpen ? inventoryScreenHtml() : "") +
         renderLog() +
-        resumeOverlay;
+        resumeOverlay +
+        postBattleDialogOverlayHtml() +
+        campDialogOverlayHtml();
       document.getElementById("nextDay").onclick = function () {
         if (state.transition) return;
         consumeTravelDaySupplies();
@@ -4381,7 +4926,7 @@
         beginNextTravelDayMarch();
       };
       var travelCampBtn = document.getElementById("travelCampBtn");
-      if (travelCampBtn) travelCampBtn.onclick = campRest;
+      if (travelCampBtn) travelCampBtn.onclick = openCampDialog;
       var travelInvBtn = document.getElementById("travelInventoryBtn");
       if (travelInvBtn)
         travelInvBtn.onclick = function () {
@@ -4392,6 +4937,8 @@
       if (state.travelInventoryOpen) {
         wireInventoryScreen(app);
       }
+      wirePostBattleDialog(app);
+      wireCampDialog(app);
       return;
     }
     if (state.phase === "quest_trek") {
@@ -4412,7 +4959,7 @@
         '<button type="button" class="primary" id="questAdvanceBtn"' +
         (state.food > 0 ? "" : " disabled") +
         '>Press on (day ' + (qDay + 1) + ')</button>' +
-        '<button type="button" id="questCampBtn"' + (state.food > 0 ? "" : " disabled") + '>Camp and rest (1 supply, ~20% ambush, +50% HP)</button>' +
+        '<button type="button" id="questCampBtn"' + (state.food > 0 ? "" : " disabled") + '>Camp...</button>' +
         '<button type="button" id="questRetreatBtn">Retreat (abandon quest)</button>' +
         '<button type="button" id="questInventoryBtn">Inventory</button>';
       var qFallen = state.party.filter(function (p) { return p && p.hp <= 0; });
@@ -4440,11 +4987,13 @@
         qReviveBlock +
         (state.travelInventoryOpen ? inventoryScreenHtml() : "") +
         renderLog() +
-        qResumeOverlay;
+        qResumeOverlay +
+        postBattleDialogOverlayHtml() +
+        campDialogOverlayHtml();
       var qAdvBtn = document.getElementById("questAdvanceBtn");
       if (qAdvBtn) qAdvBtn.onclick = advanceQuestDay;
       var qCampBtn = document.getElementById("questCampBtn");
-      if (qCampBtn) qCampBtn.onclick = campRest;
+      if (qCampBtn) qCampBtn.onclick = openCampDialog;
       var qRetBtn = document.getElementById("questRetreatBtn");
       if (qRetBtn) qRetBtn.onclick = abandonQuest;
       var qInvBtn = document.getElementById("questInventoryBtn");
@@ -4463,6 +5012,8 @@
       if (state.travelInventoryOpen) {
         wireInventoryScreen(app);
       }
+      wirePostBattleDialog(app);
+      wireCampDialog(app);
       return;
     }
     if (state.phase === "adventure") {
@@ -4505,18 +5056,17 @@
           '<button type="button" class="primary" id="advancePushBtn"' +
           (state.food > 0 ? "" : " disabled") +
           '>Push deeper (day ' + (adv.daysOut + 1) + ')</button>' +
-          '<button type="button" id="advCampBtn"' + (state.food > 0 ? "" : " disabled") + '>Camp and rest (1 supply, ~20% ambush, +50% HP)</button>' +
-          '<button type="button" id="turnBackBtn">Turn back (' + adv.daysOut + " day(s) home)</button>" +
+          '<button type="button" id="advCampBtn"' + (state.food > 0 ? "" : " disabled") + '>Camp...</button>' +
+          '<button type="button" id="turnBackBtn">Return home (' + adv.daysOut + ' day' + (adv.daysOut !== 1 ? 's' : '') + ')</button>' +
           '<button type="button" id="advInventoryBtn">Inventory</button>';
       } else {
         advBody =
-          "<p>Heading back to <b>" + advTownLabel + "</b>. <b>" + Math.max(0, adv.returnDays) +
-          "</b> day(s) remain on the way home. No encounters on return, but each day still costs 1 supply.</p>";
+          "<p>Heading back to <b>" + advTownLabel + "</b>. The march home will take <b>" + Math.max(0, adv.returnDays) +
+          "</b> day(s) and consume 1 supply per day. No encounters on the way back.</p>";
         advActions =
           '<button type="button" class="primary" id="advanceReturnBtn"' +
           (state.food > 0 ? "" : " disabled") +
-          '>Continue return (1 day)</button>' +
-          '<button type="button" id="advCampBtn"' + (state.food > 0 ? "" : " disabled") + '>Camp and rest (1 supply, ~20% ambush, +50% HP)</button>' +
+          '>Return to ' + advTownLabel + ' (' + Math.max(0, adv.returnDays) + ' day' + (adv.returnDays !== 1 ? 's' : '') + ')</button>' +
           '<button type="button" id="advInventoryBtn">Inventory</button>';
       }
       app.innerHTML =
@@ -4528,7 +5078,10 @@
         (state.travelInventoryOpen ? inventoryScreenHtml() : "") +
         renderLog() +
         advResumeOverlay +
-        (state.elaraDialog ? elaraDialogOverlayHtml(state.elaraDialog) : "");
+        (state.elaraDialog ? elaraDialogOverlayHtml(state.elaraDialog) : "") +
+        (state.confirmDialog ? confirmDialogOverlayHtml(state.confirmDialog) : "") +
+        postBattleDialogOverlayHtml() +
+        campDialogOverlayHtml();
       var pushBtn = document.getElementById("advancePushBtn");
       if (pushBtn) pushBtn.onclick = function () { advanceAdventureDay(); };
       var backBtn = document.getElementById("turnBackBtn");
@@ -4536,7 +5089,7 @@
       var retBtn = document.getElementById("advanceReturnBtn");
       if (retBtn) retBtn.onclick = function () { continueAdventureReturn(); };
       var advCampBtn = document.getElementById("advCampBtn");
-      if (advCampBtn) advCampBtn.onclick = campRest;
+      if (advCampBtn) advCampBtn.onclick = openCampDialog;
       var advInvBtn = document.getElementById("advInventoryBtn");
       if (advInvBtn)
         advInvBtn.onclick = function () {
@@ -4552,12 +5105,18 @@
       }
       var elaraClose = document.getElementById("elaraDialogClose");
       if (elaraClose) elaraClose.onclick = function () { state.elaraDialog = null; render(); };
+      if (state.confirmDialog) wireConfirmDialog(app);
       if (state.travelInventoryOpen) {
         wireInventoryScreen(app);
       }
+      wirePostBattleDialog(app);
+      wireCampDialog(app);
       return;
     }
     if (state.phase === "settlement") {
+      if (state.settlementView === "quest" || state.settlementView === "memorial") {
+        state.settlementView = state.settlementView === "memorial" ? "church" : "inventory";
+      }
       var town = destinationForKey(state.settlementTown || "gustaf");
       app.innerHTML =
         endCitySplash() +
@@ -4593,13 +5152,13 @@
                 }
                 html += '</div>';
               }
-              if (headstones.length > 0) {
-                html += '<h3 class="church-section-title" style="margin-top:1.25rem">In memory</h3>' +
-                  '<p>Headstones at ' + locationLabel(state.settlementTown) +
-                  '. Leave a note for travelers who pass after you.</p>' +
+              var pending = headstones.filter(function (hs) { return !isHeadstoneFrozen(hs); });
+              if (pending.length > 0) {
+                html += '<h3 class="church-section-title" style="margin-top:1.25rem">Recent losses</h3>' +
+                  '<p>Leave a final note for each fallen comrade. Once saved, the headstone is sealed and the inscription is permanent.</p>' +
                   '<div class="shop-block">';
-                for (var hi = 0; hi < headstones.length; hi++) {
-                  var hs = headstones[hi];
+                for (var hi = 0; hi < pending.length; hi++) {
+                  var hs = pending[hi];
                   var safeNote = String(hs.note || "")
                     .replace(/&/g, "&amp;")
                     .replace(/</g, "&lt;")
@@ -4613,12 +5172,13 @@
                     'style="margin-top:.35rem;width:100%;min-height:3em;background:#1c160e;color:#e8dcc8;border:1px solid #4a3d2a;border-radius:6px;padding:.4rem .5rem;font-family:inherit">' +
                     safeNote + '</textarea>' +
                     '<div style="margin-top:.35rem;text-align:right">' +
-                    '<button type="button" id="hsSave-' + hs.id + '">Save note</button>' +
+                    '<button type="button" id="hsSave-' + hs.id + '">Seal headstone</button>' +
                     '</div>' +
                     '</div>';
                 }
                 html += '</div>';
               }
+              html += memorialPanelHtml(state.settlementTown);
               return html;
             })()
           : state.settlementView === "inn"
@@ -4723,34 +5283,9 @@
                 }) +
                 '</div>'
             : state.settlementView === "inventory"
-              ? '<h2 class="panel-title">Inventory</h2>' +
-                inventoryScreenHtml()
-            : state.settlementView === "quest"
-              ? (function () {
-                  if (!state.quest) {
-                    var completed = (state.questsCompleted || []).map(function (qid) {
-                      var qd = questDef(qid);
-                      return qd ? '<li>' + escapeHtml(qd.name) + ' <span class="hint">(complete)</span></li>' : '';
-                    }).join("");
-                    return '<p class="town-lead">No active quest. Ask around the tavern for work.</p>' +
-                      (completed
-                        ? '<h3 class="church-section-title" style="margin-top:1rem">Past deeds</h3><ul class="roster-edit">' + completed + '</ul>'
-                        : '');
-                  }
-                  var qd = questDef(state.quest.id);
-                  if (!qd) return '<p class="town-lead">Quest data missing.</p>';
-                  return '<p class="town-lead"><b>' + escapeHtml(qd.name) + '</b> - ' + escapeHtml(qd.summary) + '</p>' +
-                    '<div class="shop-block"><div class="shop-row" style="flex-direction:column;align-items:stretch">' +
-                    '<div>Progress: <b>' + state.quest.dayProgress + ' / ' + state.quest.totalDays + '</b> days into the pass.</div>' +
-                    '<div class="hint">Reward on completion: ' + qd.rewardGold + ' gp.</div>' +
-                    '<div style="margin-top:.5rem;display:flex;gap:.4rem;flex-wrap:wrap">' +
-                    '<button type="button" class="primary" id="questBegin"' + (state.food > 0 ? "" : " disabled") + '>' +
-                    (state.quest.dayProgress > 0 ? "Resume trek" : "Set out for the pass") +
-                    '</button>' +
-                    '<button type="button" id="questAbandon">Abandon quest</button>' +
-                    '</div>' +
-                    '</div></div>';
-                })()
+              ? '<h2 class="panel-title">Party</h2>' +
+                inventoryScreenHtml() +
+                questPanelHtml()
             : state.settlementView === "adventure"
               ? '<p class="town-lead">Strike out for an adventuring trek. Up to <b>10 days</b> exploring the wilds near ' + locationLabel(town.key) + '. Each day spent outbound rolls an encounter. Turn back any time; the return trip takes the same days you spent (no encounters) and still consumes supplies.</p>' +
                 '<p class="hint">Tip: Make sure your party is rested and stocked. Encounter level scales with how far past Hollow Banks you are.</p>' +
@@ -4766,9 +5301,11 @@
                   : '<p class="town-lead">Solem resupplied. One final push leads to New Isil.</p><div class="actions"><button type="button" class="primary" id="continueTrailBtn">Depart for New Isil</button></div>') +
         renderLog() +
         (state.transition && state.transition.kind === "arrive" ? transitionArriveOverlayHtml(state.transition) : "") +
-        (state.questDialog ? questDialogOverlayHtml(state.questDialog) : "");
+        (state.questDialog ? questDialogOverlayHtml(state.questDialog) : "") +
+        postBattleDialogOverlayHtml();
 
       wireSettlementTabs(app);
+      wirePostBattleDialog(app);
       var qAcceptBtn = app.querySelector('[id^="questAccept-"]');
       if (qAcceptBtn) {
         qAcceptBtn.onclick = function () {
@@ -4813,7 +5350,7 @@
             if (btn && ta) {
               btn.onclick = function () {
                 setHeadstoneNote(hs.id, ta.value);
-                logLine("Headstone note saved for " + hs.name + ".", "");
+                logLine("Headstone sealed for " + hs.name + ". The inscription is now permanent.", "");
                 render();
               };
             }
@@ -4833,11 +5370,6 @@
             btn.onclick = function () { offerQuest(qid); };
           })(offerBtns[qbi]);
         }
-      } else if (state.settlementView === "quest") {
-        var qBegin = document.getElementById("questBegin");
-        if (qBegin) qBegin.onclick = beginQuestTrek;
-        var qAban = document.getElementById("questAbandon");
-        if (qAban) qAban.onclick = abandonQuest;
       } else if (state.settlementView === "shop") {
         wireShopRow("supplies", buySettlementSupplies, sellSettlementSupplies);
         wireShopRow("weapon", buySettlementWeapon, sellSettlementWeapon);
@@ -4846,6 +5378,10 @@
         wireShopRow("gem", null, sellSettlementGem);
       } else if (state.settlementView === "inventory") {
         wireInventoryScreen(app);
+        var qBegin = document.getElementById("questBegin");
+        if (qBegin) qBegin.onclick = beginQuestTrek;
+        var qAban = document.getElementById("questAbandon");
+        if (qAban) qAban.onclick = abandonQuest;
       } else if (state.settlementView === "adventure") {
         var advBtn = document.getElementById("beginAdventureBtn");
         if (advBtn) advBtn.onclick = function () { beginAdventure(); };
@@ -4883,9 +5419,11 @@
           "<p>Rooms to explore: <b>" + state.ruinsRoomsRemaining + "</b> / " + state.ruinsRoomsTotal +
           ". Each room may trigger monsters (" +
           Math.round(SKELETON_FIGHT_CHANCE * 100) +
-          "% chance).</p>" +
+          "% chance). Gold caches are rare but worthwhile.</p>" +
+          ruinsMinimapHtml() +
+          ruinsNavigationPlaceholderHtml() +
           "<div class=\"actions\">" +
-          "<button type=\"button\" id=\"searchRuins\">Search ruins</button>" +
+          "<button type=\"button\" id=\"searchRuins\">Explore current room</button>" +
           "<button type=\"button\" id=\"skipRuins\">Mark and leave</button>" +
           '<button type="button" id="ruinsInventoryBtn">Inventory</button>' +
           "</div>" +
@@ -4905,11 +5443,22 @@
             render();
             return;
           }
-          var roomGold = roadGoldBonus(rollInt(1, 2));
-          var roomGems = Math.random() < 0.25 ? 1 : 0;
-          state.gold += roomGold;
-          state.gems += roomGems;
-          logLine("Ruins room " + roomIdx + " cleared: +" + roomGold + " gold" + (roomGems ? ", +1 gem" : "") + ".", "good");
+          var roomGold = 0;
+          var roomGems = 0;
+          if (Math.random() < RUINS_GOLD_FIND_CHANCE) {
+            roomGold = roadGoldBonus(rollInt(RUINS_GOLD_MIN, RUINS_GOLD_MAX));
+            state.gold += roomGold;
+          }
+          if (Math.random() < 0.15) {
+            roomGems = 1;
+            state.gems += roomGems;
+          }
+          if (state.ruinsMap) markRuinsTileExplored(state.ruinsMap.playerX, state.ruinsMap.playerY);
+          if (roomGold || roomGems) {
+            logLine("Ruins room " + roomIdx + " cleared: +" + roomGold + " gold" + (roomGems ? ", +1 gem" : "") + ".", "good");
+          } else {
+            logLine("Ruins room " + roomIdx + " cleared: nothing of value.", "");
+          }
           if (state.ruinsRoomsRemaining <= 0) {
             resolveRuinsSearchRewards();
             finishEncounterCommon();
@@ -4939,22 +5488,29 @@
         var team = combatTeam();
         var activePlannerId = currentPlannerId();
         var activeChoice = activePlannerId ? choiceForMember(activePlannerId) : null;
-        var selectingTarget = !!activeChoice && activeChoice.action === "attack" && !activeChoice.targetId;
+        var activeMember = activePlannerId ? teamMemberById(activePlannerId) : null;
+        var selectingAttackTarget = !!activeChoice && activeChoice.action === "attack" && !activeChoice.targetId;
+        var selectingSpellFoe = !!activeChoice && activeChoice.action === "spell" && !activeChoice.targetId
+          && activeMember && spellNeedsFoeTarget(activeMember.role, activeChoice.spellKind);
+        var selectingSpellAlly = !!activeChoice && activeChoice.action === "spell" && !activeChoice.targetId
+          && activeMember && spellNeedsAllyTarget(activeMember.role, activeChoice.spellKind);
+        var selectingFoe = selectingAttackTarget || selectingSpellFoe;
         var selectedTargetId = activeChoice && activeChoice.targetId ? activeChoice.targetId : null;
         var foesHtml = state.combat.foes
           .map(function (f) {
-            return foeCardHtml(f, selectingTarget, selectedTargetId === f.id);
+            return foeCardHtml(f, selectingFoe, selectedTargetId === f.id);
           })
           .join("");
         var cards = team
           .map(function (m) {
-            return battlePartyCard(m, activePlannerId);
+            return battlePartyCard(m, activePlannerId, selectingSpellAlly);
           })
           .join("");
         var ready = allChoicesReady();
-        var activeMember = activePlannerId ? teamMemberById(activePlannerId) : null;
         var hint = "Pick actions in order, then End round.";
-        if (activeMember && selectingTarget) hint = "Choose a monster target for " + activeMember.name + ".";
+        if (activeMember && selectingAttackTarget) hint = "Choose a monster target for " + activeMember.name + ".";
+        else if (activeMember && selectingSpellFoe) hint = "Choose which foe " + activeMember.name + " will cast on.";
+        else if (activeMember && selectingSpellAlly) hint = "Choose which ally " + activeMember.name + " will heal.";
         else if (activeMember) hint = "Choose an action for " + activeMember.name + ".";
         var bossFight = state.combat && state.combat.kind === "new_isil_gate_boss";
         app.innerHTML =

@@ -338,6 +338,17 @@ button.primary {
   box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.25);
 }
 
+.keep-subtabs {
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.keep-subtabs .illiri-tab {
+  font-size: 0.7rem;
+  min-width: 4.5rem;
+}
+
 .town-lead {
   margin: 0 0 0.65rem;
   font-size: 0.88rem;
@@ -572,6 +583,18 @@ code {
 .scene-end-city--solem {
   background-image:
     linear-gradient(185deg, rgba(70, 74, 92, 0.45) 0%, rgba(86, 84, 108, 0.58) 45%, rgba(24, 22, 34, 0.78) 100%),
+    var(--scene-solem);
+}
+
+.scene-end-city--brookside {
+  background-image:
+    linear-gradient(185deg, rgba(58, 72, 52, 0.45) 0%, rgba(72, 88, 68, 0.58) 45%, rgba(18, 26, 20, 0.78) 100%),
+    var(--scene-hollow-banks);
+}
+
+.scene-end-city--glennhardt {
+  background-image:
+    linear-gradient(185deg, rgba(62, 58, 78, 0.45) 0%, rgba(78, 72, 98, 0.58) 45%, rgba(22, 20, 32, 0.78) 100%),
     var(--scene-solem);
 }
 
@@ -1509,6 +1532,25 @@ code {
   background: #0f0c09;
 }
 
+
+.caravan-followers {
+  margin: 1rem 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.caravan-followers-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.caravan-followers-list li {
+  margin-bottom: 0.35rem;
+}
 
 .char-stat-wrap {
   margin-top: 0.35rem;

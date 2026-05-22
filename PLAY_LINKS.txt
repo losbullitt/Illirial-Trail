@@ -2,7 +2,8 @@ Cantebury Trails - how to run
 ============================
 
 Web (public, no install):
-  https://losbullitt.github.io/Illirial-Trail/
+  https://losbullitt.github.io/Illirial-Trail/index.html
+  (use index.html — the bare repo URL can fail to load scripts on some browsers)
 
 Web (local - run server from this folder first):
   http://127.0.0.1:8080/index.html

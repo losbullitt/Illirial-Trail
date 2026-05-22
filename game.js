@@ -2,15 +2,115 @@
 (function () {
   "use strict";
 
-  var CLASS_HP = { soldier: 10, priest: 6, mercenary: 8, farmer: 9, artisan: 8, merchant: 8, mage: 6 };
+  var CLASS_HP = { soldier: 10, priest: 6, mercenary: 8, mage: 6 };
+  var CARAVAN_FOLLOWERS_TOTAL = 10;
   var DEFAULT_ROUTE_DAYS = 10;
+  /** Each trail leg rolls once (3–10 days) and keeps that length every loop. */
+  var ROUTE_DAYS_MIN = 3;
+  var ROUTE_DAYS_MAX = 10;
   var DESTINATIONS = {
     gustaf: { key: "gustaf", label: "Gustaf", subtitle: "Stone quays and wind-bent banners", badge: "Port" },
+    brookside: { key: "brookside", label: "Brookside", subtitle: "A small village where the brook meets the road", badge: "Village" },
     hollow_banks: { key: "hollow_banks", label: "Hollow Banks", subtitle: "Reed marsh and fogbound piers", badge: "Frontier" },
+    glennhardt: { key: "glennhardt", label: "Glennhardt", subtitle: "Mid-city markets and guild halls on the fork road", badge: "City" },
     solem: { key: "solem", label: "Solem", subtitle: "Hill citadel above the river forks", badge: "Citadel" },
     new_isil: { key: "new_isil", label: "New Isil", subtitle: "End city - spires above the bay", badge: "Harbor" },
   };
-  var PARTY_MAX = 6;
+  /** Fork pairs on the western march (pick one from each pair westbound). */
+  var TRAIL_FORK_LOWER = ["gustaf", "brookside"];
+  var TRAIL_FORK_UPPER = ["hollow_banks", "glennhardt"];
+  /** Stage depth for scaling and eastbound ordering when off the recorded path. */
+  var TRAIL_TOWN_STAGE = {
+    cantebury: 0,
+    gustaf: 1,
+    brookside: 1,
+    hollow_banks: 2,
+    glennhardt: 2,
+    solem: 3,
+    new_isil: 4,
+  };
+  var KEEP_NPC_LINES = {
+    cantebury_governor: {
+      speaker: "Governor Kew Kumber",
+      title: "Governor of Cantebury",
+      portrait: "SK Kew Kumber.jpeg",
+      text: "You have my leave to march west. Keep the trade road open, report what you find beyond Hollow Banks, and do not tarry — rumors from New Isil grow worse each week.",
+    },
+    cantebury_chancellor: {
+      speaker: "Chancellor Aldric Venn",
+      title: "Chancellor",
+      portrait: "",
+      text: "Petitions stack on the governor's desk. If you need requisition papers or a seal for the garrison at Gustaf, see me before you depart — I can spare an hour, not a day.",
+    },
+    solem_magistrate: {
+      speaker: "Magistrate Serah Dunwald",
+      title: "Magistrate of Solem",
+      portrait: "",
+      text: "Welcome to the citadel. Solem fields what soldiers we can spare, but the final stretch to New Isil is yours to make. Rest, resupply, and mind the wards — the hills have been restless.",
+    },
+  };
+  function townHasKeep(townKey) {
+    return townKey === "cantebury" || townKey === "solem";
+  }
+  var BARKEEP_BY_TOWN = {
+    _default: {
+      speaker: "The barkeep",
+      title: "Traveler's tavern",
+      portrait: "",
+      greet: "Another caravan through the door. Ale's hot, beds are taken, and the westward road never sleeps. What can I do for you?",
+      activeQuest: "How goes the work I set you on? Finish it proper, then we'll talk coin.",
+      noWork: "No contracts tonight — drink, rest, and try your luck on the road.",
+    },
+    cantebury: {
+      speaker: "Barkeep Corbyn",
+      title: "The Rusty Nail",
+      portrait: "",
+      greet: "So you're the lot marching to New Isil. I keep ears on the trade road — smoke over the pass, missing livestock, the usual grim music. Pull up a stool if you want ale; pull up your courage if you want paid work.",
+      activeQuest: "Still chasing that chore I mentioned? Don't stroll back until it's settled.",
+      noWork: "Nothing paying at the moment. Recruit who you need and mind the governor's timetable.",
+    },
+    gustaf: {
+      speaker: "Barkeep Hella",
+      title: "The Windward Stein",
+      portrait: "",
+      greet: "Port Gustaf sees every fool with a sword and a dream. I hear rumors from the quays — some worth gold, most worth a laugh.",
+      activeQuest: "That job I whispered about — still open until you close it. The docks aren't getting quieter.",
+      noWork: "Harbor's slow. Wet your throat and move on when the tide turns.",
+    },
+    hollow_banks: {
+      speaker: "Barkeep Merrin",
+      title: "The Reed Lantern",
+      portrait: "",
+      greet: "Hollow Banks eats the careless. I sell warmth and warnings in equal measure. Sit if you like — stand if you're nervous.",
+      activeQuest: "You took my lead on that business. See it through before the marsh claims another fool.",
+      noWork: "Fog's thick and purses are thin. I have no leads worth your steel tonight.",
+    },
+    brookside: {
+      speaker: "Barkeep Tessa",
+      title: "The Willow Ford",
+      portrait: "",
+      greet: "Brookside is small but the road remembers everyone who passes. I pour thin ale and thick gossip — take both if you're marching west.",
+      activeQuest: "That chore I mentioned? The brook folk are still waiting on you.",
+      noWork: "Quiet night. Rest your boots and move on when the mist lifts.",
+    },
+    glennhardt: {
+      speaker: "Barkeep Rolf",
+      title: "The Guild Crown",
+      portrait: "",
+      greet: "Glennhardt has every comfort a long march lacks — smiths, scribes, and a barkeep who knows your coin before you sit. What'll it be?",
+      activeQuest: "The contract I set is still open. Close it before the guild clerks lose patience.",
+      noWork: "Plenty of drink, no paid leads tonight. Browse the markets instead.",
+    },
+    solem: {
+      speaker: "Barkeep Oska",
+      title: "The High Fork",
+      portrait: "",
+      greet: "Solem's the last real roof before New Isil. Garrison folk drink here, and so do the desperate. I know which stories pay.",
+      activeQuest: "That contract's still on your tab. Finish it — the citadel doesn't forget debts or heroes.",
+      noWork: "Citadel's quiet for hires. Rest the company and climb when you're ready.",
+    },
+  };
+  var PARTY_MAX = 5;
   var STAT_KEYS = ["strength", "intelligence", "stamina", "luck"];
   var BALANCE_DATA =
     typeof window !== "undefined" && window.ILLIRIAL_BALANCE
@@ -32,9 +132,6 @@
     soldier: (BALANCE_DATA.classes && BALANCE_DATA.classes.soldier && BALANCE_DATA.classes.soldier.final) || { strength: 7, intelligence: 3, stamina: 5, luck: 4 },
     priest: (BALANCE_DATA.classes && BALANCE_DATA.classes.priest && BALANCE_DATA.classes.priest.final) || { strength: 4, intelligence: 6, stamina: 4, luck: 5 },
     mercenary: (BALANCE_DATA.classes && BALANCE_DATA.classes.mercenary && BALANCE_DATA.classes.mercenary.final) || { strength: 6, intelligence: 3, stamina: 5, luck: 5 },
-    farmer: (BALANCE_DATA.classes && BALANCE_DATA.classes.farmer && BALANCE_DATA.classes.farmer.final) || { strength: 5, intelligence: 4, stamina: 6, luck: 4 },
-    artisan: (BALANCE_DATA.classes && BALANCE_DATA.classes.artisan && BALANCE_DATA.classes.artisan.final) || { strength: 4, intelligence: 6, stamina: 3, luck: 6 },
-    merchant: (BALANCE_DATA.classes && BALANCE_DATA.classes.merchant && BALANCE_DATA.classes.merchant.final) || { strength: 3, intelligence: 5, stamina: 5, luck: 6 },
     mage: (BALANCE_DATA.classes && BALANCE_DATA.classes.mage && BALANCE_DATA.classes.mage.final) || { strength: 3, intelligence: 7, stamina: 3, luck: 4 },
   };
   var PRESET_LEADER = {
@@ -52,6 +149,8 @@
   var ENCOUNTER_BASE = 0.1;
   var ENCOUNTER_STEP = 0.25;
   var ENCOUNTER_CAP = 0.95;
+  /** Cantebury local scouting: 80% fewer adventure encounters (20% of normal rate). */
+  var CANTEBURY_ADVENTURE_ENCOUNTER_MULT = 0.2;
   var RUINS_BASE_CHANCE = 0.18;
   var RUINS_DAY_BONUS = 0.12;
   var RUINS_MAX_CHANCE = 0.72;
@@ -60,12 +159,128 @@
   var RUINS_GOLD_FIND_CHANCE = 0.25;
   var RUINS_GOLD_MIN = 8;
   var RUINS_GOLD_MAX = 20;
+  /** Ruins grid minimap — off until shrine navigation is playable. */
+  var RUINS_SHOW_MINIMAP = false;
   var WEAPON_TIERS = [
     { id: "knife", label: "Knife", grade: 0 },
     { id: "shortsword", label: "Shortsword", grade: 1 },
     { id: "war_axe", label: "War axe", grade: 2 },
     { id: "runesword", label: "Runesword", grade: 3 },
   ];
+  var EXOTIC_WEAPONS = [
+    { id: "tellerite_blade", label: "Tellerite Blade", dmgBonus: 20, price: 50000 },
+    { id: "vulcan_hammer", label: "Vulcan Hammer", dmgBonus: 20, price: 50000 },
+    { id: "romulan_verdant_blade", label: "Romulan Verdant Blade", dmgBonus: 20, price: 50000 },
+  ];
+  function exoticWeaponDef(weaponId) {
+    if (!weaponId) return null;
+    for (var i = 0; i < EXOTIC_WEAPONS.length; i++) {
+      if (EXOTIC_WEAPONS[i].id === weaponId) return EXOTIC_WEAPONS[i];
+    }
+    return null;
+  }
+  function exoticWeaponOwner(weaponId) {
+    if (!weaponId) return null;
+    for (var i = 0; i < state.party.length; i++) {
+      var m = state.party[i];
+      if (m && m.exoticWeaponId === weaponId) return m;
+    }
+    return null;
+  }
+  var STABILITY_TARGET_DAYS = (BALANCE_DATA && BALANCE_DATA.stabilityTargetDays) || 100;
+  var FINAL_BOSS_MIN_DAYS = (BALANCE_DATA && BALANCE_DATA.finalBossMinDays) || 90;
+  var NEW_ISIL_BASE_POPULATION = 12;
+  var EQUIPMENT_SLOTS = ["weapon", "armor", "finger", "neck"];
+  var EQUIPMENT_SLOT_LABELS = { weapon: "Weapon", armor: "Armor", finger: "Finger", neck: "Neck" };
+  var EQUIPMENT_CATALOG = (BALANCE_DATA && BALANCE_DATA.equipmentCatalog) || [];
+  var EQUIPMENT_BY_ID = {};
+  (function buildEquipmentIndex() {
+    for (var ei = 0; ei < EQUIPMENT_CATALOG.length; ei++) {
+      var it = EQUIPMENT_CATALOG[ei];
+      if (it && it.id) EQUIPMENT_BY_ID[it.id] = it;
+    }
+  })();
+  function equipmentItemDef(itemId) {
+    return itemId ? EQUIPMENT_BY_ID[itemId] || null : null;
+  }
+  function ensureMemberEquipment(member) {
+    if (!member) return member;
+    if (!member.equipment) {
+      member.equipment = { weapon: null, armor: null, finger: null, neck: null };
+    }
+    return member;
+  }
+  function equipmentHpBonus(member) {
+    if (!member || !member.equipment) return 0;
+    var sum = 0;
+    for (var si = 0; si < EQUIPMENT_SLOTS.length; si++) {
+      var def = equipmentItemDef(member.equipment[EQUIPMENT_SLOTS[si]]);
+      if (def && def.hpBonus) sum += def.hpBonus;
+    }
+    return sum;
+  }
+  function equipmentDmgBonus(member) {
+    if (!member || !member.equipment) return 0;
+    var sum = 0;
+    for (var di = 0; di < EQUIPMENT_SLOTS.length; di++) {
+      var ddef = equipmentItemDef(member.equipment[EQUIPMENT_SLOTS[di]]);
+      if (ddef && ddef.dmgBonus) sum += ddef.dmgBonus;
+    }
+    return sum;
+  }
+  function refreshMemberDerivedStats(member) {
+    if (!member) return;
+    ensureMemberEquipment(member);
+    var oldMax = member.maxHp || memberMaxHp(member);
+    var newMax = memberMaxHp(member);
+    member.maxHp = newMax;
+    if (member.hp > member.maxHp) member.hp = member.maxHp;
+    if (newMax > oldMax && member.hp > 0) member.hp = Math.min(newMax, member.hp + (newMax - oldMax));
+  }
+  function gearStashList() {
+    return state && state.gearStash ? state.gearStash.slice() : [];
+  }
+  function stashItemsForSlot(slot) {
+    var stash = gearStashList();
+    var out = [];
+    for (var i = 0; i < stash.length; i++) {
+      var def = equipmentItemDef(stash[i]);
+      if (def && def.slot === slot) out.push(stash[i]);
+    }
+    return out;
+  }
+  function removeFromGearStash(itemId) {
+    if (!state.gearStash) return;
+    var idx = state.gearStash.indexOf(itemId);
+    if (idx >= 0) state.gearStash.splice(idx, 1);
+  }
+  function addToGearStash(itemId) {
+    if (!itemId) return;
+    if (!state.gearStash) state.gearStash = [];
+    state.gearStash.push(itemId);
+  }
+  function unequipSlotToStash(member, slot) {
+    if (!member || !member.equipment) return;
+    var prev = member.equipment[slot];
+    if (!prev) return;
+    member.equipment[slot] = null;
+    addToGearStash(prev);
+    refreshMemberDerivedStats(member);
+  }
+  function equipItemOnMember(member, slot, itemId) {
+    if (!member || !itemId) return false;
+    var def = equipmentItemDef(itemId);
+    if (!def || def.slot !== slot) return false;
+    ensureMemberEquipment(member);
+    if (member.equipment[slot]) unequipSlotToStash(member, slot);
+    removeFromGearStash(itemId);
+    member.equipment[slot] = itemId;
+    refreshMemberDerivedStats(member);
+    return true;
+  }
+  function formatGp(amount) {
+    return String(amount).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
   var XP_PER_LEVEL = 3;
   var XP_THRESHOLDS = (BALANCE_DATA && BALANCE_DATA.levelXpThresholds && BALANCE_DATA.levelXpThresholds.length)
     ? BALANCE_DATA.levelXpThresholds.slice()
@@ -82,13 +297,34 @@
   function statGainProfile(role) {
     return STAT_GAINS_PER_CLASS[role] || STAT_GAINS_PER_CLASS.soldier || { strength: 0, intelligence: 0, stamina: 0, luck: 0 };
   }
+  /** Level-up stat point rolls: favor low gains (0–3); renormalized when class cap is below 3. */
+  var STAT_GAIN_VALUE_WEIGHTS = [35, 45, 15, 5];
+
+  function rollWeightedStatGain(max) {
+    max = Math.max(0, parseInt(max, 10) || 0);
+    if (max <= 0) return 0;
+    var total = 0;
+    var i;
+    for (i = 0; i <= max; i++) {
+      total += i < STAT_GAIN_VALUE_WEIGHTS.length ? STAT_GAIN_VALUE_WEIGHTS[i] : 0;
+    }
+    if (total <= 0) return rollInt(0, max);
+    var r = Math.random() * total;
+    var acc = 0;
+    for (i = 0; i <= max; i++) {
+      acc += i < STAT_GAIN_VALUE_WEIGHTS.length ? STAT_GAIN_VALUE_WEIGHTS[i] : 0;
+      if (r < acc) return i;
+    }
+    return max;
+  }
+
   function rollStatGains(role) {
     var p = statGainProfile(role);
     return {
-      strength: rollInt(0, p.strength || 0),
-      intelligence: rollInt(0, p.intelligence || 0),
-      stamina: rollInt(0, p.stamina || 0),
-      luck: rollInt(0, p.luck || 0),
+      strength: rollWeightedStatGain(p.strength || 0),
+      intelligence: rollWeightedStatGain(p.intelligence || 0),
+      stamina: rollWeightedStatGain(p.stamina || 0),
+      luck: rollWeightedStatGain(p.luck || 0),
     };
   }
   var MAX_SUPPLIES = 30;
@@ -176,9 +412,168 @@
   }
 
   function lootMultiplier(party) {
-    return 1 + 0.05 * mercenaryCount(party);
+    var mult = 1 + 0.05 * mercenaryCount(party);
+    if (state.caravan && state.caravan.merchants) {
+      mult += 0.02 * state.caravan.merchants;
+    }
+    return mult;
   }
 
+  function defaultCaravanFollowers() {
+    return {
+      total: CARAVAN_FOLLOWERS_TOTAL,
+      farmers: 4,
+      artisans: 2,
+      merchants: 2,
+      thatchers: 1,
+      stoneMasons: 0,
+      cobblers: 1,
+      blacksmiths: 0,
+    };
+  }
+
+  function rollNewCaravanFollowers(total) {
+    var n = Math.max(1, total || rollInt(1, 15));
+    var c = {
+      total: n,
+      farmers: 0,
+      artisans: 0,
+      merchants: 0,
+      thatchers: 0,
+      stoneMasons: 0,
+      cobblers: 0,
+      blacksmiths: 0,
+    };
+    var groups = ["farmers", "merchants", "artisans", "thatchers", "stoneMasons", "cobblers", "blacksmiths"];
+    var i;
+    for (i = 0; i < n; i++) {
+      c[groups[rollInt(0, groups.length - 1)]]++;
+    }
+    return c;
+  }
+
+  function ensureCaravanState() {
+    if (!state.caravan || typeof state.caravan.total !== "number") {
+      state.caravan = defaultCaravanFollowers();
+    }
+  }
+
+  function caravanTradeBonus(field) {
+    ensureCaravanState();
+    return state.caravan[field] || 0;
+  }
+
+  function caravanSupplySaveChance() {
+    ensureCaravanState();
+    return 0.12 + (state.caravan.farmers / CARAVAN_FOLLOWERS_TOTAL) * 0.28;
+  }
+
+  function caravanForageSupplyChance() {
+    ensureCaravanState();
+    return 0.55 + (state.caravan.farmers / CARAVAN_FOLLOWERS_TOTAL) * 0.2;
+  }
+
+  function caravanForageGoldChance() {
+    ensureCaravanState();
+    return 0.22 + (state.caravan.merchants / CARAVAN_FOLLOWERS_TOTAL) * 0.18;
+  }
+
+  function caravanCampHealBonus() {
+    ensureCaravanState();
+    return (state.caravan.artisans / CARAVAN_FOLLOWERS_TOTAL) * 0.12;
+  }
+
+  function caravanFollowersSummary() {
+    ensureCaravanState();
+    var c = state.caravan;
+    return (
+      c.total +
+      " (" +
+      c.farmers +
+      " farmers, " +
+      c.artisans +
+      " artisans, " +
+      c.merchants +
+      " merchants)"
+    );
+  }
+
+  function caravanFollowersPanelHtml() {
+    ensureCaravanState();
+    var c = state.caravan;
+    return (
+      '<section class="caravan-followers">' +
+      '<h3 class="roster-heading">Trail caravan (' +
+      c.total +
+      " civilians)</h3>" +
+      '<p class="roster-note">Farmers, artisans, and merchants march behind your fighters. They do not join tactical combat but support the train on the road.</p>' +
+      '<ul class="caravan-followers-list">' +
+      "<li><b>" +
+      c.farmers +
+      " farmers</b> — stretch rations (" +
+      Math.round(caravanSupplySaveChance() * 100) +
+      "% chance to skip a supply day)</li>" +
+      "<li><b>" +
+      c.artisans +
+      " artisans</b> — mend gear and morale (+" +
+      Math.round(caravanCampHealBonus() * 100) +
+      "% camp healing)</li>" +
+      "<li><b>" +
+      c.merchants +
+      " merchants</b> — quarter the loot (" +
+      lootMultiplier(state.party).toFixed(2) +
+      "× with mercenaries)</li>" +
+      "<li><b>" +
+      (c.thatchers || 0) +
+      " thatchers</b> — +" +
+      caravanTradeBonus("thatchers") +
+      " caravan mending (future)</li>" +
+      "<li><b>" +
+      (c.stoneMasons || 0) +
+      " stone masons</b> — +" +
+      caravanTradeBonus("stoneMasons") +
+      " stone works in towns (future)</li>" +
+      "<li><b>" +
+      (c.cobblers || 0) +
+      " cobblers</b> — +" +
+      caravanTradeBonus("cobblers") +
+      " caravan & equipment mending</li>" +
+      "<li><b>" +
+      (c.blacksmiths || 0) +
+      " blacksmiths</b> — +" +
+      caravanTradeBonus("blacksmiths") +
+      " weapons & town metal (future)</li>" +
+      '<li class="caravan-ration-row">Rations: <label><input type="radio" name="rationMode" value="normal"' +
+      (state.rationMode !== "stretch" ? " checked" : "") +
+      '> Normal</label> <label><input type="radio" name="rationMode" value="stretch"' +
+      (state.rationMode === "stretch" ? " checked" : "") +
+      "> Stretch (saves supplies, strains morale)</label></li>" +
+      "</ul></section>"
+    );
+  }
+
+  function namesPool() {
+    if (typeof window !== "undefined" && window.ILLIRIAL_NAMES) return window.ILLIRIAL_NAMES;
+    if (BALANCE_DATA && BALANCE_DATA.characterNames) return BALANCE_DATA.characterNames;
+    return null;
+  }
+
+  function pickFromNameList(key) {
+    var pool = namesPool();
+    if (!pool || !pool[key] || !pool[key].length) return null;
+    return pool[key][rollInt(0, pool[key].length - 1)];
+  }
+
+  function rollCharacterName() {
+    var r = Math.random();
+    var first =
+      r < 0.45 ? pickFromNameList("male") : r < 0.9 ? pickFromNameList("female") : pickFromNameList("neutral");
+    var last = pickFromNameList("last");
+    if (!first && !last) return "Traveler " + rollInt(1, 99);
+    if (!first) return last || "Traveler";
+    if (!last) return first;
+    return first + " " + last;
+  }
 
   function blessingTypeLabel(type) {
     if (type === "attack") return "War blessing (+1 attack power)";
@@ -188,7 +583,25 @@
   }
 
   function hasBlessing(type) {
-    return !!state.blessing && state.blessing === type;
+    if (!state.blessing) return false;
+    if (typeof state.blessingExpiresOnDay === "number" && (state.totalDaysElapsed || 0) >= state.blessingExpiresOnDay) {
+      return false;
+    }
+    return state.blessing === type;
+  }
+
+  function grantBlessing(type) {
+    state.blessing = type;
+    state.blessingExpiresOnDay = (state.totalDaysElapsed || 0) + rollInt(1, 8);
+  }
+
+  function tickBlessingExpiry() {
+    if (!state.blessing || typeof state.blessingExpiresOnDay !== "number") return;
+    if ((state.totalDaysElapsed || 0) < state.blessingExpiresOnDay) return;
+    var was = blessingTypeLabel(state.blessing);
+    state.blessing = null;
+    state.blessingExpiresOnDay = null;
+    logLine("The chapel's " + was + " fades after a week on the road.", "");
   }
 
   function roadGoldBonus(baseGold) {
@@ -241,6 +654,7 @@
   }
 
   function ruinsMinimapHtml() {
+    if (!RUINS_SHOW_MINIMAP) return "";
     var map = state.ruinsMap;
     if (!map) {
       return '<p class="hint">Ruins map initializing...</p>';
@@ -283,28 +697,34 @@
 
   function rollSettlementRecruitSlots(townKey) {
     if (townKey === "solem") return rollInt(2, 3);
-    if (townKey === "gustaf" || townKey === "hollow_banks") {
+    if (townKey === "gustaf" || townKey === "hollow_banks" || townKey === "brookside") {
       var r = Math.random();
       if (r < 0.65) return 0;
       if (r < 0.92) return 1;
       return 2;
     }
+    if (townKey === "glennhardt") return PARTY_MAX;
     return PARTY_MAX;
   }
 
   function settlementRecruitMode(townKey) {
     if (townKey === "solem") return "soldier_only";
-    if (townKey === "gustaf" || townKey === "hollow_banks") return "limited";
+    if (townKey === "gustaf" || townKey === "hollow_banks" || townKey === "brookside") return "limited";
     return "open";
   }
 
   function settlementRecruitNote(townKey) {
     if (townKey === "solem") return "Solem can field 2-3 new soldiers this stay. Slots left: " + (state.settlementRecruitSlots || 0) + ".";
+    if (townKey === "brookside") return "Brookside rarely sees hires. Slots this stay: " + (state.settlementRecruitSlots || 0) + ".";
+    if (townKey === "glennhardt") return "Glennhardt's guild halls field a full roster. Slots left: " + (state.settlementRecruitSlots || 0) + ".";
     if (townKey === "gustaf" || townKey === "hollow_banks") return "Travelers are scarce here. Random local recruits this stay: " + (state.settlementRecruitSlots || 0) + ".";
-    return "Recruit soldiers, priests, mercenaries, farmers, artisans, merchants, or mages.";
+    return "Recruit soldiers, priests, mercenaries, or mages for the fighting line.";
   }
 
   function destinationForKey(key) {
+    if (key === "cantebury") {
+      return { key: "cantebury", label: "Cantebury", subtitle: "Walled capital at the trailhead", badge: "Capital" };
+    }
     return DESTINATIONS[key] || DESTINATIONS.gustaf;
   }
 
@@ -321,35 +741,207 @@
     return locationLabel(state && state.travelOrigin ? state.travelOrigin : "cantebury");
   }
 
+  function legRouteKey(originKey, destinationKey) {
+    return (originKey || "cantebury") + ">" + (destinationKey || "gustaf");
+  }
+
+  function ensureTrailPath() {
+    if (!state.trailPath || !state.trailPath.length) state.trailPath = ["cantebury"];
+  }
+
+  function canonicalWestwardPath() {
+    var lower = state.trailLowerFork || "gustaf";
+    var upper = state.trailUpperFork || "hollow_banks";
+    return ["cantebury", lower, upper, "solem", "new_isil"];
+  }
+
+  function appendTrailPathTown(townKey) {
+    if (!townKey || townKey === "cantebury") return;
+    ensureTrailPath();
+    if (state.trailPath.indexOf(townKey) >= 0) return;
+    state.trailPath.push(townKey);
+  }
+
+  function resetTrailPathForWestwardMarch() {
+    state.trailPath = ["cantebury"];
+    state.trailLowerFork = null;
+    state.trailUpperFork = null;
+  }
+
+  function recordWestboundForkChoice(originKey, destKey) {
+    if (originKey === "cantebury" && TRAIL_FORK_LOWER.indexOf(destKey) >= 0) state.trailLowerFork = destKey;
+    if (TRAIL_FORK_LOWER.indexOf(originKey) >= 0 && TRAIL_FORK_UPPER.indexOf(destKey) >= 0) state.trailUpperFork = destKey;
+  }
+
+  function westboundForkDestinations(originKey) {
+    if (originKey === "cantebury") return TRAIL_FORK_LOWER.slice();
+    if (TRAIL_FORK_LOWER.indexOf(originKey) >= 0) return TRAIL_FORK_UPPER.slice();
+    if (TRAIL_FORK_UPPER.indexOf(originKey) >= 0) return ["solem"];
+    if (originKey === "solem") return ["new_isil"];
+    return [];
+  }
+
+  function pathPreviousTown(fromTownKey) {
+    if (fromTownKey === "cantebury") return null;
+    ensureTrailPath();
+    var idx = state.trailPath.indexOf(fromTownKey);
+    if (idx > 0) return state.trailPath[idx - 1];
+    var canon = canonicalWestwardPath();
+    var ci = canon.indexOf(fromTownKey);
+    if (ci > 0) return canon[ci - 1];
+    if (fromTownKey === "new_isil") return "solem";
+    if (fromTownKey === "solem") return state.trailUpperFork || "hollow_banks";
+    if (TRAIL_FORK_UPPER.indexOf(fromTownKey) >= 0) return state.trailLowerFork || "gustaf";
+    if (TRAIL_FORK_LOWER.indexOf(fromTownKey) >= 0) return "cantebury";
+    return "cantebury";
+  }
+
+  function totalWestwardTrailDays() {
+    var path = state.trailLowerFork && state.trailUpperFork ? canonicalWestwardPath() : state.trailPath;
+    if (!path || path.length < 2) return ROUTE_DAYS_MAX * 4;
+    var sum = 0;
+    var i;
+    for (i = 1; i < path.length; i++) sum += cachedLegDays(path[i - 1], path[i]);
+    return Math.max(1, sum);
+  }
+
+  function resolveLegRouteDays(originKey, destinationKey) {
+    if (!state.legDaysByRoute) state.legDaysByRoute = {};
+    var key = legRouteKey(originKey, destinationKey);
+    var cached = state.legDaysByRoute[key];
+    if (typeof cached === "number" && cached > 0) return cached;
+    if (isEastboundLeg(originKey, destinationKey)) {
+      var reverseKey = legRouteKey(destinationKey, originKey);
+      var mirror = state.legDaysByRoute[reverseKey];
+      if (typeof mirror === "number" && mirror > 0) {
+        state.legDaysByRoute[key] = mirror;
+        return mirror;
+      }
+    }
+    var days = rollInt(ROUTE_DAYS_MIN, ROUTE_DAYS_MAX);
+    state.legDaysByRoute[key] = days;
+    return days;
+  }
+
   function routeDaysForLeg(originKey, destinationKey) {
-    if (destinationKey === "gustaf") return 6;
-    if (destinationKey === "hollow_banks") return 10;
-    if (destinationKey === "solem") return 8;
-    if (destinationKey === "new_isil") return 9;
-    return DEFAULT_ROUTE_DAYS;
+    if (state && state.legDaysByRoute) {
+      var stored = state.legDaysByRoute[legRouteKey(originKey, destinationKey)];
+      if (typeof stored === "number" && stored > 0) return stored;
+    }
+    return Math.floor((ROUTE_DAYS_MIN + ROUTE_DAYS_MAX) / 2);
+  }
+
+  function cachedLegDays(originKey, destinationKey) {
+    if (state.legDaysByRoute) {
+      var stored = state.legDaysByRoute[legRouteKey(originKey, destinationKey)];
+      if (typeof stored === "number" && stored > 0) return stored;
+    }
+    return routeDaysForLeg(originKey, destinationKey);
   }
 
   function rollRouteDaysForDestination(destinationKey) {
-    if (destinationKey === "gustaf") return rollInt(1, 6);
-    if (destinationKey === "hollow_banks") return rollInt(1, 10);
-    if (destinationKey === "solem") return rollInt(1, 8);
-    if (destinationKey === "new_isil") return rollInt(1, 9);
-    return DEFAULT_ROUTE_DAYS;
+    var origin = state && state.travelOrigin ? state.travelOrigin : "cantebury";
+    return resolveLegRouteDays(origin, destinationKey);
   }
 
-  function nextTrailDestinationFrom(originKey) {
-    if (originKey === "cantebury") return DESTINATIONS.gustaf;
-    if (originKey === "gustaf") return DESTINATIONS.hollow_banks;
-    if (originKey === "hollow_banks") return DESTINATIONS.solem;
-    if (originKey === "solem") return DESTINATIONS.new_isil;
-    return null;
+  function legDepartDaysHint(originKey, destinationKey) {
+    if (isEastboundLeg(originKey, destinationKey)) {
+      var ret =
+        state.legDaysByRoute && state.legDaysByRoute[legRouteKey(originKey, destinationKey)];
+      var d =
+        typeof ret === "number" && ret > 0
+          ? ret
+          : routeDaysForLeg(originKey, destinationKey);
+      return " (" + d + " days eastbound)";
+    }
+    var d =
+      state.legDaysByRoute && state.legDaysByRoute[legRouteKey(originKey, destinationKey)];
+    if (typeof d === "number" && d > 0) return " (" + d + " days)";
+    return " (3–10 days, set on departure)";
+  }
+
+  function trailTownStage(townKey) {
+    if (TRAIL_TOWN_STAGE.hasOwnProperty(townKey)) return TRAIL_TOWN_STAGE[townKey];
+    return -1;
+  }
+
+  function trailTownIndex(townKey) {
+    return trailTownStage(townKey);
+  }
+
+  function trailPathIndex(townKey) {
+    ensureTrailPath();
+    var idx = state.trailPath.indexOf(townKey);
+    if (idx >= 0) return idx;
+    return trailTownStage(townKey);
+  }
+
+  function markTrailTownVisited(townKey) {
+    if (!townKey || townKey === "cantebury") return;
+    if (!state.visitedTrailTowns) state.visitedTrailTowns = [];
+    if (state.visitedTrailTowns.indexOf(townKey) >= 0) return;
+    state.visitedTrailTowns.push(townKey);
+  }
+
+  /** Toward New Isil = westward; marching back down the trail = eastbound. */
+  function isEastboundLeg(originKey, destinationKey) {
+    if (destinationKey === "cantebury") return true;
+    ensureTrailPath();
+    var oi = state.trailPath.indexOf(originKey);
+    var di = state.trailPath.indexOf(destinationKey);
+    if (oi >= 0 && di >= 0) return di < oi;
+    var os = trailTownStage(originKey);
+    var ds = trailTownStage(destinationKey);
+    if (os < 0 || ds < 0) return destinationKey === "cantebury";
+    return ds < os;
+  }
+
+  function travelDirectionAdverb(originKey, destinationKey) {
+    return isEastboundLeg(originKey, destinationKey) ? "eastbound" : "westward";
+  }
+
+  function travelDirectionClause(originKey, destinationKey) {
+    return (
+      travelDirectionAdverb(originKey, destinationKey) +
+      " toward " +
+      destinationForKey(destinationKey).label
+    );
+  }
+
+  function eastboundRevisitTargets(fromTownKey) {
+    if (fromTownKey === "cantebury") return [];
+    var out = [];
+    var prev = pathPreviousTown(fromTownKey);
+    var path = state.trailLowerFork && state.trailUpperFork ? canonicalWestwardPath() : state.trailPath || ["cantebury"];
+    var fromIdx = path.indexOf(fromTownKey);
+    var visited = state.visitedTrailTowns || [];
+    var i;
+    var key;
+    if (prev && out.indexOf(prev) < 0) out.push(prev);
+    for (i = path.length - 1; i >= 0; i--) {
+      key = path[i];
+      if (key === fromTownKey || key === "cantebury") continue;
+      if (fromIdx >= 0 && i >= fromIdx) continue;
+      if (visited.indexOf(key) >= 0 && out.indexOf(key) < 0) out.push(key);
+    }
+    var fromStage = trailTownStage(fromTownKey);
+    for (i = 0; i < visited.length; i++) {
+      key = visited[i];
+      if (key === fromTownKey || out.indexOf(key) >= 0) continue;
+      if (trailTownStage(key) < fromStage && out.indexOf(key) < 0) out.push(key);
+    }
+    out.sort(function (a, b) {
+      var pa = path.indexOf(a);
+      var pb = path.indexOf(b);
+      if (pa >= 0 && pb >= 0) return pb - pa;
+      return trailTownStage(b) - trailTownStage(a);
+    });
+    if (out.indexOf("cantebury") < 0 && fromTownKey !== "cantebury") out.push("cantebury");
+    return out;
   }
 
   function trailLegIndex(originKey) {
-    if (originKey === "gustaf") return 1;
-    if (originKey === "hollow_banks") return 2;
-    if (originKey === "solem") return 3;
-    return 0;
+    return trailPathIndex(originKey);
   }
 
   function monsterHpMultiplierForProgress() {
@@ -364,7 +956,7 @@
     if (state && state.legRouteDays && state.legRouteDays > 0) return state.legRouteDays;
     var origin = state && state.travelOrigin ? state.travelOrigin : "cantebury";
     var dest = state && state.travelDestination ? state.travelDestination : "gustaf";
-    return routeDaysForLeg(origin, dest);
+    return resolveLegRouteDays(origin, dest);
   }
 
   function levelKValue(level) {
@@ -397,7 +989,7 @@
     return 25 + bonusInt * 5;
   }
 
-  function memberMaxHp(member) {
+  function memberBaseMaxHp(member) {
     var role = (member && member.role) || "soldier";
     var baseHp = CLASS_HP[role] || 1;
     if (member && member.stats && typeof member.stats.stamina === "number") {
@@ -405,6 +997,10 @@
     }
     var bonusStam = (member && member.bonus && member.bonus.stamina) || 0;
     return baseHp + bonusStam * 2;
+  }
+
+  function memberMaxHp(member) {
+    return memberBaseMaxHp(member) + equipmentHpBonus(member);
   }
 
   function hpGainOnLevel(member) {
@@ -440,10 +1036,11 @@
     if (typeof member.mp !== "number" || member.mp < 0) member.mp = member.maxMp;
     if (member.mp > member.maxMp) member.mp = member.maxMp;
     if (member.hp > member.maxHp) member.hp = member.maxHp;
+    ensureMemberEquipment(member);
     return member;
   }
 
-  var PARTY_ROLES = ["soldier", "priest", "mercenary", "farmer", "artisan", "merchant", "mage"];
+  var PARTY_ROLES = ["soldier", "priest", "mercenary", "mage"];
 
   function rollRandomPartyRoles(count) {
     var n = count || PARTY_MAX;
@@ -463,7 +1060,7 @@
       out.push(
         initMemberProgress({
           id: "p" + i,
-          name: role.charAt(0).toUpperCase() + role.slice(1) + " " + (i + 1),
+          name: rollCharacterName(),
           role: role,
           gender: portrait.gender,
           headshot: portrait.headshot,
@@ -604,7 +1201,14 @@
         state.party[0].maxMp = memberMaxMp(state.party[0]);
         state.party[0].mp = state.party[0].maxMp;
       }
-      logLine("Preset caravan assembled: <span class=\"hi\">" + countParts.join(", ") + "</span>.", "good");
+      logLine(
+        "Preset caravan assembled: <span class=\"hi\">" +
+          countParts.join(", ") +
+          "</span>. " +
+          caravanFollowersSummary() +
+          " march in the train.",
+        "good"
+      );
     } else {
       state.party = [
         initMemberProgress({
@@ -620,7 +1224,14 @@
         }),
       ];
       state.partyIdSeq = 1;
-      logLine("You begin with only your leader. Recruit companions in the tavern before departure.", "hi");
+      logLine(
+        "You begin with only your leader. Recruit up to " +
+          PARTY_MAX +
+          " fighters in the tavern. " +
+          caravanFollowersSummary() +
+          " march with the train.",
+        "hi"
+      );
     }
 
     state.food = Math.min(MAX_SUPPLIES, state.food + (state.water || 0));
@@ -644,13 +1255,18 @@
     state.inventoryHealTargetId = state.party[0].id;
     state.inventoryDetailOpen = false;
     state.travelInventoryOpen = false;
-    state.illiriView = "church";
+    state.illiriView = "castle";
+    state.keepView = "hall";
+    state.cityView = "shop";
+    state.playthrough = claimPlaythroughNumber();
+    state.runId = "run-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
     state.phase = "story_illiri";
     logLine("Caravan leader ready: <span class=\"hi\">" + lead.name + "</span> (" + roleLabel(lead.role) + ").", "good");
     trackPlaytest("run_started", {
       leaderRole: lead.role,
       leaderSource: lead.source || "custom",
       partySize: state.party.length,
+      playthrough: state.playthrough,
       version: GAME_VERSION,
     });
   }
@@ -667,13 +1283,16 @@
       weapons: 0,
       weaponInventory: [],
       party: createParty(),
-      partyIdSeq: 6,
-      illiriView: "church",
+      partyIdSeq: 5,
+      illiriView: "castle",
+      keepView: "hall",
+      cityView: "shop",
       travelOrigin: "cantebury",
       travelDestination: "gustaf",
       guest: null,
       travelDay: 0,
       legRouteDays: 0,
+      legDaysByRoute: {},
       encounterChance: ENCOUNTER_BASE,
       ruinsDiscovered: false,
       ruinsTravelDay: null,
@@ -686,6 +1305,15 @@
       combat: null,
       transition: null,
       blessing: null,
+      blessingExpiresOnDay: null,
+      rationMode: "normal",
+      stretchedRationDays: 0,
+      caravanDeliveredToNewIsil: false,
+      onReturnMarch: false,
+      trailPath: ["cantebury"],
+      trailLowerFork: null,
+      trailUpperFork: null,
+      visitedTrailTowns: [],
       leaderProfile: null,
       newLeaderDraft: null,
       inventoryFocusId: "p0",
@@ -699,23 +1327,100 @@
       settlementRecruitMode: "open",
       gameoverMode: null,
       finalBossCleared: false,
+      finalHarborBossDefeated: false,
+      stabilityExtendedTarget: 0,
+      stabilityExtensionNoted: false,
       headstones: loadHeadstonesFromStorage(),
       headstonesIdSeq: 0,
       runId: "run-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+      playthrough: 0,
       adventure: null,
       elaraDialog: null,
       elaraDialogShown: false,
       totalDaysElapsed: 0,
+      caravanLoops: 0,
+      newIsilSettlers: [],
+      newIsilGrowth: { population: NEW_ISIL_BASE_POPULATION },
+      gearStash: ["travel_knife", "leather_coat", "lucky_ring", "travel_charm"],
+      winReason: null,
       stableRestDays: 0,
       quest: null,
       questsCompleted: [],
       questDialog: null,
+      npcDialog: null,
+      caravan: defaultCaravanFollowers(),
     };
   }
 
   var HEADSTONE_STORAGE_KEY = "illirial.headstones";
   var HEADSTONE_STORAGE_BACKUP_KEY = "illirial.headstones.backup";
   var HEADSTONE_RELEASE_PHASE = "alpha";
+  var PLAYTHROUGH_COUNTER_KEY = "illirial.playthrough.next";
+
+  function claimPlaythroughNumber() {
+    var n = 1;
+    try {
+      if (typeof localStorage !== "undefined") {
+        var parsed = parseInt(localStorage.getItem(PLAYTHROUGH_COUNTER_KEY), 10);
+        if (parsed > 0) n = parsed;
+        localStorage.setItem(PLAYTHROUGH_COUNTER_KEY, String(n + 1));
+      }
+    } catch (e) { /* ignore */ }
+    return n;
+  }
+
+  /** Version as 3-digit memorial code (e.g. 5.4.6 → 546). */
+  function versionMemorialCode(versionStr) {
+    var parts = String(versionStr || GAME_VERSION || "0")
+      .replace(/[^0-9.]/g, "")
+      .split(".");
+    var major = parseInt(parts[0], 10) || 0;
+    var minor = parseInt(parts[1], 10) || 0;
+    var patch = parseInt(parts[2], 10) || 0;
+    var code = major * 100 + minor * 10 + patch;
+    if (code > 999) code = code % 1000;
+    return String(code).padStart(3, "0");
+  }
+
+  function padJourneyDaysForMemorial(days) {
+    var n = Math.max(0, parseInt(days, 10) || 0);
+    if (n > 99) return "99";
+    return (n < 10 ? "0" : "") + String(n);
+  }
+
+  function buildMemorialDate(playthrough, journeyDays, versionStr) {
+    var run = Math.max(1, parseInt(playthrough, 10) || 1);
+    return run + "." + padJourneyDaysForMemorial(journeyDays) + "." + versionMemorialCode(versionStr);
+  }
+
+  function formatMemorialDate(hs) {
+    if (!hs) return buildMemorialDate(1, 0, "0.0.0");
+    if (hs.memorialDate) return hs.memorialDate;
+    var run = Math.max(1, parseInt(hs.playthrough, 10) || 1);
+    var days = typeof hs.journeyDays === "number" ? hs.journeyDays : hs.day || 0;
+    if (hs.gameVersionAtDeath) {
+      return buildMemorialDate(run, days, hs.gameVersionAtDeath);
+    }
+    if (hs.versionCode) {
+      return run + "." + padJourneyDaysForMemorial(days) + "." + String(hs.versionCode).padStart(3, "0");
+    }
+    return run + "." + padJourneyDaysForMemorial(days) + ".000";
+  }
+
+  function freezeHeadstoneMemorial(hs) {
+    if (!hs) return;
+    if (!hs.memorialDate) hs.memorialDate = formatMemorialDate(hs);
+  }
+
+  function normalizeHeadstoneEntry(hs) {
+    if (!hs || typeof hs !== "object") return hs;
+    freezeHeadstoneMemorial(hs);
+    return hs;
+  }
+
+  function memorialDateHintHtml() {
+    return '<span class="hint">Date inscribed as playthrough.journeyDays.version (e.g. 3.12.546).</span>';
+  }
 
   function loadHeadstonesFromStorage() {
     try {
@@ -723,16 +1428,16 @@
       var raw = localStorage.getItem(HEADSTONE_STORAGE_KEY);
       if (!raw) return [];
       var parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-      if (parsed && Array.isArray(parsed.entries)) return parsed.entries;
+      if (Array.isArray(parsed)) return parsed.map(normalizeHeadstoneEntry);
+      if (parsed && Array.isArray(parsed.entries)) return parsed.entries.map(normalizeHeadstoneEntry);
     } catch (e) { /* ignore */ }
     try {
       if (typeof localStorage === "undefined") return [];
       var rawBackup = localStorage.getItem(HEADSTONE_STORAGE_BACKUP_KEY);
       if (!rawBackup) return [];
       var parsedBackup = JSON.parse(rawBackup);
-      if (Array.isArray(parsedBackup)) return parsedBackup;
-      if (parsedBackup && Array.isArray(parsedBackup.entries)) return parsedBackup.entries;
+      if (Array.isArray(parsedBackup)) return parsedBackup.map(normalizeHeadstoneEntry);
+      if (parsedBackup && Array.isArray(parsedBackup.entries)) return parsedBackup.entries.map(normalizeHeadstoneEntry);
     } catch (e2) { /* ignore */ }
     return [];
   }
@@ -767,8 +1472,34 @@
     return "the road between " + origin + " and " + (dest && dest.label ? dest.label : "the next stop");
   }
 
+  function snapshotMemberDeathContext(m) {
+    if (!m || m.diedGameVersion) return;
+    ensureHeadstonesState();
+    if (!state.playthrough) state.playthrough = claimPlaythroughNumber();
+    m.diedGameVersion = GAME_VERSION;
+    m.diedJourneyDays = state.totalDaysElapsed || 0;
+    m.diedPlaythrough = state.playthrough;
+    m.diedTravelDay = state.travelDay;
+  }
+
+  function clearMemberDeathSnapshot(m) {
+    if (!m) return;
+    m.diedGameVersion = undefined;
+    m.diedJourneyDays = undefined;
+    m.diedPlaythrough = undefined;
+    m.diedTravelDay = undefined;
+  }
+
   function makeHeadstoneForMember(m) {
     ensureHeadstonesState();
+    snapshotMemberDeathContext(m);
+    if (!state.playthrough) state.playthrough = claimPlaythroughNumber();
+    var versionStr = m.diedGameVersion || GAME_VERSION;
+    var journeyDays =
+      typeof m.diedJourneyDays === "number" ? m.diedJourneyDays : state.totalDaysElapsed || 0;
+    var playthrough = m.diedPlaythrough || state.playthrough;
+    var verCode = versionMemorialCode(versionStr);
+    var memorialDate = buildMemorialDate(playthrough, journeyDays, versionStr);
     state.headstonesIdSeq += 1;
     return {
       id: "hs-" + Date.now() + "-" + state.headstonesIdSeq,
@@ -776,7 +1507,12 @@
       memberId: m.id,
       name: m.name,
       role: m.role,
-      day: state.travelDay,
+      day: typeof m.diedTravelDay === "number" ? m.diedTravelDay : state.travelDay,
+      journeyDays: journeyDays,
+      playthrough: playthrough,
+      gameVersionAtDeath: versionStr,
+      versionCode: verCode,
+      memorialDate: memorialDate,
       location: currentLocationLabelForHeadstone(),
       town: null,
       note: "",
@@ -789,6 +1525,7 @@
       if (state.headstones[i].id === hsId) {
         state.headstones[i].note = (note || "").slice(0, 200);
         state.headstones[i].frozen = true;
+        freezeHeadstoneMemorial(state.headstones[i]);
         saveHeadstonesToStorage();
         return true;
       }
@@ -872,6 +1609,7 @@
     if (!m || m.hp <= 0) return;
     m.hp -= amt;
     if (m.hp < 0) m.hp = 0;
+    if (m.hp <= 0) snapshotMemberDeathContext(m);
     if (id === "guest" && state.guest) state.guest.hp = m.hp;
   }
 
@@ -880,7 +1618,11 @@
   }
 
   function rollTravelEncounter() {
-    if (Math.random() < state.encounterChance) {
+    var chance = state.encounterChance;
+    if (state.phase === "adventure" && state.adventure && state.adventure.town === "cantebury") {
+      chance *= CANTEBURY_ADVENTURE_ENCOUNTER_MULT;
+    }
+    if (Math.random() < chance) {
       state.encounterChance = ENCOUNTER_BASE;
       return true;
     }
@@ -1082,6 +1824,9 @@
     else d = 2;
     if (hasBlessing("attack")) d += 1;
     d += strDamageBonus(member);
+    var exotic = exoticWeaponDef(member.exoticWeaponId);
+    if (exotic) d += exotic.dmgBonus;
+    d += equipmentDmgBonus(member);
     return d;
   }
 
@@ -1310,25 +2055,386 @@
     }, RESUME_TRAVEL_MS);
   }
 
+  function newIsilSettlerCount() {
+    return state && state.newIsilSettlers ? state.newIsilSettlers.length : 0;
+  }
+
+  function syncNewIsilPopulation() {
+    if (!state.newIsilGrowth) state.newIsilGrowth = { population: NEW_ISIL_BASE_POPULATION };
+    state.newIsilGrowth.population = NEW_ISIL_BASE_POPULATION + newIsilSettlerCount();
+  }
+
+  function effectiveStabilityTarget() {
+    return Math.max(STABILITY_TARGET_DAYS, state.stabilityExtendedTarget || 0);
+  }
+
+  function estimatedDaysToNewIsilBoss() {
+    if (state.phase === "travel" && currentDestination().key === "new_isil") {
+      return Math.max(1, currentRouteDays() - state.travelDay + 1);
+    }
+    var originTown = state.settlementTown;
+    if (state.phase === "story_illiri") originTown = "cantebury";
+    if (state.phase === "settlement" && originTown) {
+      if (originTown === "new_isil") return 1;
+      var days = 0;
+      var key = originTown;
+      if (key === "cantebury") {
+        days += cachedLegDays("cantebury", "gustaf");
+        key = "gustaf";
+      }
+      if (key === "gustaf") {
+        days += cachedLegDays("gustaf", "hollow_banks");
+        key = "hollow_banks";
+      }
+      if (key === "hollow_banks") {
+        days += cachedLegDays("hollow_banks", "solem");
+        key = "solem";
+      }
+      if (key === "solem") days += cachedLegDays("solem", "new_isil");
+      return Math.max(1, days + 1);
+    }
+    return (
+      cachedLegDays("cantebury", "gustaf") +
+      cachedLegDays("gustaf", "hollow_banks") +
+      cachedLegDays("hollow_banks", "solem") +
+      cachedLegDays("solem", "new_isil") +
+      2
+    );
+  }
+
+  function mustDefeatFinalHarborBoss() {
+    return (state.totalDaysElapsed || 0) >= FINAL_BOSS_MIN_DAYS && !state.finalHarborBossDefeated;
+  }
+
+  function isFinalNewIsilApproach() {
+    return currentDestination().key === "new_isil" && mustDefeatFinalHarborBoss();
+  }
+
+  function shouldTriggerNewIsilGateBoss() {
+    if (!isFinalNewIsilApproach()) return false;
+    if (state.finalBossCleared) return false;
+    var preFinalDay = Math.max(1, currentRouteDays() - 1);
+    return state.travelDay === preFinalDay;
+  }
+
+  function extendStabilityTargetIfNeeded(extraDays, logMsg) {
+    var bump = Math.max(1, extraDays | 0);
+    var needed = (state.totalDaysElapsed || 0) + bump;
+    var target = Math.max(STABILITY_TARGET_DAYS, state.stabilityExtendedTarget || 0, needed);
+    if (target <= effectiveStabilityTarget()) return;
+    state.stabilityExtendedTarget = target;
+    if (logMsg && !state.stabilityExtensionNoted) {
+      state.stabilityExtensionNoted = true;
+      logLine(logMsg, "hi");
+    }
+  }
+
+  function applyDepartBossGateForLeg(dest, originKey) {
+    if (dest.key !== "new_isil") {
+      state.finalBossCleared = true;
+      return;
+    }
+    if ((state.totalDaysElapsed || 0) >= FINAL_BOSS_MIN_DAYS && !state.finalHarborBossDefeated) {
+      state.finalBossCleared = false;
+      extendStabilityTargetIfNeeded(
+        state.legRouteDays + 2,
+        "Clerks add marching days for the final westward leg — after journey day " +
+          FINAL_BOSS_MIN_DAYS +
+          ", SK Kew Kumber blocks the road to New Isil."
+      );
+    } else {
+      state.finalBossCleared = true;
+    }
+  }
+
+  function checkStabilityWin() {
+    return false;
+  }
+
+  function checkCampaignVictoryAtNewIsil() {
+    if (mustDefeatFinalHarborBoss()) {
+      extendStabilityTargetIfNeeded(
+        estimatedDaysToNewIsilBoss() + 2,
+        "The march ledger stays open until you break Kew Kumber's blockade on the final westward leg."
+      );
+      return false;
+    }
+    var target = effectiveStabilityTarget();
+    if ((state.totalDaysElapsed || 0) < target) return false;
+    trackPlaytest("run_completed", {
+      day: state.totalDaysElapsed,
+      reason: "new_isil",
+      caravanLoops: state.caravanLoops || 0,
+      settlers: newIsilSettlerCount(),
+      finalBossDefeated: !!state.finalHarborBossDefeated,
+    });
+    state.gameoverMode = "win";
+    state.winReason = "new_isil";
+    state.phase = "gameover";
+    logLine(
+      "<span class=\"hi\">The Illirial Trail is complete:</span> your caravan reaches New Isil after " +
+        target +
+        " journey days" +
+        (target > STABILITY_TARGET_DAYS ? " (extended for the final harbor march)" : "") +
+        ". The colony takes root; the realm records your march.",
+      "good"
+    );
+    return true;
+  }
+
+  function deliverCaravanToNewIsil() {
+    ensureCaravanState();
+    if (state.caravanDeliveredToNewIsil) return;
+    if (!state.caravan || state.caravan.total <= 0) return;
+    var count = state.caravan.total;
+    state.caravanDeliveredToNewIsil = true;
+    state.caravan = {
+      total: 0,
+      farmers: 0,
+      artisans: 0,
+      merchants: 0,
+      thatchers: 0,
+      stoneMasons: 0,
+      cobblers: 0,
+      blacksmiths: 0,
+    };
+    logLine(
+      "<span class=\"hi\">New Isil:</span> " +
+        count +
+        " settlers disembark to build the harbor. The fighting line marches on with no civilian train.",
+      "good"
+    );
+  }
+
+  function replenishCaravanAtCantebury() {
+    if (!state.caravanDeliveredToNewIsil) return;
+    ensureCaravanState();
+    if (state.caravan.total > 0) return;
+    var n = rollInt(1, 15);
+    state.caravan = rollNewCaravanFollowers(n);
+    logLine(
+      "<span class=\"hi\">Cantebury:</span> the crown assigns <b>" +
+        n +
+        "</b> new civilians to your next westward march (" +
+        caravanFollowersSummary() +
+        ").",
+      "good"
+    );
+  }
+
+  function arriveCanteburyFromReturn() {
+    clearTransitionTimers();
+    trackPlaytest("leg_completed", {
+      day: state.travelDay,
+      routeDays: currentRouteDays(),
+      destination: "cantebury",
+      origin: state.travelOrigin || "new_isil",
+      caravanLoop: (state.caravanLoops || 0) + 1,
+    });
+    state.caravanLoops = (state.caravanLoops || 0) + 1;
+    state.phase = "story_illiri";
+    state.illiriView = "castle";
+    state.keepView = "hall";
+    state.settlementTown = null;
+    state.npcDialog = null;
+    internPendingHeadstones();
+    logLine(
+      "<span class=\"hi\">Cantebury:</span> the caravan completes its eastbound return from New Isil (loop " +
+        state.caravanLoops +
+        "). Settlers abroad: " +
+        newIsilSettlerCount() +
+        ".",
+      "good"
+    );
+    replenishCaravanAtCantebury();
+    state.transition = { kind: "arrive", label: "Cantebury" };
+    render();
+    scheduleTransition(function () {
+      state.transition = null;
+      render();
+    }, ARRIVE_CITY_MS);
+  }
+
+  function settleMemberAtNewIsil(memberId) {
+    var living = state.party.filter(function (m) {
+      return m && m.hp > 0 && !m.permadead;
+    });
+    if (living.length <= 1) {
+      logLine("At least one companion must lead the caravan eastbound back to Cantebury.", "bad");
+      render();
+      return;
+    }
+    var member = null;
+    for (var i = 0; i < state.party.length; i++) {
+      if (state.party[i] && state.party[i].id === memberId) member = state.party[i];
+    }
+    if (!member || member.hp <= 0 || member.permadead) return;
+    ensureMemberEquipment(member);
+    var slot;
+    for (var s = 0; s < EQUIPMENT_SLOTS.length; s++) {
+      slot = EQUIPMENT_SLOTS[s];
+      if (member.equipment[slot]) addToGearStash(member.equipment[slot]);
+      member.equipment[slot] = null;
+    }
+    state.newIsilSettlers.push({
+      id: member.id,
+      name: member.name,
+      role: member.role,
+      settledOnDay: state.totalDaysElapsed || 0,
+      loop: state.caravanLoops || 0,
+      stats: cloneStats(member.stats || baseStatsForRole(member.role)),
+      bonus: member.bonus ? cloneStats(member.bonus) : null,
+      headshot: member.headshot || "",
+      gender: member.gender || "",
+      canRejoin: true,
+    });
+    state.party = state.party.filter(function (m) {
+      return m && m.id !== memberId;
+    });
+    syncNewIsilPopulation();
+    logLine(member.name + " settles in New Isil to begin a new life.", "good");
+    render();
+  }
+
+  function applyPermanentStatPenalty(member, fraction) {
+    if (!member) return;
+    var f = typeof fraction === "number" ? fraction : 0.25;
+    var scale = 1 - f;
+    var keys = STAT_KEYS;
+    var i;
+    if (!member.stats) member.stats = baseStatsForRole(member.role);
+    for (i = 0; i < keys.length; i++) {
+      member.stats[keys[i]] = Math.max(1, Math.floor((member.stats[keys[i]] || 0) * scale));
+    }
+    if (member.bonus) {
+      for (i = 0; i < keys.length; i++) {
+        member.bonus[keys[i]] = Math.max(0, Math.floor((member.bonus[keys[i]] || 0) * scale));
+      }
+    }
+    member.settlerPenalty = true;
+    initMemberProgress(member);
+    member.maxHp = memberMaxHp(member);
+    member.hp = Math.min(member.hp, member.maxHp);
+    member.maxMp = memberMaxMp(member);
+    member.mp = Math.min(member.mp || 0, member.maxMp);
+  }
+
+  function recruitSettlerBack(settlerId) {
+    if (state.party.length >= PARTY_MAX) {
+      logLine("Party is full — make room before inviting a settler back.", "bad");
+      render();
+      return;
+    }
+    var settler = null;
+    var settlers = state.newIsilSettlers || [];
+    var i;
+    for (i = 0; i < settlers.length; i++) {
+      if (settlers[i].id === settlerId) settler = settlers[i];
+    }
+    if (!settler || !settler.canRejoin) return;
+    for (i = 0; i < state.party.length; i++) {
+      if (state.party[i] && state.party[i].id === settlerId) {
+        logLine(settler.name + " is already with the caravan.", "bad");
+        render();
+        return;
+      }
+    }
+    var id = "p" + state.partyIdSeq++;
+    var member = initMemberProgress({
+      id: id,
+      name: settler.name,
+      role: settler.role,
+      stats: settler.stats ? cloneStats(settler.stats) : baseStatsForRole(settler.role),
+      bonus: settler.bonus ? cloneStats(settler.bonus) : undefined,
+      headshot: settler.headshot || "",
+      gender: settler.gender || "",
+      hp: CLASS_HP[settler.role] || 6,
+      maxHp: CLASS_HP[settler.role] || 6,
+    });
+    applyPermanentStatPenalty(member, 0.25);
+    state.party.push(member);
+    settler.canRejoin = false;
+    logLine(
+      settler.name +
+        " rejoins the march with a permanent toll on body and nerve (−25% stats).",
+      "hi"
+    );
+    render();
+  }
+
+  function returnCaravanToCantebury() {
+    departEastboundTo("cantebury");
+  }
+
+  function departWestboundTo(townKey) {
+    if (state.phase !== "settlement" && state.phase !== "story_illiri") return;
+    var origin = state.settlementTown || state.travelOrigin || "cantebury";
+    if (origin === "cantebury") resetTrailPathForWestwardMarch();
+    recordWestboundForkChoice(origin, townKey);
+    state.travelOrigin = origin;
+    state.travelDestination = townKey;
+    state.onReturnMarch = false;
+    departIllirial();
+  }
+
+  function departEastboundTo(townKey) {
+    if (state.phase !== "settlement") return;
+    state.onReturnMarch = true;
+    state.travelOrigin = state.settlementTown;
+    state.travelDestination = townKey;
+    state.finalBossCleared = true;
+    departIllirial();
+  }
+
   function queueArrivalAtDestination() {
     clearTransitionTimers();
     var dest = currentDestination();
-    var finalLeg = dest.key === "new_isil";
-    if (finalLeg) {
-      trackPlaytest("run_completed", { day: state.travelDay, routeDays: currentRouteDays(), destination: dest.key, origin: state.travelOrigin || "cantebury" });
-      state.gameoverMode = "win";
-      state.phase = "gameover";
-      logLine("<span class=\"hi\">Run complete:</span> you reached New Isil.", "good");
-      render();
+    if (dest.key === "cantebury") {
+      arriveCanteburyFromReturn();
       return;
     }
     trackPlaytest("leg_completed", { day: state.travelDay, routeDays: currentRouteDays(), destination: dest.key, origin: state.travelOrigin || "cantebury" });
     state.phase = "settlement";
     state.settlementTown = dest.key;
-    state.settlementView = "church";
+    state.settlementView = dest.key === "solem" ? "keep" : "church";
+    state.keepView = "hall";
+    state.npcDialog = null;
     state.settlementRecruitSlots = rollSettlementRecruitSlots(dest.key);
     state.settlementRecruitMode = settlementRecruitMode(dest.key);
     internPendingHeadstones();
+    markTrailTownVisited(dest.key);
+    appendTrailPathTown(dest.key);
+    if (dest.key === "new_isil") {
+      deliverCaravanToNewIsil();
+      syncNewIsilPopulation();
+      state.settlementView = "depart";
+      if (checkCampaignVictoryAtNewIsil()) {
+        render();
+        return;
+      }
+      if (mustDefeatFinalHarborBoss()) {
+        logLine(
+          "<span class=\"hi\">New Isil:</span> you are still short of the final reckoning — return west when ready; after journey day " +
+            FINAL_BOSS_MIN_DAYS +
+            " SK Kew Kumber holds the last road.",
+          "hi"
+        );
+      } else if (state.finalHarborBossDefeated) {
+        logLine(
+          "<span class=\"hi\">New Isil:</span> Kew Kumber's blockade is broken. Settle companions or march eastbound home — stability closes at " +
+            effectiveStabilityTarget() +
+            " journey days.",
+          "good"
+        );
+      } else {
+        logLine(
+          "<span class=\"hi\">New Isil:</span> the harbor welcomes the caravan (Kew Kumber does not bar the road until journey day " +
+            FINAL_BOSS_MIN_DAYS +
+            "). Settle companions or return to Cantebury.",
+          "good"
+        );
+      }
+    }
     state.transition = { kind: "arrive", label: dest.label };
     render();
     scheduleTransition(function () {
@@ -1377,7 +2483,8 @@
     applyLevelDrops(defeatedFoes);
     if (k === "new_isil_gate_boss") {
       state.finalBossCleared = true;
-      logLine("SK Kew Kumber is defeated. The road to New Isil is open.", "good");
+      state.finalHarborBossDefeated = true;
+      logLine("SK Kew Kumber is defeated. The final road to New Isil is open.", "good");
     }
     if (k === "quest_boss_drakes") {
       logLine("The drakes lie still. The pass is yours.", "good");
@@ -1691,6 +2798,7 @@
           var revived = fallen[0];
           revived.hp = Math.max(1, Math.ceil(revived.maxHp * 0.5));
           revived.deadSinceDay = undefined;
+          clearMemberDeathSnapshot(revived);
           logLine(m.name + " uses Potion of Life on " + revived.name + " (revived to " + revived.hp + " HP).", "good");
           continue;
         }
@@ -1718,7 +2826,7 @@
   function pickEnemyTarget(foe, live) {
     if (!live.length) return null;
     if (!foePrefersSoftTargets(foe)) return live[rollInt(0, live.length - 1)];
-    var preferredRoles = { priest: true, mage: true, farmer: true, artisan: true, merchant: true };
+    var preferredRoles = { priest: true, mage: true };
     var first = live.filter(function (m) {
       return preferredRoles[m.role || ""];
     });
@@ -1803,7 +2911,26 @@
   }
 
   function applyTravelDayMpRegen() {
-    var regen = 3;
+    var regen = 1;
+    var any = 0;
+    for (var i = 0; i < state.party.length; i++) {
+      var m = state.party[i];
+      if (!m || m.permadead) continue;
+      if (m.hp <= 0) continue;
+      initMemberProgress(m);
+      var before = m.mp || 0;
+      m.mp = Math.min(m.maxMp, before + regen);
+      if (m.mp - before > 0) any++;
+    }
+    if (state.guest && !state.guest.permadead && state.guest.hp > 0) {
+      var gBefore = state.guest.mp || 0;
+      state.guest.mp = Math.min(state.guest.maxMp || 25, gBefore + regen);
+    }
+    if (any > 0) logLine("Road march: +" + regen + " MP to the party.", "");
+  }
+
+  function applyCampMpRegen() {
+    var regen = 2;
     var any = 0;
     for (var i = 0; i < state.party.length; i++) {
       var m = state.party[i];
@@ -1829,10 +2956,12 @@
       if (!m) continue;
       if (m.hp > 0) {
         m.deadSinceDay = undefined;
+        clearMemberDeathSnapshot(m);
         continue;
       }
       if (typeof m.deadSinceDay !== "number") {
         m.deadSinceDay = state.travelDay;
+        snapshotMemberDeathContext(m);
         logLine(m.name + " lies fallen. Revive within 2 days or they are lost.", "bad");
         continue;
       }
@@ -1882,16 +3011,19 @@
     if (state.travelDay >= currentRouteDays()) return;
     state.travelDay++;
     tickJourneyDay();
+    if (state.phase === "gameover") {
+      render();
+      return;
+    }
     state.stableRestDays = 0;
     logLine("Day " + state.travelDay + " of " + currentRouteDays() + " on the road.", "");
     trackPlaytest("day_advanced", { day: state.travelDay, routeDays: currentRouteDays() });
     processDailyDeath();
     applyTravelDayMpRegen();
-    var preFinalDay = Math.max(1, currentRouteDays() - 1);
-    if (currentDestination().key === "new_isil" && !state.finalBossCleared && state.travelDay === preFinalDay) {
+    if (shouldTriggerNewIsilGateBoss()) {
       queueEncounterCutaway(
         "Dark standard ahead",
-        "SK Kew Kumber blocks the final road to New Isil",
+        "SK Kew Kumber blocks the final road to New Isil (journey day " + (state.totalDaysElapsed || 0) + "+)",
         function () {
           startTacticalCombat(buildNewIsilBossEncounter());
         }
@@ -1943,14 +3075,20 @@
 
   function allowedLevelsForAdventureEncounter(townKey) {
     var key = townKey || "cantebury";
-    if (key === "hollow_banks" || key === "solem" || key === "new_isil") {
+    if (key === "cantebury") return [1];
+    if (key === "brookside" || key === "hollow_banks" || key === "glennhardt" || key === "solem" || key === "new_isil") {
       if (Math.random() < 0.05) return [1, 2, 3];
     }
     return [1, 2];
   }
 
+  function adventureOriginTown() {
+    if (state.phase === "story_illiri") return "cantebury";
+    return state.settlementTown || null;
+  }
+
   function beginAdventure() {
-    var town = state.settlementTown;
+    var town = adventureOriginTown();
     if (!town) {
       logLine("There is nowhere to set out from.", "bad");
       render();
@@ -2130,9 +3268,63 @@
 
   function offerQuest(questId) {
     if (!questIsAvailable(questId)) return;
-    var def = questDef(questId);
-    if (!def) return;
-    state.questDialog = { kind: "offer", questId: questId };
+    openBarkeepDialog(questId);
+  }
+
+  function barkeepTownKey() {
+    if (state.phase === "story_illiri") return "cantebury";
+    return state.settlementTown || "cantebury";
+  }
+
+  function barkeepProfileForTown(townKey) {
+    return BARKEEP_BY_TOWN[townKey] || BARKEEP_BY_TOWN._default;
+  }
+
+  function buildBarkeepNpcDialog(forcedQuestId) {
+    var town = barkeepTownKey();
+    var cfg = barkeepProfileForTown(town);
+    var questOfferId = null;
+    var text = cfg.greet;
+    var summaryHtml = "";
+
+    if (state.quest) {
+      var active = questDef(state.quest.id);
+      text = cfg.activeQuest;
+      if (active) {
+        summaryHtml =
+          '<div class="hint" style="margin-top:.35rem">Active: <b style="color:#e8dcc8">' +
+          escapeHtml(active.name) + "</b></div>";
+      }
+    } else {
+      var offers = questsAvailableFromBarkeep();
+      var qid = forcedQuestId && questIsAvailable(forcedQuestId) ? forcedQuestId : offers[0] || null;
+      if (qid) {
+        var qd = questDef(qid);
+        if (qd) {
+          questOfferId = qid;
+          text = qd.pitch;
+          summaryHtml =
+            '<div class="hint" style="margin-top:.35rem">' + escapeHtml(qd.summary) +
+            ' Reward: <b style="color:#e8dcc8">' + qd.rewardGold + " gp</b>.</div>";
+        }
+      } else {
+        text = cfg.noWork;
+      }
+    }
+
+    return {
+      speaker: cfg.speaker,
+      title: cfg.title,
+      portrait: cfg.portrait || "",
+      text: text,
+      summaryHtml: summaryHtml,
+      questOfferId: questOfferId,
+    };
+  }
+
+  function openBarkeepDialog(forcedQuestId) {
+    state.npcDialog = buildBarkeepNpcDialog(forcedQuestId);
+    state.questDialog = null;
     render();
   }
 
@@ -2150,7 +3342,9 @@
       minEncounters: typeof def.minEncounters === "number" ? def.minEncounters : 2,
     };
     state.questDialog = null;
-    state.settlementView = "inventory";
+    state.npcDialog = null;
+    if (state.phase === "story_illiri") state.illiriView = "party";
+    else state.settlementView = "inventory";
     logLine("Accepted quest: <span class=\"hi\">" + def.name + "</span>.", "good");
     trackPlaytest("quest_accepted", { questId: questId });
     render();
@@ -2317,9 +3511,15 @@
     var town = state.adventure ? state.adventure.town : (state.settlementTown || "cantebury");
     trackPlaytest("adventure_ended", { town: town });
     state.adventure = null;
-    state.phase = "settlement";
-    state.settlementTown = town;
-    state.settlementView = "church";
+    if (town === "cantebury") {
+      state.phase = "story_illiri";
+      state.illiriView = "adventure";
+      state.settlementTown = null;
+    } else {
+      state.phase = "settlement";
+      state.settlementTown = town;
+      state.settlementView = "church";
+    }
     state.encounterChance = ENCOUNTER_BASE;
     state.elaraDialog = null;
     state.elaraDialogShown = false;
@@ -2584,9 +3784,36 @@
     render();
   }
 
+  function noteStretchedRationGrumbles() {
+    if (state.rationMode !== "stretch") {
+      state.stretchedRationDays = 0;
+      return;
+    }
+    state.stretchedRationDays = (state.stretchedRationDays || 0) + 1;
+    if (state.stretchedRationDays === 2) {
+      logLine('A civilian mutters, "You know, only dictators hold food back."', "bad");
+    } else if (state.stretchedRationDays === 5) {
+      logLine('Someone in the train sighs, "It was easier back in Cantebury."', "bad");
+    }
+  }
+
   function consumeTravelDaySupplies() {
-    if (state.food > 0) state.food--;
-    else {
+    if (state.food > 0) {
+      var stretch = state.rationMode === "stretch";
+      var saveChance = stretch ? Math.min(0.85, caravanSupplySaveChance() + 0.35) : caravanSupplySaveChance();
+      if (Math.random() < saveChance) {
+        logLine(
+          stretch
+            ? "Caravan drovers stretch the rations — no supply spent today."
+            : "Caravan drovers ration carefully — no supply spent today.",
+          ""
+        );
+        if (stretch) noteStretchedRationGrumbles();
+      } else {
+        state.food--;
+        if (stretch) state.stretchedRationDays = 0;
+      }
+    } else {
       partyAlive().forEach(function (m) {
         m.hp = Math.max(0, m.hp - 2);
       });
@@ -2597,10 +3824,15 @@
   function tickJourneyDay() {
     if (typeof state.totalDaysElapsed !== "number") state.totalDaysElapsed = 0;
     state.totalDaysElapsed++;
+    tickBlessingExpiry();
+    if (checkCampaignVictoryAtNewIsil() && state.phase !== "gameover") {
+      /* victory only triggers on New Isil arrival, not mid-trail */
+    }
   }
 
   function applyCampHealing(percent) {
     if (typeof percent !== "number") percent = 0.5;
+    percent = Math.min(1, percent + caravanCampHealBonus());
     var pctLabel = Math.round(percent * 100);
     state.party.forEach(function (m) {
       if (!m || m.hp <= 0) return;
@@ -2618,8 +3850,14 @@
 
   function applyForageRewards() {
     var bag = [];
-    if (Math.random() < 0.60) { state.food = Math.min(MAX_SUPPLIES, state.food + 1); bag.push("+1 supply"); }
-    if (Math.random() < 0.30) { state.gold += 1; bag.push("+1 gold"); }
+    if (Math.random() < caravanForageSupplyChance()) {
+      var gained = addSupplies(1);
+      if (gained) bag.push("+1 supply (caravan foragers)");
+    }
+    if (Math.random() < caravanForageGoldChance()) {
+      state.gold += 1;
+      bag.push("+1 gold (caravan traders)");
+    }
     if (Math.random() < 0.20) {
       var w = WEAPON_TIERS[0];
       state.weaponInventory.push(w.id);
@@ -2680,7 +3918,7 @@
     state.stableRestDays = 0;
     processDailyDeath();
     if (state.phase === "gameover") { render(); return; }
-    applyTravelDayMpRegen();
+    applyCampMpRegen();
     if (phase === "travel") {
       logLine("You camp on the road. Day " + state.travelDay + " of " + currentRouteDays() + ".", "");
     } else if (phase === "adventure" && state.adventure) {
@@ -2740,7 +3978,7 @@
     }
     var fresh = initMemberProgress({
       id: id,
-      name: role.charAt(0).toUpperCase() + role.slice(1) + " " + id.slice(1),
+      name: rollCharacterName(),
       role: role,
       gender: portrait.gender,
       headshot: portrait.headshot,
@@ -2826,15 +4064,6 @@
       '<button type="button" id="addMercenary"' +
       dis +
       ">+ Mercenary</button>" +
-      '<button type="button" id="addFarmer"' +
-      dis +
-      ">+ Farmer</button>" +
-      '<button type="button" id="addArtisan"' +
-      dis +
-      ">+ Artisan</button>" +
-      '<button type="button" id="addMerchant"' +
-      dis +
-      ">+ Merchant</button>" +
       '<button type="button" id="addMage"' +
       dis +
       ">+ Mage</button>" +
@@ -2843,15 +4072,17 @@
   }
 
   function illiriTabStrip() {
-    var v = state.illiriView;
     function tab(which, label) {
+      var active = state.illiriView === which ||
+        (which === "party" && state.illiriView === "inventory") ||
+        (which === "castle" && state.illiriView === "keep");
       return (
         '<button type="button" role="tab" class="' +
-        ("illiri-tab" + (v === which ? " illiri-tab-active" : "")) +
+        ("illiri-tab" + (active ? " illiri-tab-active" : "")) +
         '" data-illiri-tab="' +
         which +
         '" aria-selected="' +
-        (v === which ? "true" : "false") +
+        (active ? "true" : "false") +
         '">' +
         label +
         "</button>"
@@ -2859,18 +4090,35 @@
     }
     return (
       '<nav class="illiri-tabs" role="tablist" aria-label="Cantebury">' +
-      tab("church", "Church") +
-      tab("inn", "Inn") +
-      tab("shop", "Shop") +
-      tab("tavern", "Tavern") +
-      tab("inventory", "Party") +
+      tab("castle", "Castle") +
+      tab("city", "City") +
+      tab("party", "Party") +
+      tab("adventure", "Adventure") +
       tab("depart", "Depart") +
       "</nav>"
     );
   }
 
+  function normalizeCanteburyNav() {
+    var v = state.illiriView;
+    if (v === "keep") state.illiriView = "castle";
+    else if (v === "inventory") state.illiriView = "party";
+    else if (v === "shop" || v === "tavern") {
+      state.cityView = v;
+      state.illiriView = "city";
+    } else if (v === "church") {
+      state.keepView = "chapel";
+      state.illiriView = "castle";
+    } else if (v === "inn") {
+      state.cityView = "shop";
+      state.illiriView = "city";
+    }
+    if (!state.keepView) state.keepView = "hall";
+    if (!state.cityView) state.cityView = "shop";
+  }
+
   function openInventoryView() {
-    state.illiriView = "inventory";
+    state.illiriView = "party";
     render();
   }
 
@@ -2881,6 +4129,8 @@
       tabs[i].onclick = (function (el) {
         return function () {
           state.illiriView = el.getAttribute("data-illiri-tab");
+          if (state.illiriView === "castle") state.keepView = state.keepView || "hall";
+          if (state.illiriView === "city") state.cityView = state.cityView || "shop";
           render();
         };
       })(tabs[i]);
@@ -2923,7 +4173,7 @@
     if (frozenStones.length === 0) return "";
     var memHtml = '<h3 class="church-section-title" style="margin-top:1.5rem">In Memoriam</h3>' +
       '<p class="hint">Sealed memorials at ' + locationLabel(townKey) +
-      '. Each headstone is set in stone &mdash; final words for fallen comrades.</p>' +
+      '. Each headstone is set in stone &mdash; final words for fallen comrades. ' + memorialDateHintHtml() + '</p>' +
       '<div class="shop-block">';
     for (var mi = 0; mi < frozenStones.length; mi++) {
       var fhs = frozenStones[mi];
@@ -2934,7 +4184,7 @@
         '<div style="font-size:1.75rem;line-height:1;color:#9a8b78" aria-hidden="true">\u2020</div>' +
         '<div style="flex:1">' +
         '<div><b>' + escapeHtml(fhs.name) + '</b> (' + roleLabel(fhs.role) + ')</div>' +
-        '<div class="hint">Lost day ' + fhs.day + ' on ' + escapeHtml(fhs.location) +
+        '<div class="hint"><span class="hi">' + escapeHtml(formatMemorialDate(fhs)) + '</span> &mdash; lost on ' + escapeHtml(fhs.location) +
           (fTheirs ? '.' : '. (previous traveler)') + '</div>' +
         '<div style="margin-top:.5rem;padding:.5rem .6rem;background:#1c160e;border:1px solid #4a3d2a;border-radius:6px;font-style:italic;color:#e8dcc8;min-height:2.5em">' +
           (fNote || '<span class="hint">[No inscription left.]</span>') +
@@ -2947,7 +4197,7 @@
     return memHtml;
   }
 
-  function settlementTabStrip() {
+  function settlementTabStrip(townKey) {
     function tab(id, label) {
       return (
         '<button type="button" class="illiri-tab' +
@@ -2959,8 +4209,11 @@
         "</button>"
       );
     }
-    return (
-      '<div class="illiri-tabs">' +
+    var html = '<div class="illiri-tabs">';
+    if (townHasKeep(townKey)) {
+      html += tab("keep", townKey === "solem" ? "Keep" : "Castle");
+    }
+    html +=
       tab("church", "Church") +
       tab("inn", "Inn") +
       tab("tavern", "Tavern") +
@@ -2968,8 +4221,8 @@
       tab("inventory", "Party" + (state.quest ? " *" : "")) +
       tab("adventure", "Adventure") +
       tab("depart", "Depart") +
-      "</div>"
-    );
+      "</div>";
+    return html;
   }
 
   function wireSettlementTabs(root) {
@@ -2979,9 +4232,944 @@
       tabs[i].onclick = (function (el) {
         return function () {
           state.settlementView = el.getAttribute("data-settlement-tab") || "church";
+          if (state.settlementView === "keep") state.keepView = state.keepView || "hall";
           render();
         };
       })(tabs[i]);
+    }
+  }
+
+  function citySubTabStrip(activeView) {
+    function sub(id, label) {
+      return (
+        '<button type="button" class="illiri-tab' +
+        (activeView === id ? " illiri-tab-active" : "") +
+        '" data-city-sub="' +
+        id +
+        '">' +
+        label +
+        "</button>"
+      );
+    }
+    return (
+      '<nav class="illiri-tabs keep-subtabs" role="tablist" aria-label="City">' +
+      sub("shop", "Shop") +
+      sub("tavern", "Tavern") +
+      "</nav>"
+    );
+  }
+
+  function canteburyTavernInnerHtml() {
+    return (
+      '<p class="tavern-lead">Dim light, spilled ale, dice in the corner. The barkeep knows everyone who marches the trade road.</p>' +
+      '<div class="tavern-choice-row">' +
+      '<button type="button" class="primary" id="barkeepBtn">Talk to the barkeep</button>' +
+      "</div>" +
+      rosterEditHtml(
+        "Add / remove party members",
+        "Recruit fighters only — soldiers, priests, mercenaries, or mages (up to " +
+          PARTY_MAX +
+          "). " +
+          caravanFollowersSummary() +
+          " travel with the train. Guest slot is separate."
+      ) +
+      caravanFollowersPanelHtml() +
+      '<div class="actions tavern-guest-actions">' +
+      '<button type="button" id="guestBtn">' +
+      (state.guest ? "Dismiss guest" : "Add test guest") +
+      "</button>" +
+      "</div>"
+    );
+  }
+
+  function canteburyAdventurePanelHtml() {
+    return (
+      "<h2 class=\"panel-title\">Local adventure</h2>" +
+      '<p class="town-lead">Scout the meadows and lanes around Cantebury before the long westward march. Up to <b>10 days</b> exploring nearby wilds.</p>' +
+      '<p class="hint">Training grounds: foes are <b>level 1</b> only. Encounter pace is <b>80% slower</b> than adventures from other towns.</p>' +
+      '<div class="actions">' +
+      '<button type="button" class="primary" id="beginCanteburyAdventureBtn"' +
+      (state.food > 0 ? "" : " disabled") +
+      ">Venture out (begin trek)</button>" +
+      "</div>"
+    );
+  }
+
+  function cityInteriorHtml() {
+    var view = state.cityView || "shop";
+    var inner =
+      view === "tavern"
+        ? canteburyTavernInnerHtml()
+        : '<p class="shopkeeper-lead">Market stalls along the high street — road fare and common potions.</p>' +
+          canteburyShopInnerHtml();
+    return (
+      "<h2 class=\"panel-title\">Cantebury</h2>" +
+      '<p class="town-lead">Shops and the traveler\'s quarter below the castle walls.</p>' +
+      citySubTabStrip(view) +
+      inner
+    );
+  }
+
+  function wireCitySubTabs(root) {
+    var tabs = root.querySelectorAll("[data-city-sub]");
+    var i;
+    for (i = 0; i < tabs.length; i++) {
+      tabs[i].onclick = (function (el) {
+        return function () {
+          state.cityView = el.getAttribute("data-city-sub") || "shop";
+          render();
+        };
+      })(tabs[i]);
+    }
+  }
+
+  function wireCanteburyTavern(root) {
+    wireRosterEdit(root);
+    wireTavernBarkeep(root);
+    var guestBtn = root.querySelector("#guestBtn");
+    if (guestBtn) {
+      guestBtn.onclick = function () {
+        if (state.guest) {
+          state.guest = null;
+          logLine("Guest dismissed.", "");
+        } else {
+          var guestPortrait = pickUniquePortrait("soldier", null, usedHeadshotsMap());
+          if (!guestPortrait.headshot) {
+            logLine("No unique soldier headshots remain for a guest this session.", "bad");
+            render();
+            return;
+          }
+          state.guest = {
+            id: "g1",
+            name: "Guest: Guide",
+            role: "soldier",
+            gender: guestPortrait.gender,
+            headshot: guestPortrait.headshot,
+            hp: 10,
+            maxHp: 10,
+            staticMember: true,
+          };
+          logLine("Guest joins - seventh member alongside your party of " + state.party.length + ".", "good");
+        }
+        render();
+      };
+    }
+  }
+
+  function wireCityInterior(root) {
+    wireCitySubTabs(root);
+    var view = state.cityView || "shop";
+    if (view === "shop") wireCanteburyShop(root);
+    else wireCanteburyTavern(root);
+  }
+
+  function keepTitle(townKey) {
+    return townKey === "solem" ? "Citadel Keep" : "Cantebury Castle";
+  }
+
+  function keepLead(townKey) {
+    if (townKey === "solem") {
+      return "Stone halls rise above the river forks. Garrison clerks, quartermasters, and the magistrate's court all work from this keep.";
+    }
+    return "The governor's castle overlooks the market road. Petitioners, the keep chapel, and the crown quartermaster all lie within the inner ward.";
+  }
+
+  function keepSubTabStrip(activeView) {
+    function sub(id, label) {
+      return (
+        '<button type="button" class="illiri-tab' +
+        (activeView === id ? " illiri-tab-active" : "") +
+        '" data-keep-sub="' +
+        id +
+        '">' +
+        label +
+        "</button>"
+      );
+    }
+    return (
+      '<nav class="illiri-tabs keep-subtabs" role="tablist" aria-label="Keep">' +
+      sub("hall", "Hall") +
+      sub("chapel", "Chapel") +
+      sub("shop", "Quartermaster") +
+      "</nav>"
+    );
+  }
+
+  function keepHallHtml(townKey) {
+    if (townKey === "solem") {
+      return (
+        '<p class="hint">Audience chamber — who will you speak with?</p>' +
+        '<div class="shop-block">' +
+        '<div class="shop-row" style="flex-direction:column;align-items:stretch">' +
+        '<div><b>Magistrate Serah Dunwald</b> <span class="hint">— local law and garrison orders</span></div>' +
+        '<div style="margin-top:.4rem;text-align:right">' +
+        '<button type="button" id="keepTalkMagistrate">Speak with the magistrate</button>' +
+        "</div></div></div>"
+      );
+    }
+    return (
+      '<p class="hint">Audience chamber — who will you speak with?</p>' +
+      '<div class="shop-block">' +
+      '<div class="shop-row" style="flex-direction:column;align-items:stretch">' +
+      '<div><b>Governor Kew Kumber</b> <span class="hint">— lord of Cantebury and the westward march</span></div>' +
+      '<div style="margin-top:.4rem;text-align:right">' +
+      '<button type="button" id="keepTalkGovernor">Speak with the governor</button>' +
+      "</div></div>" +
+      '<div class="shop-row" style="flex-direction:column;align-items:stretch;margin-top:.5rem">' +
+      '<div><b>Chancellor Aldric Venn</b> <span class="hint">— petitions, seals, and requisitions</span></div>' +
+      '<div style="margin-top:.4rem;text-align:right">' +
+      '<button type="button" id="keepTalkChancellor">Speak with the chancellor</button>' +
+      "</div></div></div>"
+    );
+  }
+
+  function canteburyChapelInnerHtml() {
+    return (
+      '<p class="town-lead">A small chapel off the great hall. Tapers burn beside a rail worn smooth by generations of departing caravans.</p>' +
+      '<div class="actions"><button type="button" id="churchBless">Receive blessing</button></div>'
+    );
+  }
+
+  function canteburyShopInnerHtml() {
+    return (
+      '<p class="shopkeeper-lead">The crown quartermaster keeps road fare at posted rates beside stacked supply bundles.</p>' +
+      '<p class="shop-gold-line">Your purse: <b>' +
+      state.gold +
+      '</b> gp</p>' +
+      '<div class="shop-block">' +
+      '<div class="shop-row"><span>Supplies</span><button type="button" id="buyFood">Buy 1 gp</button></div>' +
+      '<div class="shop-row"><span>Potion of Healing (+3 HP)</span><button type="button" id="buyHealPotion">Buy 5 gp</button></div>' +
+      '<div class="shop-row"><span>Potion of Life (revive 50%)</span><button type="button" id="buyLifePotion">Buy 15 gp</button></div>' +
+      "</div>"
+    );
+  }
+
+  function settlementChurchPanelHtml() {
+    var html =
+      '<div class="actions"><button type="button" id="settlementBless">Receive blessing</button></div>';
+    var fallen = state.party.filter(function (p) { return p.hp <= 0; });
+    var headstones = (state.headstones || []).filter(function (hs) {
+      return hs && hs.town === state.settlementTown;
+    });
+    html += '<h3 class="church-section-title" style="margin-top:1rem">Revival rites</h3>' +
+      '<p>Restore a fallen companion to full health for <b>25 gp</b>, or use a <b>Potion of Life</b> to bring them back at half HP.</p>';
+    if (fallen.length === 0) {
+      html += '<p class="hint">No one to revive.</p>';
+    } else {
+      html += '<div class="shop-block">';
+      for (var i = 0; i < fallen.length; i++) {
+        var m = fallen[i];
+        html += '<div class="shop-row" style="flex-wrap:wrap;gap:.4rem">' +
+          '<span>' + m.name + ' (' + roleLabel(m.role) + ')</span>' +
+          '<span style="display:flex;gap:.4rem;flex-wrap:wrap">' +
+          '<button type="button" id="reviveAtChurch-' + m.id + '"' +
+          (state.gold >= 25 ? "" : " disabled") +
+          '>Revive (25 gp)</button>' +
+          '<button type="button" id="reviveLifeAtChurch-' + m.id + '"' +
+          (state.lifePotions > 0 ? "" : " disabled") +
+          '>Use Life Potion (' + state.lifePotions + ')</button>' +
+          '</span></div>';
+      }
+      html += '</div>';
+    }
+    var pending = headstones.filter(function (hs) { return !isHeadstoneFrozen(hs); });
+    if (pending.length > 0) {
+      html += '<h3 class="church-section-title" style="margin-top:1.25rem">Recent losses</h3>' +
+        '<p>Leave a final note for each fallen comrade. Once saved, the headstone is sealed and the inscription is permanent. ' + memorialDateHintHtml() + '</p>' +
+        '<div class="shop-block">';
+      for (var hi = 0; hi < pending.length; hi++) {
+        var hs = pending[hi];
+        var safeNote = String(hs.note || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        var theirRun = hs.runId === state.runId;
+        html += '<div class="shop-row" style="flex-direction:column;align-items:stretch">' +
+          '<div><b>' + hs.name + '</b> (' + roleLabel(hs.role) + ') &mdash; <span class="hi">' + escapeHtml(formatMemorialDate(hs)) + '</span> on ' + escapeHtml(hs.location) +
+          (theirRun ? '.' : '. <span class="hint">(previous traveler)</span>') +
+          '</div>' +
+          '<textarea id="hsNote-' + hs.id + '" maxlength="200" placeholder="A small note for future travelers..." ' +
+          'style="margin-top:.35rem;width:100%;min-height:3em;background:#1c160e;color:#e8dcc8;border:1px solid #4a3d2a;border-radius:6px;padding:.4rem .5rem;font-family:inherit">' +
+          safeNote + '</textarea>' +
+          '<div style="margin-top:.35rem;text-align:right">' +
+          '<button type="button" id="hsSave-' + hs.id + '">Seal headstone</button>' +
+          '</div>' +
+          '</div>';
+      }
+      html += '</div>';
+    }
+    html += memorialPanelHtml(state.settlementTown);
+    return html;
+  }
+
+  function settlementShopPanelHtml() {
+    return (
+      '<p class="shop-gold-line">Your purse: <b>' +
+      state.gold +
+      '</b> gp | Gems: <b>' +
+      state.gems +
+      '</b></p>' +
+      '<div class="shop-block">' +
+      shopRowHtml({
+        id: "supplies",
+        label: "Supplies",
+        count: state.food,
+        buyPrice: 1,
+        sellPrice: 1,
+        maxBuy: Math.min(Math.max(0, MAX_SUPPLIES - state.food), state.gold),
+        maxSell: state.food,
+      }) +
+      shopRowHtml({
+        id: "weapon",
+        label: "Weapon",
+        count: state.weapons,
+        buyPrice: 3,
+        sellPrice: 1,
+        maxBuy: Math.floor(state.gold / 3),
+        maxSell: state.weapons,
+      }) +
+      shopRowHtml({
+        id: "healPotion",
+        label: "Potion of Healing (+3 HP)",
+        count: state.healingPotions,
+        buyPrice: 5,
+        sellPrice: 2,
+        maxBuy: Math.floor(state.gold / 5),
+        maxSell: state.healingPotions,
+      }) +
+      shopRowHtml({
+        id: "lifePotion",
+        label: "Potion of Life (revive 50%)",
+        count: state.lifePotions,
+        buyPrice: 15,
+        sellPrice: 7,
+        maxBuy: Math.floor(state.gold / 15),
+        maxSell: state.lifePotions,
+      }) +
+      shopRowHtml({
+        id: "gem",
+        label: "Gem",
+        count: state.gems,
+        sellPrice: 5,
+        maxSell: state.gems,
+      }) +
+      "</div>"
+    );
+  }
+
+  function keepQmMemberSelectHtml(selectId) {
+    var html = '<select id="' + selectId + '" class="shop-qty" style="width:auto;max-width:12rem">';
+    for (var i = 0; i < state.party.length; i++) {
+      var m = state.party[i];
+      if (!m) continue;
+      initMemberProgress(m);
+      var equipped = exoticWeaponDef(m.exoticWeaponId);
+      var note = equipped ? " [" + equipped.label + "]" : "";
+      html += '<option value="' + m.id + '">' + escapeHtml(m.name) + " (" + roleLabel(m.role) + ")" + escapeHtml(note) + "</option>";
+    }
+    html += "</select>";
+    return html;
+  }
+
+  function keepQmExoticSectionHtml() {
+    var html =
+      '<h3 class="church-section-title" style="margin-top:1.5rem">Exotic arms (vault)</h3>' +
+      '<p class="hint">Legendary stock under seal — one of each blade per caravan. Equip on purchase.</p>' +
+      '<div class="shop-block">';
+    for (var i = 0; i < EXOTIC_WEAPONS.length; i++) {
+      var w = EXOTIC_WEAPONS[i];
+      var owner = exoticWeaponOwner(w.id);
+      html += '<div class="shop-row" style="flex-wrap:wrap;gap:.5rem;align-items:center">' +
+        '<span class="shop-row-label" style="flex:1 1 12rem"><b>' + escapeHtml(w.label) + '</b> <span class="hint">(+' + w.dmgBonus + ' dmg)</span></span>';
+      if (owner) {
+        html += '<span class="hint">Equipped by <b>' + escapeHtml(owner.name) + "</b></span>";
+      } else {
+        html += '<span style="display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">' +
+          keepQmMemberSelectHtml("qmEquip-" + w.id) +
+          '<button type="button" id="qmBuy-' + w.id + '"' +
+          (state.gold >= w.price ? "" : " disabled") +
+          ">Buy @ " + formatGp(w.price) + " gp</button>" +
+          "</span>";
+      }
+      html += "</div>";
+    }
+    html += "</div>";
+    return html;
+  }
+
+  function buyExoticWeapon(weaponId) {
+    var w = exoticWeaponDef(weaponId);
+    if (!w) return;
+    if (exoticWeaponOwner(weaponId)) {
+      logLine(w.label + " is already in the caravan.", "bad");
+      render();
+      return;
+    }
+    if (state.gold < w.price) {
+      logLine("Need " + formatGp(w.price) + " gp for a " + w.label + ".", "bad");
+      render();
+      return;
+    }
+    var sel = document.getElementById("qmEquip-" + weaponId);
+    var memberId = sel ? sel.value : null;
+    var member = memberId ? state.party.find(function (p) { return p && p.id === memberId; }) : null;
+    if (!member) {
+      logLine("Pick a party member to equip the " + w.label + ".", "bad");
+      render();
+      return;
+    }
+    if (member.exoticWeaponId) {
+      var prev = exoticWeaponDef(member.exoticWeaponId);
+      logLine(member.name + " already carries " + (prev ? prev.label : "an exotic weapon") + ".", "bad");
+      render();
+      return;
+    }
+    state.gold -= w.price;
+    member.exoticWeaponId = w.id;
+    logLine(
+      member.name + " receives the <span class=\"hi\">" + w.label + "</span> (+" + w.dmgBonus + " dmg) for " + formatGp(w.price) + " gp.",
+      "good"
+    );
+    trackPlaytest("exotic_weapon_bought", { weaponId: w.id, memberId: member.id, price: w.price, town: state.settlementTown || "cantebury" });
+    render();
+  }
+
+  function wireQmExoticWeapons(root) {
+    for (var i = 0; i < EXOTIC_WEAPONS.length; i++) {
+      (function (w) {
+        if (exoticWeaponOwner(w.id)) return;
+        var btn = root.querySelector("#qmBuy-" + w.id);
+        if (btn) btn.onclick = function () { buyExoticWeapon(w.id); };
+      })(EXOTIC_WEAPONS[i]);
+    }
+  }
+
+  function keepInteriorHtml(townKey) {
+    var view = state.keepView || "hall";
+    var inner =
+      view === "hall"
+        ? keepHallHtml(townKey)
+        : view === "chapel"
+          ? (townKey === "solem"
+              ? '<p class="town-lead">The keep chapel serves garrison and caravan alike.</p>' + settlementChurchPanelHtml()
+              : canteburyChapelInnerHtml())
+          : townKey === "solem"
+            ? '<p class="shopkeeper-lead">The citadel quartermaster trades at standard road rates.</p>' + settlementShopPanelHtml() + keepQmExoticSectionHtml()
+            : canteburyShopInnerHtml() + keepQmExoticSectionHtml();
+    return (
+      '<h2 class="panel-title">' + keepTitle(townKey) + "</h2>" +
+      '<p class="town-lead">' + keepLead(townKey) + "</p>" +
+      keepSubTabStrip(view) +
+      inner
+    );
+  }
+
+  function npcDialogueDef(dialogKey) {
+    var fromBalance = BALANCE_DATA.npcDialogues && BALANCE_DATA.npcDialogues[dialogKey];
+    if (fromBalance && fromBalance.lines && fromBalance.lines.length) return fromBalance;
+    var legacy = KEEP_NPC_LINES[dialogKey];
+    if (!legacy) return null;
+    return {
+      speaker: legacy.speaker,
+      title: legacy.title,
+      portrait: legacy.portrait,
+      lines: [legacy.text],
+    };
+  }
+
+  function pickNpcDialogueLine(def, dialogKey) {
+    var lines = (def && def.lines) || [];
+    if (!lines.length) return "";
+    if (dialogKey === "cantebury_governor") {
+      if ((state.totalDaysElapsed || 0) >= STABILITY_TARGET_DAYS - 10) return lines[lines.length - 1];
+      if ((state.caravanLoops || 0) > 0) return lines[Math.min(3, lines.length - 1)];
+    }
+    if (dialogKey === "cantebury_chancellor" && newIsilSettlerCount() > 0) {
+      return lines[Math.min(1, lines.length - 1)];
+    }
+    return lines[rollInt(0, lines.length - 1)];
+  }
+
+  function openKeepNpcDialog(dialogKey) {
+    var def = npcDialogueDef(dialogKey);
+    if (!def) return;
+    state.npcDialog = {
+      speaker: def.speaker,
+      title: def.title,
+      portrait: def.portrait,
+      text: pickNpcDialogueLine(def, dialogKey),
+    };
+    render();
+  }
+
+  function eastboundRevisitDepartHtml(fromTownKey) {
+    var targets = eastboundRevisitTargets(fromTownKey);
+    if (!targets.length) return "";
+    var reverseKey = pathPreviousTown(fromTownKey);
+    var btns = targets
+      .map(function (key) {
+        var dest = destinationForKey(key);
+        var isPrimary = reverseKey ? key === reverseKey : key === "cantebury";
+        return (
+          '<button type="button"' +
+          (isPrimary ? ' class="primary"' : "") +
+          ' data-eastbound-to="' +
+          key +
+          '">March to ' +
+          dest.label +
+          legDepartDaysHint(fromTownKey, key) +
+          "</button>"
+        );
+      })
+      .join("");
+    var reverseNote =
+      reverseKey && targets[0] === reverseKey
+        ? '<p class="hint">Your outbound route reverses here — next hop on the trail home is <b>' +
+          destinationForKey(reverseKey).label +
+          "</b>.</p>"
+        : "";
+    return (
+      '<p class="town-lead">Eastbound — follow your route in reverse or detour to another town you visited.</p>' +
+      reverseNote +
+      '<div class="actions" style="flex-wrap:wrap;gap:.4rem">' +
+      btns +
+      "</div>"
+    );
+  }
+
+  function settlementWestwardForkNote(townKey) {
+    if (townKey === "cantebury") {
+      return '<p class="hint">Lower fork: march to <b>Gustaf</b> (port) or <b>Brookside</b> (village) — you will not pass through both.</p>';
+    }
+    if (TRAIL_FORK_LOWER.indexOf(townKey) >= 0) {
+      return '<p class="hint">Upper fork: <b>Hollow Banks</b> (marsh) or <b>Glennhardt</b> (city) — pick one, then Solem and New Isil.</p>';
+    }
+    return "";
+  }
+
+  function settlementWestwardDepartHtml(townKey) {
+    var choices = westboundForkDestinations(townKey);
+    if (!choices.length) return "";
+    var btns = choices
+      .map(function (key) {
+        var dest = destinationForKey(key);
+        return (
+          '<button type="button" class="primary" data-westbound-to="' +
+          key +
+          '">Depart for ' +
+          dest.label +
+          legDepartDaysHint(townKey, key) +
+          "</button>"
+        );
+      })
+      .join("");
+    return (
+      '<p class="town-lead">Choose the next leg <b>westward</b>.</p>' +
+      settlementWestwardForkNote(townKey) +
+      '<div class="actions" style="flex-wrap:wrap;gap:.4rem">' +
+      btns +
+      "</div>"
+    );
+  }
+
+  function settlementDepartPanelHtml(townKey) {
+    if (townKey === "new_isil") return newIsilDepartPanelHtml();
+    if (state.onReturnMarch) return eastboundRevisitDepartHtml(townKey);
+    return settlementWestwardDepartHtml(townKey);
+  }
+
+  function settlementMainPanelHtml(town) {
+    var townKey = town.key;
+    if (state.settlementView === "keep") return keepInteriorHtml(townKey);
+    var head = '<h2 class="panel-title">' + town.label + "</h2>";
+    if (state.settlementView === "church") {
+      return head + '<p class="town-lead">A quiet chapel waits by the market road.</p>' + settlementChurchPanelHtml();
+    }
+    if (state.settlementView === "inn") {
+      var cost = innRestCost();
+      var eff = stableRestEfficiency();
+      var pct = Math.round(eff * 100);
+      var consec = state.stableRestDays || 0;
+      var consecNote = consec > 0 ? ' <span class="hint">(consecutive stays: ' + consec + ")</span>" : "";
+      return (
+        head +
+        '<p class="town-lead">A warm inn offers cots, stew, and a safe night to recover. ' +
+        "A bed costs <b>" +
+        cost +
+        " gp</b> and restores everyone to full health. " +
+        "The stables out back are free but rest there is rough — the more nights in a row, the less you recover." +
+        consecNote +
+        "</p>" +
+        '<div class="actions">' +
+        '<button type="button" id="settlementInnRest"' +
+        (state.gold >= cost ? "" : " disabled") +
+        ">Rest at inn (" +
+        cost +
+        " gp, full)</button>" +
+        '<button type="button" id="settlementStableRest">Rest at stables (free, ' +
+        pct +
+        "%)</button>" +
+        "</div>"
+      );
+    }
+    if (state.settlementView === "tavern") return head + settlementTavernHtml(townKey);
+    if (state.settlementView === "shop") {
+      return head + '<p class="shopkeeper-lead">Restock or trade away surplus.</p>' + settlementShopPanelHtml();
+    }
+    if (state.settlementView === "inventory") {
+      return (
+        '<h2 class="panel-title">Party & resources</h2>' +
+        resourcesStatsGridHtml() +
+        inventoryScreenHtml() +
+        questPanelHtml()
+      );
+    }
+    if (state.settlementView === "adventure") {
+      return (
+        head +
+        '<p class="town-lead">Strike out for an adventuring trek. Up to <b>10 days</b> exploring the wilds near ' +
+        locationLabel(townKey) +
+        ". Each day spent outbound rolls an encounter. Turn back any time; the return trip takes the same days you spent (no encounters) and still consumes supplies.</p>" +
+        '<p class="hint">Tip: Make sure your party is rested and stocked. Encounter level scales with how far you have marched west.</p>' +
+        '<div class="actions">' +
+        '<button type="button" class="primary" id="beginAdventureBtn"' +
+        (state.food > 0 ? "" : " disabled") +
+        ">Venture out (begin trek)</button>" +
+        "</div>"
+      );
+    }
+    return head + settlementDepartPanelHtml(townKey);
+  }
+
+  function newIsilDepartPanelHtml() {
+    syncNewIsilPopulation();
+    var pop = state.newIsilGrowth ? state.newIsilGrowth.population : NEW_ISIL_BASE_POPULATION;
+    var settlers = state.newIsilSettlers || [];
+    var settlerList =
+      settlers.length === 0
+        ? '<p class="hint">No companions settled yet.</p>'
+        : "<ul>" +
+          settlers
+            .map(function (s) {
+              return (
+                "<li><b>" +
+                escapeHtml(s.name) +
+                "</b> (" +
+                roleLabel(s.role) +
+                ") — day " +
+                (s.settledOnDay || "?") +
+                "</li>"
+              );
+            })
+            .join("") +
+          "</ul>";
+    var partyRows = state.party
+      .map(function (m) {
+        if (!m || m.hp <= 0) return "";
+        return (
+          '<div class="shop-row" style="align-items:center;gap:.5rem">' +
+          "<span><b>" +
+          escapeHtml(m.name) +
+          "</b> (" +
+          roleLabel(m.role) +
+          ")</span>" +
+          '<button type="button" data-settle-member="' +
+          m.id +
+          '">Settle in New Isil</button>' +
+          "</div>"
+        );
+      })
+      .join("");
+    var rejoinRows = settlers
+      .filter(function (s) {
+        return s.canRejoin;
+      })
+      .map(function (s) {
+        return (
+          '<div class="shop-row" style="align-items:center;gap:.5rem">' +
+          "<span><b>" +
+          escapeHtml(s.name) +
+          "</b> (" +
+          roleLabel(s.role) +
+          ", settled)</span>" +
+          '<button type="button" data-rejoin-settler="' +
+          s.id +
+          '">Rejoin caravan (−25% stats, permanent)</button>' +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<p class="town-lead">New Isil is the harbor goal. Settle companions here; on the <b>eastbound</b> return you may invite them back at a permanent cost. The campaign ends when you reach New Isil after <b>' +
+      effectiveStabilityTarget() +
+      " journey days</b>" +
+      (mustDefeatFinalHarborBoss() ? " (after Kew Kumber falls on the final westward leg)" : "") +
+      ".</p>" +
+      '<p><b>Harbor population:</b> ' +
+      pop +
+      " (+" +
+      settlers.length +
+      " from your caravans)</p>" +
+      "<h3 class=\"roster-heading\">Settled here</h3>" +
+      settlerList +
+      "<h3 class=\"roster-heading\">Caravan — settle companions</h3>" +
+      (partyRows || '<p class="hint">No living companions left to settle.</p>') +
+      (rejoinRows ? "<h3 class=\"roster-heading\">Invite settlers back</h3>" + rejoinRows : "") +
+      "<h3 class=\"roster-heading\">Eastbound depart</h3>" +
+      eastboundRevisitDepartHtml("new_isil") +
+      '<p class="hint">Journey day ' +
+      (state.totalDaysElapsed || 0) +
+      " / " +
+      effectiveStabilityTarget() +
+      (mustDefeatFinalHarborBoss() ? " — defeat Kew Kumber on the final westward leg (day " + FINAL_BOSS_MIN_DAYS + "+)" : "") +
+      ".</p>"
+    );
+  }
+
+  function wireNewIsilDepart(root) {
+    var settleBtns = root.querySelectorAll("[data-settle-member]");
+    for (var i = 0; i < settleBtns.length; i++) {
+      settleBtns[i].onclick = (function (btn) {
+        return function () {
+          settleMemberAtNewIsil(btn.getAttribute("data-settle-member"));
+        };
+      })(settleBtns[i]);
+    }
+    var rejoinBtns = root.querySelectorAll("[data-rejoin-settler]");
+    for (var r = 0; r < rejoinBtns.length; r++) {
+      rejoinBtns[r].onclick = (function (btn) {
+        return function () {
+          recruitSettlerBack(btn.getAttribute("data-rejoin-settler"));
+        };
+      })(rejoinBtns[r]);
+    }
+    wireEastboundDepart(root);
+  }
+
+  function wireEastboundDepart(root) {
+    var eastBtns = root.querySelectorAll("[data-eastbound-to]");
+    for (var e = 0; e < eastBtns.length; e++) {
+      eastBtns[e].onclick = (function (btn) {
+        return function () {
+          state.onReturnMarch = true;
+          departEastboundTo(btn.getAttribute("data-eastbound-to"));
+        };
+      })(eastBtns[e]);
+    }
+  }
+
+  function wireWestboundDepart(root) {
+    var westBtns = root.querySelectorAll("[data-westbound-to]");
+    for (var w = 0; w < westBtns.length; w++) {
+      westBtns[w].onclick = (function (btn) {
+        return function () {
+          departWestboundTo(btn.getAttribute("data-westbound-to"));
+        };
+      })(westBtns[w]);
+    }
+  }
+
+  function npcDialogPortraitHtml(portrait, speaker) {
+    if (portrait) {
+      return (
+        '<img src="' + headshotUrl(portrait) + '" alt="' + escapeHtml(speaker || "") +
+        '" style="width:84px;height:84px;border-radius:8px;object-fit:cover;border:1px solid #4a3d2a;flex-shrink:0">'
+      );
+    }
+    var initial = escapeHtml((speaker || "?").charAt(0).toUpperCase());
+    return (
+      '<div style="width:84px;height:84px;border-radius:8px;border:1px solid #4a3d2a;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#1c160e;color:#c89c3f;font-size:2rem;font-weight:700">' +
+      initial +
+      "</div>"
+    );
+  }
+
+  function npcDialogOverlayHtml(dlg) {
+    if (!dlg) return "";
+    var actions =
+      dlg.questOfferId
+        ? '<div style="text-align:right;display:flex;justify-content:flex-end;gap:.4rem;flex-wrap:wrap">' +
+          '<button type="button" id="npcDialogDecline">Not interested</button>' +
+          '<button type="button" class="primary" id="npcDialogAccept-' + escapeHtml(dlg.questOfferId) + '">Accept quest</button>' +
+          "</div>"
+        : '<div style="text-align:right">' +
+          '<button type="button" id="npcDialogClose">Continue</button>' +
+          "</div>";
+    return (
+      '<div class="npc-dialog-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;z-index:50;padding:1rem">' +
+        '<div class="npc-dialog" style="background:#2a2218;border:2px solid #c89c3f;border-radius:12px;padding:1rem 1.25rem;max-width:32rem;width:100%;display:flex;gap:1rem;align-items:flex-start;box-shadow:0 8px 30px rgba(0,0,0,0.6)">' +
+          npcDialogPortraitHtml(dlg.portrait, dlg.speaker) +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="color:#c89c3f;font-weight:600;margin-bottom:.15rem">' + escapeHtml(dlg.speaker || "") + "</div>" +
+            (dlg.title ? '<div class="hint" style="margin-bottom:.35rem">' + escapeHtml(dlg.title) + "</div>" : "") +
+            '<div style="color:#e8dcc8;margin-bottom:.5rem;font-style:italic">"' + escapeHtml(dlg.text || "") + '"</div>' +
+            (dlg.summaryHtml || "") +
+            actions +
+          "</div>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function wireNpcDialog(root) {
+    if (!state.npcDialog) return;
+    var dlg = state.npcDialog;
+    var close = root.querySelector("#npcDialogClose");
+    if (close) close.onclick = function () { state.npcDialog = null; render(); };
+    var decline = root.querySelector("#npcDialogDecline");
+    if (decline) decline.onclick = function () { state.npcDialog = null; render(); };
+    if (dlg.questOfferId) {
+      var accept = root.querySelector("#npcDialogAccept-" + dlg.questOfferId);
+      if (accept) accept.onclick = function () { acceptQuest(dlg.questOfferId); };
+    }
+  }
+
+  function settlementTavernHtml(townKey) {
+    return (
+      '<p class="tavern-lead">Fresh crews trade stories and caravan contracts. The barkeep eyes you over a mug.</p>' +
+      '<div class="tavern-choice-row">' +
+      '<button type="button" class="primary" id="barkeepBtn">Talk to the barkeep</button>' +
+      "</div>" +
+      rosterEditHtml("Tavern roster", settlementRecruitNote(townKey))
+    );
+  }
+
+  function wireTavernBarkeep(root) {
+    var barkeepBtn = root.querySelector("#barkeepBtn");
+    if (barkeepBtn) barkeepBtn.onclick = function () { openBarkeepDialog(); };
+  }
+
+  function wireCanteburyBlessing(root) {
+    var blessBtn = root.querySelector("#churchBless");
+    if (!blessBtn) return;
+    blessBtn.onclick = function () {
+      if (state.blessing) {
+        logLine("You already carry a blessing: <span class=\"hi\">" + blessingTypeLabel(state.blessing) + "</span>.", "");
+        render();
+        return;
+      }
+      var r = Math.random();
+      var type = null;
+      if (r < 0.3) type = "attack";
+      else if (r < 0.5) type = "gold";
+      else if (r < 0.6) type = "ward";
+      if (type) {
+        grantBlessing(type);
+        logLine(
+          "Blessing granted: <span class=\"hi\">" +
+            blessingTypeLabel(type) +
+            "</span> (fades in " +
+            (state.blessingExpiresOnDay - (state.totalDaysElapsed || 0)) +
+            " journey day(s)).",
+          "good"
+        );
+      } else logLine("The prayer brings calm, but no lasting boon this time.", "");
+      render();
+    };
+  }
+
+  function wireCanteburyShop(root) {
+    var buyFood = root.querySelector("#buyFood");
+    if (buyFood) buyFood.onclick = function () { buy("food"); };
+    var buyHeal = root.querySelector("#buyHealPotion");
+    if (buyHeal) buyHeal.onclick = function () { buy("heal_potion"); };
+    var buyLife = root.querySelector("#buyLifePotion");
+    if (buyLife) buyLife.onclick = function () { buy("life_potion"); };
+  }
+
+  function wireSettlementChurchPanel(root) {
+    var blessBtn = document.getElementById("settlementBless");
+    if (blessBtn) {
+      blessBtn.onclick = function () {
+        if (state.blessing) {
+          logLine("You already carry a blessing: <span class=\"hi\">" + blessingTypeLabel(state.blessing) + "</span>.", "");
+          render();
+          return;
+        }
+        var r = Math.random();
+        var type = null;
+        if (r < 0.3) type = "attack";
+        else if (r < 0.5) type = "gold";
+        else if (r < 0.6) type = "ward";
+        if (type) {
+          grantBlessing(type);
+          logLine(
+            "Blessing granted: <span class=\"hi\">" +
+              blessingTypeLabel(type) +
+              "</span> (fades in " +
+              (state.blessingExpiresOnDay - (state.totalDaysElapsed || 0)) +
+              " journey day(s)).",
+            "good"
+          );
+        } else logLine("The prayer brings calm, but no lasting boon this time.", "");
+        render();
+      };
+    }
+    for (var ri = 0; ri < state.party.length; ri++) {
+      (function (m) {
+        if (m.hp > 0) return;
+        var btn = document.getElementById("reviveAtChurch-" + m.id);
+        if (btn) btn.onclick = function () { reviveAtChurch(m.id); };
+        var lifeBtn = document.getElementById("reviveLifeAtChurch-" + m.id);
+        if (lifeBtn) lifeBtn.onclick = function () { reviveWithLifePotionAtChurch(m.id); };
+      })(state.party[ri]);
+    }
+    var headstones = (state.headstones || []).filter(function (hs) {
+      return hs && hs.town === state.settlementTown;
+    });
+    for (var hi = 0; hi < headstones.length; hi++) {
+      (function (hs) {
+        var btn = document.getElementById("hsSave-" + hs.id);
+        var ta = document.getElementById("hsNote-" + hs.id);
+        if (btn && ta) {
+          btn.onclick = function () {
+            setHeadstoneNote(hs.id, ta.value);
+            logLine("Headstone sealed for " + hs.name + ". The inscription is now permanent.", "");
+            render();
+          };
+        }
+      })(headstones[hi]);
+    }
+  }
+
+  function wireSettlementShopPanel(root) {
+    wireShopRow("supplies", buySettlementSupplies, sellSettlementSupplies);
+    wireShopRow("weapon", buySettlementWeapon, sellSettlementWeapon);
+    wireShopRow("healPotion", buySettlementHealPotion, sellSettlementHealPotion);
+    wireShopRow("lifePotion", buySettlementLifePotion, sellSettlementLifePotion);
+    wireShopRow("gem", null, sellSettlementGem);
+  }
+
+  function wireKeepSubTabs(root) {
+    var tabs = root.querySelectorAll("[data-keep-sub]");
+    var i;
+    for (i = 0; i < tabs.length; i++) {
+      tabs[i].onclick = (function (el) {
+        return function () {
+          state.keepView = el.getAttribute("data-keep-sub") || "hall";
+          render();
+        };
+      })(tabs[i]);
+    }
+  }
+
+  function wireKeepInterior(root, townKey) {
+    wireKeepSubTabs(root);
+    var view = state.keepView || "hall";
+    if (view === "hall") {
+      var gov = root.querySelector("#keepTalkGovernor");
+      if (gov) gov.onclick = function () { openKeepNpcDialog("cantebury_governor"); };
+      var chan = root.querySelector("#keepTalkChancellor");
+      if (chan) chan.onclick = function () { openKeepNpcDialog("cantebury_chancellor"); };
+      var mag = root.querySelector("#keepTalkMagistrate");
+      if (mag) mag.onclick = function () { openKeepNpcDialog("solem_magistrate"); };
+    } else if (view === "chapel") {
+      if (townKey === "solem") wireSettlementChurchPanel(root);
+      else wireCanteburyBlessing(root);
+    } else if (view === "shop") {
+      if (townKey === "solem") wireSettlementShopPanel(root);
+      else wireCanteburyShop(root);
+      wireQmExoticWeapons(root);
     }
   }
 
@@ -3190,6 +5378,7 @@
     state.gold -= 25;
     m.hp = m.maxHp;
     m.deadSinceDay = undefined;
+    clearMemberDeathSnapshot(m);
     logLine(m.name + " is revived at the chapel to full health (" + m.maxHp + "/" + m.maxHp + " HP).", "good");
     render();
   }
@@ -3222,6 +5411,7 @@
     state.lifePotions--;
     m.hp = Math.max(1, Math.ceil(m.maxHp * 0.5));
     m.deadSinceDay = undefined;
+    clearMemberDeathSnapshot(m);
     logLine(m.name + " is revived with a Potion of Life in the field (" + m.hp + "/" + m.maxHp + " HP).", "good");
     render();
   }
@@ -3254,6 +5444,7 @@
     state.lifePotions--;
     m.hp = Math.max(1, Math.ceil(m.maxHp * 0.5));
     m.deadSinceDay = undefined;
+    clearMemberDeathSnapshot(m);
     logLine(m.name + " is revived with a Potion of Life at the chapel (" + m.hp + "/" + m.maxHp + " HP).", "good");
     render();
   }
@@ -3282,9 +5473,6 @@
     var addS = root.querySelector("#addSoldier");
     var addP = root.querySelector("#addPriest");
     var addM = root.querySelector("#addMercenary");
-    var addF = root.querySelector("#addFarmer");
-    var addA = root.querySelector("#addArtisan");
-    var addMer = root.querySelector("#addMerchant");
     var addMage = root.querySelector("#addMage");
     if (addS)
       addS.onclick = function () {
@@ -3298,18 +5486,6 @@
       addM.onclick = function () {
         addPartyMember("mercenary");
       };
-    if (addF)
-      addF.onclick = function () {
-        addPartyMember("farmer");
-      };
-    if (addA)
-      addA.onclick = function () {
-        addPartyMember("artisan");
-      };
-    if (addMer)
-      addMer.onclick = function () {
-        addPartyMember("merchant");
-      };
     if (addMage)
       addMage.onclick = function () {
         addPartyMember("mage");
@@ -3318,7 +5494,9 @@
 
   function departIllirial() {
     clearTransitionTimers();
-    state.illiriView = "church";
+    state.illiriView = "castle";
+    state.keepView = "hall";
+    state.cityView = "shop";
     state.travelInventoryOpen = false;
     state.inventoryDetailOpen = false;
     state.phase = "travel";
@@ -3332,10 +5510,34 @@
     state.ruinsMap = null;
     state.transition = { kind: "depart", stage: "blackout" };
     var dest = currentDestination();
-    state.legRouteDays = rollRouteDaysForDestination(dest.key);
-    state.finalBossCleared = dest.key !== "new_isil";
+    var originKey = state.travelOrigin || "cantebury";
+    if (originKey === "cantebury" && isEastboundLeg(originKey, dest.key) === false) {
+      state.onReturnMarch = false;
+    }
+    var hadLeg = !!(state.legDaysByRoute && state.legDaysByRoute[legRouteKey(originKey, dest.key)]);
+    state.legRouteDays = resolveLegRouteDays(originKey, dest.key);
+    applyDepartBossGateForLeg(dest, originKey);
     var originLabel = currentOriginLabel();
-    logLine("You depart " + originLabel + " for " + dest.label + ".", "hi");
+    var legNote =
+      isEastboundLeg(originKey, dest.key)
+        ? ", matching your " + totalWestwardTrailDays() + "-day westward march (" + state.legRouteDays + " eastbound)"
+        : hadLeg
+          ? ", same as before"
+          : ", route length set for this campaign";
+    logLine(
+      "You depart " +
+        originLabel +
+        ", marching " +
+        travelDirectionClause(originKey, dest.key) +
+        " (" +
+        state.legRouteDays +
+        " day" +
+        (state.legRouteDays === 1 ? "" : "s") +
+        " on this leg" +
+        legNote +
+        ").",
+      "hi"
+    );
     trackPlaytest("travel_started", {
       routeDays: currentRouteDays(),
       partySize: state.party.length,
@@ -3442,7 +5644,13 @@
       "</div>" +
       '<div class="map-node end">' + currentDestination().label + '</div>' +
       "</div>" +
-      '<p class="map-caption">' + routeDays + ' days on the trade road. Each quiet day adds <b>+25%</b> to the next day\'s encounter roll (max 95%). A fight resets tension.</p>' +
+      '<p class="map-caption">' +
+      routeDays +
+      " days on the trade road" +
+      (isEastboundLeg(state.travelOrigin || "cantebury", state.travelDestination)
+        ? " (eastbound — reverse your fork choices town by town)"
+        : "") +
+      '. Each quiet day adds <b>+25%</b> to the next day\'s encounter roll (max 95%). A fight resets tension.</p>' +
       "</div>"
     );
   }
@@ -3496,15 +5704,35 @@
     if (role === "soldier") return "Soldier";
     if (role === "priest") return "Priest";
     if (role === "mercenary") return "Mercenary";
-    if (role === "farmer") return "Farmer";
-    if (role === "artisan") return "Artisan";
-    if (role === "merchant") return "Merchant";
     if (role === "mage") return "Mage";
     return "Traveler";
   }
 
+  /** Folder containing index.html + images/ (derived from game.js script URL). */
+  function detectGameAssetBase() {
+    if (typeof document === "undefined" || typeof window === "undefined") return "";
+    var scripts = document.getElementsByTagName("script");
+    var i;
+    for (i = scripts.length - 1; i >= 0; i--) {
+      var src = scripts[i].src;
+      if (src && /\/game\.js(\?|#|$)/.test(src)) {
+        return src.replace(/[#?].*$/, "").replace(/[^/]+$/, "");
+      }
+    }
+    var path = window.location.pathname || "/";
+    if (!/\/$/.test(path)) {
+      var cut = path.lastIndexOf("/");
+      path = cut >= 0 ? path.slice(0, cut + 1) : "/";
+    }
+    return window.location.origin + path;
+  }
+
+  var GAME_ASSET_BASE = detectGameAssetBase();
+
   function headshotUrl(filename) {
-    return filename ? "images/headshot/" + encodeURIComponent(filename) : "";
+    if (!filename) return "";
+    var base = GAME_ASSET_BASE || detectGameAssetBase();
+    return base + "images/headshot/" + encodeURIComponent(filename);
   }
 
   function headshotLabel(filename) {
@@ -3523,9 +5751,6 @@
     if (role === "soldier") keys = ["soldier"];
     else if (role === "priest") keys = ["priest", "cleric"];
     else if (role === "mercenary") keys = ["mercenary"];
-    else if (role === "farmer") keys = ["farmer"];
-    else if (role === "artisan") keys = ["artisan"];
-    else if (role === "merchant") keys = ["merchant"];
     else if (role === "mage") keys = ["mage", "wizard"];
     var roleFiltered = HEADSHOT_FILES.filter(function (file) {
       var lower = file.toLowerCase();
@@ -3607,9 +5832,6 @@
     if (role === "soldier") return ["classic", "veteran", "warden"];
     if (role === "priest") return ["classic", "scribe", "oracle"];
     if (role === "mercenary") return ["classic", "raider", "ranger"];
-    if (role === "farmer") return ["classic", "homestead", "fieldhand"];
-    if (role === "artisan") return ["classic", "guild", "maker"];
-    if (role === "merchant") return ["classic", "ledger", "broker"];
     if (role === "mage") return ["classic", "apprentice", "archon"];
     return ["classic"];
   }
@@ -3660,16 +5882,19 @@
       soldier: "Keeps the line under pressure and protects the caravan vanguard.",
       priest: "Carries old rites, mends wounds, and steadies morale on the road.",
       mercenary: "Scouts profit routes, reads danger, and cuts deals under stress.",
+      mage: "Shapes fire and spark at range while the civilian train marches behind.",
     };
     var skillsByRole = {
       soldier: ["Shield wall", "Road discipline", "Vanguard drills"],
       priest: ["Field medicine", "Rite of warding", "Camp counsel"],
       mercenary: ["Trail scouting", "Quick draw", "Loot appraisal"],
+      mage: ["Arcane fire", "Spark cantrip", "Road focus"],
     };
     var traitsByRole = {
       soldier: ["Steady", "Protective", "Direct"],
       priest: ["Patient", "Observant", "Composed"],
       mercenary: ["Pragmatic", "Bold", "Wry"],
+      mage: ["Curious", "Intense", "Reserved"],
     };
     initMemberProgress(m);
     return {
@@ -3705,6 +5930,51 @@
   function inventoryActionHealingContext() {
     if (state.phase === "travel" || state.phase === "adventure" || state.phase === "quest_trek") return true;
     return !!(state.phase === "action" && state.pendingEncounter && state.pendingEncounter.kind === "ruins_discovery");
+  }
+
+  function memberEquipmentPanelHtml(member) {
+    ensureMemberEquipment(member);
+    var html = '<h4>-Equipment-</h4>';
+    for (var si = 0; si < EQUIPMENT_SLOTS.length; si++) {
+      var slot = EQUIPMENT_SLOTS[si];
+      var equippedId = member.equipment[slot];
+      var equippedDef = equipmentItemDef(equippedId);
+      var equippedLabel = equippedDef ? equippedDef.label : equippedId ? equippedId : "empty";
+      var stashOpts = stashItemsForSlot(slot);
+      var optionHtml = '<option value="">Equip from stash</option>';
+      for (var oi = 0; oi < stashOpts.length; oi++) {
+        var oid = stashOpts[oi];
+        var odef = equipmentItemDef(oid);
+        optionHtml +=
+          '<option value="' +
+          escapeHtml(oid) +
+          '">' +
+          escapeHtml(odef ? odef.label : oid) +
+          "</option>";
+      }
+      html +=
+        '<p class="inv-equip-row"><b>' +
+        EQUIPMENT_SLOT_LABELS[slot] +
+        "</b>: " +
+        escapeHtml(equippedLabel) +
+        (equippedId
+          ? ' <button type="button" data-unequip-slot="' +
+            escapeHtml(member.id) +
+            '" data-slot="' +
+            slot +
+            '">Unequip</button>'
+          : "") +
+        ' <select data-equip-member="' +
+        escapeHtml(member.id) +
+        '" data-equip-slot="' +
+        slot +
+        '"' +
+        (stashOpts.length ? "" : " disabled") +
+        ">" +
+        optionHtml +
+        "</select></p>";
+    }
+    return html;
   }
 
   function inventoryScreenHtml() {
@@ -3753,7 +6023,9 @@
       return (
         '<section class="sheet-wrap sheet-wrap--single">' +
         '<div class="sheet-card">' +
-          '<h3 class="roster-heading">Party roster</h3>' +
+        "<h3 class=\"roster-heading\">Trail ledger</h3>" +
+        resourcesStatsGridHtml() +
+        '<h3 class="roster-heading">Party roster</h3>' +
         '<p class="roster-note">Hover and click a name/icon to open that character sheet.</p>' +
         '<div class="inv-open-list">' +
         cards +
@@ -3893,6 +6165,7 @@
       travelPotionActions +
       '<div class="sheet-divider"></div>' +
       '<div class="sheet-sections">' +
+      memberEquipmentPanelHtml(focus) +
       '<h4>-Stats-</h4>' +
       '<p>Strength: ' +
       prof.stats.strength +
@@ -3916,6 +6189,28 @@
       "</p>" +
       "</div></div></section>"
     );
+  }
+
+  function wireCaravanRationMode(root) {
+    if (!root) return;
+    var radios = root.querySelectorAll('input[name="rationMode"]');
+    var i;
+    for (i = 0; i < radios.length; i++) {
+      radios[i].onchange = (function (el) {
+        return function () {
+          if (!el.checked) return;
+          state.rationMode = el.value === "stretch" ? "stretch" : "normal";
+          if (state.rationMode !== "stretch") state.stretchedRationDays = 0;
+          logLine(
+            state.rationMode === "stretch"
+              ? "Caravan rations set to <span class=\"hi\">stretch</span> — supplies last longer, morale may crack."
+              : "Caravan rations set to <span class=\"hi\">normal</span>.",
+            ""
+          );
+          render();
+        };
+      })(radios[i]);
+    }
   }
 
   function wireInventoryScreen(root) {
@@ -3960,6 +6255,7 @@
         state.lifePotions--;
         m.hp = Math.max(1, Math.ceil(m.maxHp * 0.5));
         m.deadSinceDay = undefined;
+        clearMemberDeathSnapshot(m);
         logLine(m.name + " is revived with Potion of Life (" + m.hp + " HP).", "good");
         render();
       };
@@ -3990,6 +6286,39 @@
       healTarget.onchange = function () {
         state.inventoryHealTargetId = healTarget.value;
       };
+    }
+
+    var unequipBtns = root.querySelectorAll("[data-unequip-slot]");
+    for (var ue = 0; ue < unequipBtns.length; ue++) {
+      unequipBtns[ue].onclick = (function (btn) {
+        return function () {
+          var mid = btn.getAttribute("data-unequip-slot");
+          var slot = btn.getAttribute("data-slot");
+          var mem = inventoryMemberById(mid);
+          if (!mem || !slot) return;
+          unequipSlotToStash(mem, slot);
+          logLine(mem.name + " stows " + EQUIPMENT_SLOT_LABELS[slot] + " gear.", "");
+          render();
+        };
+      })(unequipBtns[ue]);
+    }
+    var equipSelects = root.querySelectorAll("[data-equip-member]");
+    for (var es = 0; es < equipSelects.length; es++) {
+      equipSelects[es].onchange = (function (sel) {
+        return function () {
+          var itemId = sel.value;
+          if (!itemId) return;
+          var mid = sel.getAttribute("data-equip-member");
+          var slot = sel.getAttribute("data-equip-slot");
+          var mem = inventoryMemberById(mid);
+          if (!mem || !slot) return;
+          if (equipItemOnMember(mem, slot, itemId)) {
+            var def = equipmentItemDef(itemId);
+            logLine(mem.name + " equips " + (def ? def.label : itemId) + ".", "good");
+          }
+          render();
+        };
+      })(equipSelects[es]);
     }
 
     var styleBtns = root.querySelectorAll("[data-style-set]");
@@ -4139,13 +6468,72 @@
     );
   }
 
-  function renderHeader() {
-    var combatUi = state.phase === "action" && state.combat;
+  function memberHpLevelLine(m) {
+    if (!m) return "";
+    initMemberProgress(m);
+    return (
+      m.hp +
+      "/" +
+      m.maxHp +
+      " HP · Lv " +
+      (typeof m.level === "number" ? m.level : 1)
+    );
+  }
+
+  function resourcesStatsGridHtml() {
     var mult = lootMultiplier(state.party).toFixed(2);
     var ru = state.ruinsDiscovered ? "day " + state.ruinsTravelDay : "-";
-    var bless = blessingTypeLabel(state.blessing);
-    var leaderLine = state.leaderProfile ? state.leaderProfile.name + " (" + roleLabel(state.leaderProfile.role) + ")" : "Unassigned";
-    var canOpenFromHeader = state.phase === "story_illiri" && state.illiriView === "inventory";
+    var bless = state.blessing ? blessingTypeLabel(state.blessing) : blessingTypeLabel(null);
+    if (state.blessing && typeof state.blessingExpiresOnDay === "number") {
+      bless += " (" + Math.max(0, state.blessingExpiresOnDay - (state.totalDaysElapsed || 0)) + "d left)";
+    }
+    return (
+      "<div class=\"stats-grid stats-grid-compact\">" +
+      "<div class=\"stat\">Gold: <b>" +
+      state.gold +
+      "</b></div>" +
+      "<div class=\"stat\">Gems: <b>" +
+      state.gems +
+      "</b></div>" +
+      "<div class=\"stat\">Supplies: <b>" +
+      state.food +
+      "</b></div>" +
+      "<div class=\"stat\">Caravan: <b>" +
+      (state.caravan ? state.caravan.total : 0) +
+      "</b> <span class=\"stat-hint\">civilians</span></div>" +
+      "<div class=\"stat\">Weapons: <b>" +
+      state.weapons +
+      "</b></div>" +
+      "<div class=\"stat\">Merc loot: <b>x" +
+      mult +
+      "</b></div>" +
+      "<div class=\"stat\">Next day encounter: <b>" +
+      (state.encounterChance * 100).toFixed(0) +
+      "%</b> <span class=\"stat-hint\">(+25% per quiet day)</span></div>" +
+      "<div class=\"stat\">Blessing: <b>" +
+      bless +
+      "</b></div>" +
+      "<div class=\"stat\">Ruins: <b>" +
+      ru +
+      "</b></div>" +
+      "<div class=\"stat\">Journey: <b>day " +
+      (state.totalDaysElapsed || 0) +
+      " / " +
+      effectiveStabilityTarget() +
+      "</b></div>" +
+      "<div class=\"stat\">New Isil settlers: <b>" +
+      newIsilSettlerCount() +
+      "</b></div>" +
+      "<div class=\"stat\">Version: <b>v" +
+      GAME_VERSION +
+      "</b></div>" +
+      "</div>"
+    );
+  }
+
+  function renderHeader() {
+    var combatUi = state.phase === "action" && state.combat;
+    var canOpenFromHeader = state.phase === "story_illiri" && (state.illiriView === "party" || state.illiriView === "inventory");
     var partyBits = state.party
       .map(function (m) {
         return (
@@ -4163,10 +6551,8 @@
           m.name +
           "</span>" +
           '<span class="party-hp-text">' +
-          m.hp +
-          "/" +
-          m.maxHp +
-          " HP</span></li>"
+          memberHpLevelLine(m) +
+          "</span></li>"
         );
       })
       .join("");
@@ -4179,10 +6565,8 @@
         state.guest.name +
         "</span>" +
         '<span class="party-hp-text">' +
-        state.guest.hp +
-        "/" +
-        state.guest.maxHp +
-        " HP</span></li>"
+        memberHpLevelLine(state.guest) +
+        "</span></li>"
       : '<li class="role-guest"><em>Guest slot empty.</em></li>';
 
     var marchForMap =
@@ -4195,36 +6579,7 @@
       '<div class="party-panel' +
       (combatUi ? " party-panel--combat" : "") +
       '">' +
-      "<h2 class=\"panel-title panel-title-party\">Party & resources</h2>" +
-      "<div class=\"stats-grid stats-grid-compact\">" +
-      "<div class=\"stat\">Gold: <b>" +
-      state.gold +
-      "</b></div>" +
-      "<div class=\"stat\">Gems: <b>" +
-      state.gems +
-      "</b></div>" +
-      "<div class=\"stat\">Supplies: <b>" +
-      state.food +
-      "</b></div>" +
-      "<div class=\"stat\">Weapons: <b>" +
-      state.weapons +
-      "</b></div>" +
-      "<div class=\"stat\">Merc loot: <b>x" +
-      mult +
-      "</b></div>" +
-      "<div class=\"stat\">Next day encounter: <b>" +
-      (state.encounterChance * 100).toFixed(0) +
-      "%</b> <span class=\"stat-hint\">(+25% per quiet day)</span></div>" +
-      "<div class=\"stat\">Ruins: <b>" +
-      ru +
-      "</b></div>" +
-      "<div class=\"stat\">Journey: <b>day " +
-      (state.totalDaysElapsed || 0) +
-      "</b></div>" +
-      "<div class=\"stat\">Version: <b>v" +
-      GAME_VERSION +
-      "</b></div>" +
-      "</div>" +
+      "<h2 class=\"panel-title panel-title-party\">Party</h2>" +
       "<ul class=\"party-list party-list-compact\">" +
       partyBits +
       guestLi +
@@ -4402,10 +6757,27 @@
     if (!app) return;
 
     if (state.phase === "gameover") {
-      var overText = state.gameoverMode === "win" ? "Run complete. New Isil reached." : "Game over.";
+      var overText =
+        state.gameoverMode === "win"
+          ? "The Illirial Trail is complete — New Isil after " + effectiveStabilityTarget() + " journey days."
+          : "Game over.";
+      var winDetail =
+        state.gameoverMode === "win"
+          ? "<p class=\"hint\">Journey days: <b>" +
+            (state.totalDaysElapsed || 0) +
+            "</b>. Caravan loops: <b>" +
+            (state.caravanLoops || 0) +
+            "</b>. Settlers in New Isil: <b>" +
+            newIsilSettlerCount() +
+            "</b>. Harbor population: <b>" +
+            (state.newIsilGrowth ? state.newIsilGrowth.population : NEW_ISIL_BASE_POPULATION) +
+            "</b>.</p>"
+          : "";
       app.innerHTML =
         renderHeader() +
-        "<p>" + overText + "</p><div class=\"actions\"><button type=\"button\" class=\"primary\" id=\"btnRestart\">Restart</button></div>" +
+        "<p>" + overText + "</p>" +
+        winDetail +
+        '<div class="actions"><button type="button" class="primary" id="btnRestart">Restart</button></div>' +
         renderLog();
       document.getElementById("btnRestart").onclick = function () {
         clearTransitionTimers();
@@ -4521,13 +6893,7 @@
         (draft.role === "priest" ? " selected" : "") +
         '>Priest</option><option value="mercenary"' +
         (draft.role === "mercenary" ? " selected" : "") +
-        '>Mercenary</option><option value="farmer"' +
-        (draft.role === "farmer" ? " selected" : "") +
-        '>Farmer</option><option value="artisan"' +
-        (draft.role === "artisan" ? " selected" : "") +
-        '>Artisan</option><option value="merchant"' +
-        (draft.role === "merchant" ? " selected" : "") +
-        '>Merchant</option><option value="mage"' +
+        '>Mercenary</option><option value="mage"' +
         (draft.role === "mage" ? " selected" : "") +
         '>Mage</option></select></label>' +
         '<label>Gender <select id="leadGender"><option value="man"' +
@@ -4679,77 +7045,58 @@
     }
 
     if (state.phase === "story_illiri") {
-      if (state.illiriView === "church") {
-        app.innerHTML =
-          startCitySplash() +
-          illiriTabStrip() +
-          "<h2 class=\"panel-title\">Church</h2>" +
-          "<p class=\"town-lead\">Cool stone, thin tapers, a priest murmurs over travelers bound east.</p>" +
-          "<div class=\"actions\">" +
-          '<button type="button" id="churchBless">Receive blessing</button>' +
-          "</div>" +
-          renderLog();
-        wireIlliriTabs(app);
-        document.getElementById("churchBless").onclick = function () {
-          if (state.blessing) {
-            logLine("You already carry a blessing: <span class=\"hi\">" + blessingTypeLabel(state.blessing) + "</span>.", "");
-            render();
-            return;
-          }
-          var r = Math.random();
-          if (r < 0.3) state.blessing = "attack";
-          else if (r < 0.5) state.blessing = "gold";
-          else if (r < 0.6) state.blessing = "ward";
-          else state.blessing = null;
+      normalizeCanteburyNav();
+      var illiriShell = startCitySplash() + illiriTabStrip();
 
-          if (state.blessing) {
-            logLine("Blessing granted: <span class=\"hi\">" + blessingTypeLabel(state.blessing) + "</span>.", "good");
-          } else {
-            logLine("The prayer brings calm, but no lasting boon this time.", "");
-          }
-          render();
-        };
-        var openInvChurch = document.getElementById("openInvFromChurch");
-        if (openInvChurch) openInvChurch.onclick = openInventoryView;
+      if (state.illiriView === "castle") {
+        app.innerHTML =
+          illiriShell +
+          keepInteriorHtml("cantebury") +
+          renderLog() +
+          npcDialogOverlayHtml(state.npcDialog);
+        wireIlliriTabs(app);
+        wireKeepInterior(app, "cantebury");
+        wireNpcDialog(app);
         return;
       }
 
-      if (state.illiriView === "inn") {
-        app.innerHTML =
-          startCitySplash() +
-          illiriTabStrip() +
-          "<h2 class=\"panel-title\">Inn</h2>" +
-          "<p class=\"town-lead\">Straw beds and a hearth. The host keeps a fair price for a night that mends bone and nerve.</p>" +
-          "<div class=\"actions\">" +
-          '<button type="button" id="innRest">Rest at inn</button>' +
-          "</div>" +
-          renderLog();
+      if (state.illiriView === "city") {
+        app.innerHTML = illiriShell + cityInteriorHtml() + renderLog() + npcDialogOverlayHtml(state.npcDialog);
         wireIlliriTabs(app);
-        document.getElementById("innRest").onclick = restAtInn;
-        var openInvInn = document.getElementById("openInvFromInn");
-        if (openInvInn) openInvInn.onclick = openInventoryView;
+        wireCityInterior(app);
+        wireNpcDialog(app);
         return;
       }
 
-      if (state.illiriView === "inventory") {
+      if (state.illiriView === "party") {
         app.innerHTML =
-          startCitySplash() +
-          illiriTabStrip() +
-          "<h2 class=\"panel-title\">Inventory</h2>" +
-          "<p class=\"town-lead\">Review your party roster, resources, and travel odds before heading out.</p>" +
+          illiriShell +
+          "<h2 class=\"panel-title\">Party</h2>" +
+          "<p class=\"town-lead\">Fighting line (up to " +
+          PARTY_MAX +
+          ") plus the civilian train on the road.</p>" +
           renderHeader() +
+          caravanFollowersPanelHtml() +
           inventoryScreenHtml() +
           renderLog();
         wireIlliriTabs(app);
         wireInventoryScreen(app);
+        wireCaravanRationMode(app);
         wireHeaderPartyOpen(app);
+        return;
+      }
+
+      if (state.illiriView === "adventure") {
+        app.innerHTML = illiriShell + canteburyAdventurePanelHtml() + renderLog();
+        wireIlliriTabs(app);
+        var advStart = document.getElementById("beginCanteburyAdventureBtn");
+        if (advStart) advStart.onclick = beginAdventure;
         return;
       }
 
       if (state.illiriView === "data") {
         app.innerHTML =
-          startCitySplash() +
-          illiriTabStrip() +
+          illiriShell +
           "<h2 class=\"panel-title\">Balance Data</h2>" +
           "<p class=\"town-lead\">Review spreadsheet-loaded balancing data in a separate screen.</p>" +
           balanceDataScreenHtml() +
@@ -4759,114 +7106,47 @@
       }
       if (state.illiriView === "depart") {
         app.innerHTML =
-          startCitySplash() +
-          illiriTabStrip() +
+          illiriShell +
           "<h2 class=\"panel-title\">Depart</h2>" +
-          "<p class=\"town-lead\">The east gate opens on a fixed trial route: Cantebury to Gustaf to Hollow Banks to Solem to New Isil (40 days total).</p>" +
-          '<p><b>Current leg:</b> Cantebury to Gustaf (10 travel days)</p>' +
-          "<div class=\"actions\">" +
-          '<button type="button" class="primary" id="departBtn">Leave Cantebury</button>' +
-          "</div>" +
-          renderLog();
-        wireIlliriTabs(app);
-        document.getElementById("departBtn").onclick = function () {
-          state.travelOrigin = "cantebury";
-          state.travelDestination = "gustaf";
-          departIllirial();
-        };
-        return;
-      }
-
-      if (state.illiriView === "tavern") {
-        app.innerHTML =
-          startCitySplash() +
-          illiriTabStrip() +
-          "<h2 class=\"panel-title\">Tavern</h2>" +
-          "<p class=\"tavern-lead\">Dim light, spilled ale, dice in the corner. The barkeep knows everyone who marches the trade road.</p>" +
-          "<div class=\"tavern-choice-row\">" +
-          '<button type="button" class="primary" id="barkeepBtn">Talk to the barkeep</button>' +
-          "</div>" +
-          rosterEditHtml(
-            "Add / remove party members",
-            "Recruit soldiers, priests, mercenaries, farmers, artisans, merchants, or mages. Up to " +
-              PARTY_MAX +
-              " in the traveling party (guest not counted). At least one must stay."
-          ) +
-          "<div class=\"actions tavern-guest-actions\">" +
-          "<button type=\"button\" id=\"guestBtn\">" +
-          (state.guest ? "Dismiss guest" : "Add test guest") +
+          "<p class=\"town-lead\">March <b>westward</b> with two forks: <b>Gustaf or Brookside</b>, then <b>Hollow Banks or Glennhardt</b>, then Solem and New Isil. On the return, march your route in <b>reverse</b> (or detour to towns you visited). The campaign <b>ends</b> when you reach New Isil after <b>" +
+          effectiveStabilityTarget() +
+          " journey days</b> (plus any extension for the final leg). After <b>day " +
+          FINAL_BOSS_MIN_DAYS +
+          "</b>, SK Kew Kumber blocks the last westward hop.</p>" +
+          '<p><b>Progress:</b> day ' +
+          (state.totalDaysElapsed || 0) +
+          " / " +
+          effectiveStabilityTarget() +
+          " · loops " +
+          (state.caravanLoops || 0) +
+          " · settlers abroad " +
+          newIsilSettlerCount() +
+          "</p>" +
+          '<p><b>Trail legs:</b> each hop rolls <b>' +
+          ROUTE_DAYS_MIN +
+          "–" +
+          ROUTE_DAYS_MAX +
+          ' days</b> the first time you march each hop; eastbound legs mirror the same routes in reverse.</p>' +
+          settlementWestwardForkNote("cantebury") +
+          (state.trailLowerFork
+            ? '<p class="hint">Last lower-fork choice: <b>' + destinationForKey(state.trailLowerFork).label + "</b>.</p>"
+            : "") +
+          '<div class="actions" style="flex-wrap:wrap;gap:.4rem">' +
+          '<button type="button" class="primary" data-westbound-to="gustaf">March to Gustaf' +
+          legDepartDaysHint("cantebury", "gustaf") +
           "</button>" +
-          "</div>" +
+          '<button type="button" class="primary" data-westbound-to="brookside">March to Brookside' +
+          legDepartDaysHint("cantebury", "brookside") +
+          "</button></div>" +
           renderLog();
         wireIlliriTabs(app);
-        wireRosterEdit(app);
-        document.getElementById("barkeepBtn").onclick = function () {
-          logLine("The barkeep leans in: something stirs beyond the road.", "");
-          render();
-        };
-        var openInvTavern = document.getElementById("openInvFromTavern");
-        if (openInvTavern) openInvTavern.onclick = openInventoryView;
-        document.getElementById("guestBtn").onclick = function () {
-          if (state.guest) {
-            state.guest = null;
-            logLine("Guest dismissed.", "");
-          } else {
-            var guestPortrait = pickUniquePortrait("soldier", null, usedHeadshotsMap());
-            if (!guestPortrait.headshot) {
-              logLine("No unique soldier headshots remain for a guest this session.", "bad");
-              render();
-              return;
-            }
-            state.guest = {
-              id: "g1",
-              name: "Guest: Guide",
-              role: "soldier",
-              gender: guestPortrait.gender,
-              headshot: guestPortrait.headshot,
-              hp: 10,
-              maxHp: 10,
-              staticMember: true,
-            };
-            logLine("Guest joins - seventh member alongside your party of " + state.party.length + ".", "good");
-          }
-          render();
-        };
+        wireWestboundDepart(app);
         return;
       }
 
-      if (state.illiriView === "shop") {
-        app.innerHTML =
-          startCitySplash() +
-          illiriTabStrip() +
-          "<h2 class=\"panel-title\">Trader's stall</h2>" +
-          "<p class=\"shopkeeper-lead\">A lean shopkeeper counts coins beside stacked supply bundles. " +
-          "\"Road fare—<span class=\"hi\">1 gp</span> per supply, same as the quartermaster posted.\"</p>" +
-          "<p class=\"shop-gold-line\">Your purse: <b>" +
-          state.gold +
-          "</b> gp</p>" +
-          "<div class=\"shop-block\">" +
-          "<div class=\"shop-row\"><span>Supplies</span><button type=\"button\" id=\"buyFood\">Buy 1 gp</button></div>" +
-          "<div class=\"shop-row\"><span>Potion of Healing (+3 HP)</span><button type=\"button\" id=\"buyHealPotion\">Buy 5 gp</button></div>" +
-          "<div class=\"shop-row\"><span>Potion of Life (revive 50%)</span><button type=\"button\" id=\"buyLifePotion\">Buy 15 gp</button></div>" +
-          "</div>" +
-          '<div class="actions"><button type="button" id="openInvFromShop">Inventory</button></div>' +
-          renderLog();
-        wireIlliriTabs(app);
-        var openInvShop = document.getElementById("openInvFromShop");
-        if (openInvShop) openInvShop.onclick = openInventoryView;
-        document.getElementById("buyFood").onclick = function () {
-          buy("food");
-        };
-        document.getElementById("buyHealPotion").onclick = function () {
-          buy("heal_potion");
-        };
-        document.getElementById("buyLifePotion").onclick = function () {
-          buy("life_potion");
-        };
-        return;
-      }
-
-      state.illiriView = "church";
+      state.illiriView = "castle";
+      state.keepView = "hall";
+      state.cityView = "shop";
       render();
       return;
     }
@@ -4874,7 +7154,12 @@
     if (state.phase === "travel") {
       if (state.transition && state.transition.kind === "depart" && state.transition.stage === "blackout") {
         app.innerHTML =
-          transitionBlackoutHtml("Leaving " + currentOriginLabel(), "The caravan sets out for " + currentDestination().label + ".") +
+          transitionBlackoutHtml(
+            "Leaving " + currentOriginLabel(),
+            "The caravan marches " +
+              travelDirectionClause(state.travelOrigin || "cantebury", currentDestination().key) +
+              "."
+          ) +
           renderLog();
         return;
       }
@@ -4882,7 +7167,15 @@
         app.innerHTML =
           '<div class="travel-map-intro">' +
           '<h2 class="panel-title">The trade road</h2>' +
-          '<p class="map-intro-lead">Route set: ' + currentOriginLabel() + ' to ' + currentDestination().label + '. ' + currentRouteDays() + ' travel days on this leg.</p>' +
+          '<p class="map-intro-lead">Route set: ' +
+          currentOriginLabel() +
+          " to " +
+          currentDestination().label +
+          " (" +
+          travelDirectionAdverb(state.travelOrigin || "cantebury", currentDestination().key) +
+          "). " +
+          currentRouteDays() +
+          " travel days on this leg.</p>" +
           travelMapHtml(null) +
           "</div>" +
           renderLog();
@@ -4902,7 +7195,7 @@
         state.travelDay +
         " / " +
         currentRouteDays() +
-        " days complete. Each <b>Next day</b> consumes 1 supply. Encounter chance shown above rises after quiet days.</p>" +
+        " days complete. Each <b>Next day</b> consumes 1 supply (+1 MP; camp grants +2). Open <b>Inventory</b> for the trail ledger.</p>" +
         "<div class=\"actions\">" +
         '<button type="button" class="primary" id="nextDay">Next day</button>' +
         '<button type="button" id="travelCampBtn"' + (state.food > 0 ? "" : " disabled") + '>Camp...</button>' +
@@ -5045,10 +7338,15 @@
       }
       var advBody, advActions;
       if (adv.dir === "out") {
+        var advEncMult = adv.town === "cantebury" ? CANTEBURY_ADVENTURE_ENCOUNTER_MULT : 1;
+        var advEncPct = (state.encounterChance * advEncMult * 100).toFixed(0);
         advBody =
           "<p>Adventuring near <b>" + advTownLabel + "</b>. Day " + adv.daysOut +
           " of up to " + adv.maxDays + ". Each <b>Push deeper</b> consumes 1 supply and rolls an encounter. Encounter chance: <b>" +
-          (state.encounterChance * 100).toFixed(0) + "%</b>.</p>" +
+          advEncPct + "%</b>.</p>" +
+          (adv.town === "cantebury"
+            ? "<p class=\"hint\">Cantebury training grounds: <b>level 1</b> foes only; encounter pace is <b>80% slower</b> than other towns.</p>"
+            : "") +
           (adv.daysOut > 0
             ? "<p class=\"hint\">Return trip will be " + adv.daysOut + " day(s), no encounters, 1 supply per day.</p>"
             : "");
@@ -5121,187 +7419,12 @@
       app.innerHTML =
         endCitySplash() +
         renderHeader() +
-        settlementTabStrip() +
-        '<h2 class="panel-title">' + town.label + '</h2>' +
-        (state.settlementView === "church"
-          ? '<p class="town-lead">A quiet chapel waits by the market road.</p>' +
-            '<div class="actions"><button type="button" id="settlementBless">Receive blessing</button></div>' +
-            (function () {
-              var fallen = state.party.filter(function (p) { return p.hp <= 0; });
-              var headstones = (state.headstones || []).filter(function (hs) {
-                return hs && hs.town === state.settlementTown;
-              });
-              var html = '<h3 class="church-section-title" style="margin-top:1rem">Revival rites</h3>' +
-                '<p>Restore a fallen companion to full health for <b>25 gp</b>, or use a <b>Potion of Life</b> to bring them back at half HP.</p>';
-              if (fallen.length === 0) {
-                html += '<p class="hint">No one to revive.</p>';
-              } else {
-                html += '<div class="shop-block">';
-                for (var i = 0; i < fallen.length; i++) {
-                  var m = fallen[i];
-                  html += '<div class="shop-row" style="flex-wrap:wrap;gap:.4rem">' +
-                    '<span>' + m.name + ' (' + roleLabel(m.role) + ')</span>' +
-                    '<span style="display:flex;gap:.4rem;flex-wrap:wrap">' +
-                    '<button type="button" id="reviveAtChurch-' + m.id + '"' +
-                    (state.gold >= 25 ? "" : " disabled") +
-                    '>Revive (25 gp)</button>' +
-                    '<button type="button" id="reviveLifeAtChurch-' + m.id + '"' +
-                    (state.lifePotions > 0 ? "" : " disabled") +
-                    '>Use Life Potion (' + state.lifePotions + ')</button>' +
-                    '</span></div>';
-                }
-                html += '</div>';
-              }
-              var pending = headstones.filter(function (hs) { return !isHeadstoneFrozen(hs); });
-              if (pending.length > 0) {
-                html += '<h3 class="church-section-title" style="margin-top:1.25rem">Recent losses</h3>' +
-                  '<p>Leave a final note for each fallen comrade. Once saved, the headstone is sealed and the inscription is permanent.</p>' +
-                  '<div class="shop-block">';
-                for (var hi = 0; hi < pending.length; hi++) {
-                  var hs = pending[hi];
-                  var safeNote = String(hs.note || "")
-                    .replace(/&/g, "&amp;")
-                    .replace(/</g, "&lt;")
-                    .replace(/>/g, "&gt;");
-                  var theirRun = hs.runId === state.runId;
-                  html += '<div class="shop-row" style="flex-direction:column;align-items:stretch">' +
-                    '<div><b>' + hs.name + '</b> (' + roleLabel(hs.role) + ') - lost day ' + hs.day +
-                    ' on ' + hs.location + (theirRun ? '.' : '. <span class="hint">(previous traveler)</span>') +
-                    '</div>' +
-                    '<textarea id="hsNote-' + hs.id + '" maxlength="200" placeholder="A small note for future travelers..." ' +
-                    'style="margin-top:.35rem;width:100%;min-height:3em;background:#1c160e;color:#e8dcc8;border:1px solid #4a3d2a;border-radius:6px;padding:.4rem .5rem;font-family:inherit">' +
-                    safeNote + '</textarea>' +
-                    '<div style="margin-top:.35rem;text-align:right">' +
-                    '<button type="button" id="hsSave-' + hs.id + '">Seal headstone</button>' +
-                    '</div>' +
-                    '</div>';
-                }
-                html += '</div>';
-              }
-              html += memorialPanelHtml(state.settlementTown);
-              return html;
-            })()
-          : state.settlementView === "inn"
-            ? (function () {
-                var cost = innRestCost();
-                var eff = stableRestEfficiency();
-                var pct = Math.round(eff * 100);
-                var consec = state.stableRestDays || 0;
-                var consecNote = consec > 0
-                  ? " <span class=\"hint\">(consecutive stays: " + consec + ")</span>"
-                  : "";
-                return '<p class="town-lead">A warm inn offers cots, stew, and a safe night to recover. ' +
-                  'A bed costs <b>' + cost + ' gp</b> and restores everyone to full health. ' +
-                  'The stables out back are free but rest there is rough — the more nights in a row, the less you recover.' + consecNote + '</p>' +
-                  '<div class="actions">' +
-                  '<button type="button" id="settlementInnRest"' + (state.gold >= cost ? "" : " disabled") + '>Rest at inn (' + cost + ' gp, full)</button>' +
-                  '<button type="button" id="settlementStableRest">Rest at stables (free, ' + pct + '%)</button>' +
-                  '</div>';
-              })()
-          : state.settlementView === "tavern"
-            ? '<p class="tavern-lead">Fresh crews trade stories and caravan contracts. The barkeep eyes you over a mug.</p>' +
-              (function () {
-                var offers = questsAvailableFromBarkeep();
-                if (state.quest) {
-                  var qd = questDef(state.quest.id);
-                  return '<div class="shop-block"><div class="shop-row" style="flex-direction:column;align-items:stretch">' +
-                    '<div><b>Barkeep:</b> "How fares your quest, ' + (qd ? '<i>' + escapeHtml(qd.name) + '</i>' : "traveler") + '? Come back when it\'s done."</div>' +
-                    '</div></div>';
-                }
-                if (offers.length === 0) {
-                  return '<p class="hint">The barkeep has no leads tonight.</p>';
-                }
-                var html = '<div class="shop-block">';
-                for (var i = 0; i < offers.length; i++) {
-                  var qd2 = questDef(offers[i]);
-                  if (!qd2) continue;
-                  html += '<div class="shop-row" style="flex-direction:column;align-items:stretch">' +
-                    '<div><b>Barkeep:</b> "' + escapeHtml(qd2.pitch) + '"</div>' +
-                    '<div class="hint" style="margin-top:.25rem">' + escapeHtml(qd2.summary) + ' Reward: <b>' + qd2.rewardGold + ' gp</b>.</div>' +
-                    '<div style="margin-top:.4rem;text-align:right">' +
-                    '<button type="button" id="questHear-' + qd2.id + '">Hear them out</button>' +
-                    '</div>' +
-                    '</div>';
-                }
-                html += '</div>';
-                return html;
-              })() +
-              rosterEditHtml(
-                "Tavern roster",
-                settlementRecruitNote(town.key)
-              )
-            : state.settlementView === "shop"
-              ? '<p class="shopkeeper-lead">Restock or trade away surplus.</p>' +
-                '<p class="shop-gold-line">Your purse: <b>' +
-                state.gold +
-                '</b> gp | Gems: <b>' +
-                state.gems +
-                '</b></p>' +
-                '<div class="shop-block">' +
-                shopRowHtml({
-                  id: "supplies",
-                  label: "Supplies",
-                  count: state.food,
-                  buyPrice: 1,
-                  sellPrice: 1,
-                  maxBuy: Math.min(Math.max(0, MAX_SUPPLIES - state.food), state.gold),
-                  maxSell: state.food,
-                }) +
-                shopRowHtml({
-                  id: "weapon",
-                  label: "Weapon",
-                  count: state.weapons,
-                  buyPrice: 3,
-                  sellPrice: 1,
-                  maxBuy: Math.floor(state.gold / 3),
-                  maxSell: state.weapons,
-                }) +
-                shopRowHtml({
-                  id: "healPotion",
-                  label: "Potion of Healing (+3 HP)",
-                  count: state.healingPotions,
-                  buyPrice: 5,
-                  sellPrice: 2,
-                  maxBuy: Math.floor(state.gold / 5),
-                  maxSell: state.healingPotions,
-                }) +
-                shopRowHtml({
-                  id: "lifePotion",
-                  label: "Potion of Life (revive 50%)",
-                  count: state.lifePotions,
-                  buyPrice: 15,
-                  sellPrice: 7,
-                  maxBuy: Math.floor(state.gold / 15),
-                  maxSell: state.lifePotions,
-                }) +
-                shopRowHtml({
-                  id: "gem",
-                  label: "Gem",
-                  count: state.gems,
-                  sellPrice: 5,
-                  maxSell: state.gems,
-                }) +
-                '</div>'
-            : state.settlementView === "inventory"
-              ? '<h2 class="panel-title">Party</h2>' +
-                inventoryScreenHtml() +
-                questPanelHtml()
-            : state.settlementView === "adventure"
-              ? '<p class="town-lead">Strike out for an adventuring trek. Up to <b>10 days</b> exploring the wilds near ' + locationLabel(town.key) + '. Each day spent outbound rolls an encounter. Turn back any time; the return trip takes the same days you spent (no encounters) and still consumes supplies.</p>' +
-                '<p class="hint">Tip: Make sure your party is rested and stocked. Encounter level scales with how far past Hollow Banks you are.</p>' +
-                '<div class="actions">' +
-                '<button type="button" class="primary" id="beginAdventureBtn"' +
-                (state.food > 0 ? "" : " disabled") +
-                '>Venture out (begin trek)</button>' +
-                '</div>'
-              : town.key === "gustaf"
-                ? '<p class="town-lead">Gustaf is resupplied. Continue your caravan to Hollow Banks.</p><div class="actions"><button type="button" class="primary" id="continueTrailBtn">Depart for Hollow Banks</button></div>'
-                : town.key === "hollow_banks"
-                  ? '<p class="town-lead">Hollow Banks marks the midpoint. Press on to Solem.</p><div class="actions"><button type="button" class="primary" id="continueTrailBtn">Depart for Solem</button></div>'
-                  : '<p class="town-lead">Solem resupplied. One final push leads to New Isil.</p><div class="actions"><button type="button" class="primary" id="continueTrailBtn">Depart for New Isil</button></div>') +
+        settlementTabStrip(town.key) +
+        settlementMainPanelHtml(town) +
         renderLog() +
         (state.transition && state.transition.kind === "arrive" ? transitionArriveOverlayHtml(state.transition) : "") +
         (state.questDialog ? questDialogOverlayHtml(state.questDialog) : "") +
+        npcDialogOverlayHtml(state.npcDialog) +
         postBattleDialogOverlayHtml();
 
       wireSettlementTabs(app);
@@ -5316,46 +7439,7 @@
       var qDeclineBtn = document.getElementById("questDecline");
       if (qDeclineBtn) qDeclineBtn.onclick = declineQuest;
       if (state.settlementView === "church") {
-        document.getElementById("settlementBless").onclick = function () {
-          if (state.blessing) {
-            logLine("You already carry a blessing: <span class=\"hi\">" + blessingTypeLabel(state.blessing) + "</span>.", "");
-            render();
-            return;
-          }
-          var r = Math.random();
-          if (r < 0.3) state.blessing = "attack";
-          else if (r < 0.5) state.blessing = "gold";
-          else if (r < 0.6) state.blessing = "ward";
-          else state.blessing = null;
-          if (state.blessing) logLine("Blessing granted: <span class=\"hi\">" + blessingTypeLabel(state.blessing) + "</span>.", "good");
-          else logLine("The prayer brings calm, but no lasting boon this time.", "");
-          render();
-        };
-        for (var ri = 0; ri < state.party.length; ri++) {
-          (function (m) {
-            if (m.hp > 0) return;
-            var btn = document.getElementById("reviveAtChurch-" + m.id);
-            if (btn) btn.onclick = function () { reviveAtChurch(m.id); };
-            var lifeBtn = document.getElementById("reviveLifeAtChurch-" + m.id);
-            if (lifeBtn) lifeBtn.onclick = function () { reviveWithLifePotionAtChurch(m.id); };
-          })(state.party[ri]);
-        }
-        var headstones = (state.headstones || []).filter(function (hs) {
-          return hs && hs.town === state.settlementTown;
-        });
-        for (var hi = 0; hi < headstones.length; hi++) {
-          (function (hs) {
-            var btn = document.getElementById("hsSave-" + hs.id);
-            var ta = document.getElementById("hsNote-" + hs.id);
-            if (btn && ta) {
-              btn.onclick = function () {
-                setHeadstoneNote(hs.id, ta.value);
-                logLine("Headstone sealed for " + hs.name + ". The inscription is now permanent.", "");
-                render();
-              };
-            }
-          })(headstones[hi]);
-        }
+        wireSettlementChurchPanel(app);
       } else if (state.settlementView === "inn") {
         var innBtn = document.getElementById("settlementInnRest");
         if (innBtn) innBtn.onclick = restAtInn;
@@ -5363,19 +7447,13 @@
         if (stableBtn) stableBtn.onclick = restAtStables;
       } else if (state.settlementView === "tavern") {
         wireRosterEdit(app);
-        var offerBtns = app.querySelectorAll('[id^="questHear-"]');
-        for (var qbi = 0; qbi < offerBtns.length; qbi++) {
-          (function (btn) {
-            var qid = btn.id.replace("questHear-", "");
-            btn.onclick = function () { offerQuest(qid); };
-          })(offerBtns[qbi]);
-        }
+        wireTavernBarkeep(app);
+        wireNpcDialog(app);
       } else if (state.settlementView === "shop") {
-        wireShopRow("supplies", buySettlementSupplies, sellSettlementSupplies);
-        wireShopRow("weapon", buySettlementWeapon, sellSettlementWeapon);
-        wireShopRow("healPotion", buySettlementHealPotion, sellSettlementHealPotion);
-        wireShopRow("lifePotion", buySettlementLifePotion, sellSettlementLifePotion);
-        wireShopRow("gem", null, sellSettlementGem);
+        wireSettlementShopPanel(app);
+      } else if (state.settlementView === "keep") {
+        wireKeepInterior(app, town.key);
+        wireNpcDialog(app);
       } else if (state.settlementView === "inventory") {
         wireInventoryScreen(app);
         var qBegin = document.getElementById("questBegin");
@@ -5386,20 +7464,11 @@
         var advBtn = document.getElementById("beginAdventureBtn");
         if (advBtn) advBtn.onclick = function () { beginAdventure(); };
       } else if (state.settlementView === "depart") {
-        var nextDest = nextTrailDestinationFrom(town.key);
-        if (nextDest) {
-          document.getElementById("continueTrailBtn").onclick = function () {
-            state.travelOrigin = town.key;
-            state.travelDestination = nextDest.key;
-            departIllirial();
-          };
+        if (town.key === "new_isil") {
+          wireNewIsilDepart(app);
         } else {
-          document.getElementById("restart").onclick = function () {
-            clearTransitionTimers();
-            state = initialState();
-            assignMissingPartyPortraits();
-            render();
-          };
+          wireWestboundDepart(app);
+          wireEastboundDepart(app);
         }
       }
       return;

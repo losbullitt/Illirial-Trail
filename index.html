@@ -46,25 +46,37 @@
   />
   <meta name="theme-color" content="#1a1520" />
   <meta name="playtest-tracking-endpoint" content="https://ntfy.sh/illirial-trail-playtest-4ec2487796db" />
-  <link rel="stylesheet" href="styles.css?v=28" />
+  <script>
+    (function () {
+      var path = location.pathname || "/";
+      if (/index\.html?$/i.test(path)) path = path.replace(/\/[^/]*$/, "/");
+      else if (!path.endsWith("/")) path = path + "/";
+      var base = document.createElement("base");
+      base.href = path;
+      document.head.appendChild(base);
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css?v=30" />
 </head>
 <body>
   <div class="shell">
     <header class="header">
       <h1>Cantebury Trails <span class="sub">skeleton demo</span></h1>
-      <p class="tagline">Cantebury to New Isil - web prototype v5.4.2</p>
+      <p class="tagline">Cantebury westward to New Isil — web prototype v6.3.0</p>
     </header>
     <main id="app" class="app" aria-live="polite"></main>
     <footer class="footer">
       <span>
         Deploy this folder to any static host (Netlify, Vercel, GitHub Pages, Cloudflare Pages, S3, etc.); all asset paths are relative.
+        Play online: <a href="https://losbullitt.github.io/Illirial-Trail/index.html">GitHub Pages build</a>.
         For local development, run <code>serve.ps1</code> in this folder (or <code>py -3 -m http.server 8080</code> after <code>cd</code> here) and open <code>http://127.0.0.1:8080/index.html</code>.
         For a PC window (no browser), double-click <code>desktop.bat</code> or run <code>py -3 desktop.py</code> (one-time: <code>py -3 -m pip install pywebview</code>).
       </span>
     </footer>
   </div>
-  <script src="balance-data.js?v=38"></script>
+  <script src="balance-data.js?v=40"></script>
+  <script src="names-data.js?v=1"></script>
   <script src="tracking.js?v=1"></script>
-  <script src="game.js?v=69"></script>
+  <script src="game.js?v=83"></script>
 </body>
 </html>

@@ -1,5 +1,7 @@
 window.ILLIRIAL_BALANCE = {
-  "version": "5.4.2",
+  "version": "6.3.0",
+  "stabilityTargetDays": 100,
+  "finalBossMinDays": 90,
   "source": "chart for game.xlsx",
   "classCreationBonusPoints": 3,
   "hpGrowthTuning": {
@@ -819,5 +821,43 @@ window.ILLIRIAL_BALANCE = {
     1142
   ],
   "maxLevel": 20,
-  "statCap": 50
+  "statCap": 50,
+  "npcDialogues": {
+    "cantebury_governor": {
+      "speaker": "Governor Kew Kumber",
+      "title": "Governor of Cantebury",
+      "portrait": "SK Kew Kumber.jpeg",
+      "sheet": "Dialogue for Kew Kumber",
+      "lines": [
+        "You have my leave to march west. Keep the trade road open, report what you find beyond Hollow Banks, and do not tarry — rumors from New Isil grow worse each week.",
+        "The westward march is not a parade route. If your caravan straggles or loots hamlets, you answer to me before you answer to any crown in Isil.",
+        "New Isil may glitter, but the road thins brave folk every season. Send word when you have something true to report — not rumor, not tavern poetry.",
+        "You return with fewer boots on the ground and more names for the memorial wall. I will not pretend that is victory, but it is honest work.",
+        "Every soul you leave in New Isil is a nail in the settlement we are trying to raise. See that they are fit citizens, not refugees with swords."
+      ]
+    },
+    "cantebury_chancellor": {
+      "speaker": "Chancellor Aldric Venn",
+      "title": "Chancellor",
+      "portrait": "",
+      "sheet": "Dialogue for Kew Kumber",
+      "lines": [
+        "Petitions stack on the governor's desk. If you need requisition papers or a seal for the garrison at Gustaf, see me before you depart — I can spare an hour, not a day.",
+        "I track manifests, not miracles. Tell me who you are leaving in New Isil and I will open a ledger page for them.",
+        "The crown quartermaster posts prices; I post accountability. Bring receipts, not heroic sighs.",
+        "If you loop back from the bay with another caravan, bring the previous ledger's copy. We reconcile settlers before we reconcile supplies.",
+        "Stability is arithmetic, Captain — mouths fed, walls manned, ledgers balanced. The governor wins speeches; I win seasons."
+      ]
+    }
+  },
+  "equipmentCatalog": [
+    { "id": "travel_knife", "slot": "weapon", "label": "Travel knife", "dmgBonus": 1 },
+    { "id": "soldier_blade", "slot": "weapon", "label": "Soldier's blade", "dmgBonus": 2 },
+    { "id": "leather_coat", "slot": "armor", "label": "Leather coat", "hpBonus": 1 },
+    { "id": "chain_shirt", "slot": "armor", "label": "Chain shirt", "hpBonus": 2 },
+    { "id": "lucky_ring", "slot": "finger", "label": "Lucky ring", "luckBonus": 1 },
+    { "id": "seal_ring", "slot": "finger", "label": "Signet ring", "goldBonus": 0 },
+    { "id": "travel_charm", "slot": "neck", "label": "Road charm", "wardBonus": 1 },
+    { "id": "holy_medallion", "slot": "neck", "label": "Holy medallion", "healBonus": 1 }
+  ]
 };

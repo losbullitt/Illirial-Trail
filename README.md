@@ -2,6 +2,8 @@ This is a demo using cursor to build an Oregon Trail styled game.
 
 It is a web version for now but will update in the future for a standalone setup. 
 
+**Player manual:** See [`PLAYER_MANUAL.md`](PLAYER_MANUAL.md) for an introduction, how to play, and FAQs (v6.3.0).
+
 
 ## Lightweight playtest tracking
 

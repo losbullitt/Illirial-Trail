@@ -941,7 +941,7 @@ code {
 .combat-stage {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0;
   margin-top: 0.25rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--border);
@@ -949,8 +949,41 @@ code {
   isolation: isolate;
 }
 
+.combat-enemy-band {
+  flex: 0 0 auto;
+  margin-bottom: 1rem;
+  padding: 0.65rem 0.55rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #5a3030;
+  background: linear-gradient(180deg, rgba(58, 34, 32, 0.55) 0%, rgba(18, 13, 12, 0.35) 100%);
+}
+
+.combat-enemy-band-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #e8b4b4;
+}
+
 .combat-stage .foe-row {
   margin-bottom: 0;
+}
+
+.combat-party-band {
+  flex: 0 0 auto;
+  padding-top: 0.15rem;
+  border-top: 1px dashed var(--border);
+}
+
+.combat-party-band-title {
+  margin: 0.55rem 0 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .combat-stage .battle-grid {
@@ -1000,12 +1033,25 @@ code {
 }
 
 .foe-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.2rem;
   flex: 1 1 7.5rem;
   max-width: 10rem;
+  min-height: 0;
   padding: 0.45rem 0.5rem;
   border-radius: 8px;
   border: 1px solid #5a3030;
   background: linear-gradient(160deg, #3a2220 0%, #221510 100%);
+}
+
+.foe-card .hpbar {
+  flex: none;
+  display: block;
+  width: 100%;
+  max-width: none;
+  margin: 0.1rem 0 0.05rem;
 }
 
 .foe-name {
@@ -1683,4 +1729,25 @@ button.foe-card:disabled {
 .foe-card.foe-card-selected {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.4);
+}
+
+
+.campaign-save-bar {
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.95rem;
+  background: #241c14;
+  border: 1px solid #4a3d2a;
+  border-radius: 10px;
+}
+
+.campaign-save-summary {
+  margin: 0 0 0.55rem;
+  font-size: 0.92rem;
+  color: #c9baa3;
+}
+
+.campaign-save-actions {
+  margin: 0;
+  gap: 0.45rem;
+  flex-wrap: wrap;
 }

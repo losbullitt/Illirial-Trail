@@ -157,8 +157,11 @@
   var RUINS_QUIET_DAY_CHANCE = 0.06;
   var SKELETON_FIGHT_CHANCE = 0.45;
   var RUINS_GOLD_FIND_CHANCE = 0.25;
-  var RUINS_GOLD_MIN = 8;
-  var RUINS_GOLD_MAX = 20;
+  var RUINS_GOLD_MIN = 4;
+  var RUINS_GOLD_MAX = 10;
+  var RUINS_GEM_FIND_CHANCE = 0.075;
+  /** Ruins completion + per-room loot scaled to 50% of pre-6.3.1 values. */
+  var RUINS_LOOT_MULTIPLIER = 0.5;
   /** Ruins grid minimap — off until shrine navigation is playable. */
   var RUINS_SHOW_MINIMAP = false;
   var WEAPON_TIERS = [
@@ -187,8 +190,9 @@
     }
     return null;
   }
-  var STABILITY_TARGET_DAYS = (BALANCE_DATA && BALANCE_DATA.stabilityTargetDays) || 100;
-  var FINAL_BOSS_MIN_DAYS = (BALANCE_DATA && BALANCE_DATA.finalBossMinDays) || 90;
+  var STABILITY_TARGET_DAYS = (BALANCE_DATA && BALANCE_DATA.stabilityTargetDays) || 300;
+  var FINAL_BOSS_MIN_DAYS = (BALANCE_DATA && BALANCE_DATA.finalBossMinDays) || 270;
+  var SETTLER_REJOIN_COOLDOWN_DAYS = (BALANCE_DATA && BALANCE_DATA.settlerRejoinCooldownDays) || 365;
   var NEW_ISIL_BASE_POPULATION = 12;
   var EQUIPMENT_SLOTS = ["weapon", "armor", "finger", "neck"];
   var EQUIPMENT_SLOT_LABELS = { weapon: "Weapon", armor: "Armor", finger: "Finger", neck: "Neck" };
@@ -320,6 +324,23 @@
 
   function rollStatGains(role) {
     var p = statGainProfile(role);
+    if (role === "priest") {
+      var priestGains = {
+        strength: 0,
+        intelligence: rollWeightedStatGain(p.intelligence || 0),
+        stamina: 0,
+        luck: 0,
+      };
+      var secondaryRoll = Math.random();
+      if (secondaryRoll < 0.55 && (p.stamina || 0) > 0) {
+        priestGains.stamina = rollWeightedStatGain(Math.min(1, p.stamina));
+      } else if (secondaryRoll < 0.8 && (p.luck || 0) > 0) {
+        priestGains.luck = rollWeightedStatGain(Math.min(1, p.luck));
+      } else if ((p.strength || 0) > 0) {
+        priestGains.strength = rollWeightedStatGain(Math.min(1, p.strength));
+      }
+      return priestGains;
+    }
     return {
       strength: rollWeightedStatGain(p.strength || 0),
       intelligence: rollWeightedStatGain(p.intelligence || 0),
@@ -328,7 +349,46 @@
     };
   }
   var MAX_SUPPLIES = 30;
-  var RUINS_ROOM_MAX = 20;
+  var DEFAULT_RUIN_SITE_TYPES = {
+    shrine: {
+      label: "Shrine",
+      splashTitle: "Roadside shrine",
+      splashSub: "Weathered stone and faded ward-symbols",
+      roomMin: 1,
+      roomMax: 8,
+      weight: 40,
+      unit: "room",
+    },
+    temple: {
+      label: "Temple",
+      splashTitle: "Fallen temple",
+      splashSub: "Collapsed vaults and broken idol halls",
+      roomMin: 2,
+      roomMax: 10,
+      weight: 25,
+      unit: "room",
+    },
+    ruined_castle: {
+      label: "Ruined castle",
+      splashTitle: "Ruined castle",
+      splashSub: "Broken towers and gutted great halls",
+      roomMin: 5,
+      roomMax: 15,
+      weight: 10,
+      unit: "room",
+    },
+    abandoned_town: {
+      label: "Abandoned town",
+      splashTitle: "Abandoned town",
+      splashSub: "Empty lanes and fire-blackened homes — not worth rebuilding",
+      roomMin: 3,
+      roomMax: 5,
+      weight: 25,
+      unit: "house",
+      unitPlural: "houses",
+    },
+  };
+  var RUIN_SITE_TYPES = (BALANCE_DATA && BALANCE_DATA.ruinSiteTypes) || DEFAULT_RUIN_SITE_TYPES;
   var BALANCE_MONSTERS = (BALANCE_DATA && BALANCE_DATA.monsters ? BALANCE_DATA.monsters : []).filter(function (m) {
     return m && m.name;
   });
@@ -625,9 +685,58 @@
     return 2;
   }
 
-  function rollRuinsRoomCount() {
-    if (Math.random() < 0.8) return rollInt(1, 6);
-    return rollInt(7, RUINS_ROOM_MAX);
+  function ruinSiteDef(typeKey) {
+    return RUIN_SITE_TYPES[typeKey] || RUIN_SITE_TYPES.shrine || DEFAULT_RUIN_SITE_TYPES.shrine;
+  }
+
+  function ruinsUnitLabel(typeKey, count) {
+    var def = ruinSiteDef(typeKey);
+    var singular = def.unit || "room";
+    if (count === 1) return singular;
+    if (def.unitPlural) return def.unitPlural;
+    return singular + "s";
+  }
+
+  function rollRuinsSiteType() {
+    var keys = [];
+    var total = 0;
+    for (var key in RUIN_SITE_TYPES) {
+      if (!RUIN_SITE_TYPES.hasOwnProperty(key)) continue;
+      var weight = Math.max(0, parseInt(RUIN_SITE_TYPES[key].weight, 10) || 0);
+      if (weight <= 0) continue;
+      keys.push(key);
+      total += weight;
+    }
+    if (!keys.length) return "shrine";
+    if (total <= 0) return keys[rollInt(0, keys.length - 1)];
+    var roll = Math.random() * total;
+    var acc = 0;
+    var i;
+    for (i = 0; i < keys.length; i++) {
+      acc += Math.max(0, parseInt(RUIN_SITE_TYPES[keys[i]].weight, 10) || 0);
+      if (roll < acc) return keys[i];
+    }
+    return keys[keys.length - 1];
+  }
+
+  function rollRuinsRoomCountForType(typeKey) {
+    var def = ruinSiteDef(typeKey);
+    var min = Math.max(1, parseInt(def.roomMin, 10) || 1);
+    var max = Math.max(min, parseInt(def.roomMax, 10) || min);
+    return rollInt(min, max);
+  }
+
+  function currentRuinsSiteType() {
+    return (state && state.ruinsType) || "shrine";
+  }
+
+  function ruinsSiteLabel(typeKey) {
+    return ruinSiteDef(typeKey).label || "Ruins";
+  }
+
+  function ruinsExploreActionLabel(typeKey) {
+    var unit = ruinSiteDef(typeKey).unit || "room";
+    return unit === "house" ? "Search current house" : "Explore current room";
   }
 
   function initRuinsMap() {
@@ -910,34 +1019,23 @@
 
   function eastboundRevisitTargets(fromTownKey) {
     if (fromTownKey === "cantebury") return [];
-    var out = [];
     var prev = pathPreviousTown(fromTownKey);
-    var path = state.trailLowerFork && state.trailUpperFork ? canonicalWestwardPath() : state.trailPath || ["cantebury"];
-    var fromIdx = path.indexOf(fromTownKey);
-    var visited = state.visitedTrailTowns || [];
-    var i;
-    var key;
-    if (prev && out.indexOf(prev) < 0) out.push(prev);
-    for (i = path.length - 1; i >= 0; i--) {
-      key = path[i];
-      if (key === fromTownKey || key === "cantebury") continue;
-      if (fromIdx >= 0 && i >= fromIdx) continue;
-      if (visited.indexOf(key) >= 0 && out.indexOf(key) < 0) out.push(key);
+    return prev ? [prev] : [];
+  }
+
+  function totalEastboundDaysToCantebury(fromTownKey) {
+    if (!fromTownKey || fromTownKey === "cantebury") return 0;
+    var sum = 0;
+    var key = fromTownKey;
+    var guard = 0;
+    while (key && key !== "cantebury" && guard < 16) {
+      var prev = pathPreviousTown(key);
+      if (!prev) break;
+      sum += resolveLegRouteDays(key, prev);
+      key = prev;
+      guard++;
     }
-    var fromStage = trailTownStage(fromTownKey);
-    for (i = 0; i < visited.length; i++) {
-      key = visited[i];
-      if (key === fromTownKey || out.indexOf(key) >= 0) continue;
-      if (trailTownStage(key) < fromStage && out.indexOf(key) < 0) out.push(key);
-    }
-    out.sort(function (a, b) {
-      var pa = path.indexOf(a);
-      var pb = path.indexOf(b);
-      if (pa >= 0 && pb >= 0) return pb - pa;
-      return trailTownStage(b) - trailTownStage(a);
-    });
-    if (out.indexOf("cantebury") < 0 && fromTownKey !== "cantebury") out.push("cantebury");
-    return out;
+    return Math.max(0, sum);
   }
 
   function trailLegIndex(originKey) {
@@ -982,11 +1080,12 @@
   function memberMaxMp(member) {
     if (!member) return 25;
     if (NON_SPELLCASTER_ROLES[member.role]) return 25;
+    var mpPerInt = member.role === "priest" ? 3 : 5;
     if (member.stats && typeof member.stats.intelligence === "number") {
-      return 25 + Math.max(0, member.stats.intelligence - 4) * 5;
+      return 25 + Math.max(0, member.stats.intelligence - 4) * mpPerInt;
     }
     var bonusInt = (member.bonus && member.bonus.intelligence) || 0;
-    return 25 + bonusInt * 5;
+    return 25 + bonusInt * mpPerInt;
   }
 
   function memberBaseMaxHp(member) {
@@ -1162,8 +1261,10 @@
 
   function beginRunWithLeader(profile) {
     var lead = cloneLeaderProfile(profile);
+    var continuingCampaign = !!state.loopLeaderSetup;
     state.leaderProfile = lead;
     state.newLeaderDraft = null;
+    state.loopLeaderSetup = false;
 
     if (lead.source === "preset") {
       var presetRoles = rollRandomPartyRoles(PARTY_MAX);
@@ -1258,16 +1359,42 @@
     state.illiriView = "castle";
     state.keepView = "hall";
     state.cityView = "shop";
-    state.playthrough = claimPlaythroughNumber();
+    state.onReturnMarch = false;
+    state.settlementTown = null;
+    state.travelOrigin = "cantebury";
+    state.travelDestination = "gustaf";
+    resetTrailPathForWestwardMarch();
+    state.finalBossCleared = false;
+    if (!continuingCampaign) {
+      state.playthrough = claimPlaythroughNumber();
+    }
     state.runId = "run-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
     state.phase = "story_illiri";
-    logLine("Caravan leader ready: <span class=\"hi\">" + lead.name + "</span> (" + roleLabel(lead.role) + ").", "good");
+    replenishCaravanAtCantebury();
+    if (continuingCampaign) {
+      logLine(
+        "Cantebury welcomes a new leader: <span class=\"hi\">" +
+          lead.name +
+          "</span> (" +
+          roleLabel(lead.role) +
+          "). Journey day " +
+          (state.totalDaysElapsed || 0) +
+          " / " +
+          effectiveStabilityTarget() +
+          " continues.",
+        "good"
+      );
+    } else {
+      logLine("Caravan leader ready: <span class=\"hi\">" + lead.name + "</span> (" + roleLabel(lead.role) + ").", "good");
+    }
     trackPlaytest("run_started", {
       leaderRole: lead.role,
       leaderSource: lead.source || "custom",
       partySize: state.party.length,
       playthrough: state.playthrough,
       version: GAME_VERSION,
+      continuingCampaign: continuingCampaign,
+      journeyDay: state.totalDaysElapsed || 0,
     });
   }
 
@@ -1295,6 +1422,7 @@
       legDaysByRoute: {},
       encounterChance: ENCOUNTER_BASE,
       ruinsDiscovered: false,
+      ruinsType: null,
       ruinsTravelDay: null,
       ruinsSearched: false,
       ruinsRoomsTotal: 0,
@@ -1339,6 +1467,8 @@
       elaraDialogShown: false,
       totalDaysElapsed: 0,
       caravanLoops: 0,
+      loopLeaderSetup: false,
+      settledCompanions: [],
       newIsilSettlers: [],
       newIsilGrowth: { population: NEW_ISIL_BASE_POPULATION },
       gearStash: ["travel_knife", "leather_coat", "lucky_ring", "travel_charm"],
@@ -1356,6 +1486,277 @@
   var HEADSTONE_STORAGE_BACKUP_KEY = "illirial.headstones.backup";
   var HEADSTONE_RELEASE_PHASE = "alpha";
   var PLAYTHROUGH_COUNTER_KEY = "illirial.playthrough.next";
+
+  var CAMPAIGN_SAVE_KEY = "illirial.campaignSave";
+  var CAMPAIGN_SAVE_FORMAT = 1;
+
+  function campaignStorageAvailable() {
+    try {
+      return typeof localStorage !== "undefined";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function campaignLocationLabelForSave(savedState) {
+    var s = savedState || state;
+    if (!s) return "Unknown";
+    if (s.phase === "story_illiri") return locationLabel("cantebury");
+    if (s.phase === "settlement" && s.settlementTown) return locationLabel(s.settlementTown);
+    if (s.phase === "travel") {
+      return "Road: " + locationLabel(s.travelOrigin || "cantebury") + " \u2192 " + locationLabel(s.travelDestination || "gustaf");
+    }
+    if (s.phase === "new_game_setup") return "Cantebury (leader setup)";
+    if (s.phase === "gameover") return s.gameoverMode === "win" ? "Campaign complete" : "Game over";
+    if (s.phase === "adventure" && s.adventure && s.adventure.town) return "Adventure near " + locationLabel(s.adventure.town);
+    return s.phase || "In progress";
+  }
+
+  function readCampaignSaveRecord() {
+    if (!campaignStorageAvailable()) return null;
+    try {
+      var raw = localStorage.getItem(CAMPAIGN_SAVE_KEY);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      if (!parsed || parsed.format !== CAMPAIGN_SAVE_FORMAT || !parsed.state) return null;
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function hasCampaignSave() {
+    return !!readCampaignSaveRecord();
+  }
+
+  function campaignSaveSummaryText(record) {
+    var rec = record || readCampaignSaveRecord();
+    if (!rec || !rec.state) return "";
+    var s = rec.state;
+    var when = rec.savedAt ? new Date(rec.savedAt).toLocaleString() : "unknown time";
+    return (
+      "Journey day " +
+      (s.totalDaysElapsed || 0) +
+      " \u00b7 " +
+      campaignLocationLabelForSave(s) +
+      " \u00b7 saved " +
+      when
+    );
+  }
+
+  function canSaveCampaignProgress() {
+    if (!campaignStorageAvailable()) return false;
+    if (state.phase === "gameover") return false;
+    if (state.phase === "new_character") return false;
+    return true;
+  }
+
+  function buildCampaignSavePayload() {
+    clearTransitionTimers();
+    var snap = JSON.parse(JSON.stringify(state));
+    snap.transition = null;
+    snap.confirmDialog = null;
+    snap.postBattleDialog = null;
+    snap.elaraDialog = null;
+    snap.questDialog = null;
+    snap.npcDialog = null;
+    return {
+      format: CAMPAIGN_SAVE_FORMAT,
+      gameVersion: GAME_VERSION,
+      savedAt: Date.now(),
+      state: snap,
+    };
+  }
+
+  function saveCampaignProgress() {
+    if (!canSaveCampaignProgress()) {
+      logLine("Cannot save progress right now.", "bad");
+      render();
+      return false;
+    }
+    try {
+      var payload = buildCampaignSavePayload();
+      localStorage.setItem(CAMPAIGN_SAVE_KEY, JSON.stringify(payload));
+      logLine(
+        "<span class=\"hi\">Progress saved.</span> " +
+          campaignSaveSummaryText(payload) +
+          " (stored in this browser).",
+        "good"
+      );
+      trackPlaytest("campaign_saved", {
+        day: state.totalDaysElapsed || 0,
+        phase: state.phase,
+        version: GAME_VERSION,
+      });
+      render();
+      return true;
+    } catch (e) {
+      logLine("Save failed \u2014 browser storage may be full or disabled.", "bad");
+      render();
+      return false;
+    }
+  }
+
+  function restoreStateFromSave(savedState) {
+    if (!savedState || typeof savedState !== "object") return false;
+    clearTransitionTimers();
+    state = savedState;
+    state.transition = null;
+    state.confirmDialog = null;
+    state.postBattleDialog = null;
+    state.elaraDialog = null;
+    state.questDialog = null;
+    state.npcDialog = null;
+    if (!state.log || !state.log.length) state.log = [];
+    if (!state.settledCompanions) state.settledCompanions = [];
+    if (!state.gearStash) state.gearStash = [];
+    ensureSettledCompanions();
+    ensureHeadstonesState();
+    saveHeadstonesToStorage();
+    if (state.party && state.party.length) {
+      if (!state.inventoryFocusId || !teamMemberById(state.inventoryFocusId)) {
+        state.inventoryFocusId = state.party[0].id;
+      }
+      if (!state.inventoryHealTargetId || !teamMemberById(state.inventoryHealTargetId)) {
+        state.inventoryHealTargetId = state.party[0].id;
+      }
+    }
+    return true;
+  }
+
+  function loadCampaignProgress(skipConfirm) {
+    var record = readCampaignSaveRecord();
+    if (!record || !record.state) {
+      logLine("No saved campaign found in this browser.", "bad");
+      render();
+      return false;
+    }
+    var hasCurrentRun =
+      state.phase !== "new_game_setup" ||
+      (state.totalDaysElapsed || 0) > 0 ||
+      (state.party && state.party.length > 1) ||
+      state.leaderProfile;
+    if (hasCurrentRun && !skipConfirm) {
+      state.confirmDialog = {
+        kind: "load_campaign",
+        title: "Load saved campaign?",
+        message:
+          "Replace the current run with your save?<br><span class=\"hint\">" +
+          escapeHtml(campaignSaveSummaryText(record)) +
+          "</span>" +
+          (record.gameVersion && record.gameVersion !== GAME_VERSION
+            ? "<br><span class=\"hint\">Save was written on v" +
+              escapeHtml(record.gameVersion) +
+              "; current build is v" +
+              escapeHtml(GAME_VERSION) +
+              ".</span>"
+            : ""),
+        confirmLabel: "Load save",
+        cancelLabel: "Cancel",
+        onConfirm: "executeLoadCampaign",
+      };
+      render();
+      return false;
+    }
+    if (!restoreStateFromSave(record.state)) {
+      logLine("Save file could not be restored.", "bad");
+      render();
+      return false;
+    }
+    logLine("<span class=\"hi\">Saved campaign loaded.</span> " + campaignSaveSummaryText(record), "good");
+    if (record.gameVersion && record.gameVersion !== GAME_VERSION) {
+      logLine("Note: save came from v" + record.gameVersion + " (now running v" + GAME_VERSION + ").", "hi");
+    }
+    trackPlaytest("campaign_loaded", {
+      day: state.totalDaysElapsed || 0,
+      phase: state.phase,
+      saveVersion: record.gameVersion,
+      version: GAME_VERSION,
+    });
+    render();
+    return true;
+  }
+
+  function clearCampaignSave() {
+    if (!campaignStorageAvailable()) return;
+    try {
+      localStorage.removeItem(CAMPAIGN_SAVE_KEY);
+    } catch (e) { /* ignore */ }
+  }
+
+  function startNewCampaignWipeSave() {
+    clearTransitionTimers();
+    clearCampaignSave();
+    state = initialState();
+    logLine("New campaign started. Previous save cleared from this browser.", "hi");
+    render();
+  }
+
+  function campaignSaveControlsHtml() {
+    var saveDisabled = canSaveCampaignProgress() ? "" : " disabled";
+    var loadDisabled = hasCampaignSave() ? "" : " disabled";
+    var summary = hasCampaignSave()
+      ? '<p class="campaign-save-summary">' + escapeHtml(campaignSaveSummaryText()) + "</p>"
+      : '<p class="campaign-save-summary hint">No save in this browser yet.</p>';
+    return (
+      summary +
+      '<div class="campaign-save-actions actions">' +
+      '<button type="button" class="primary" id="campaignSaveBtn"' +
+      saveDisabled +
+      ">Save progress</button>" +
+      '<button type="button" id="campaignLoadBtn"' +
+      loadDisabled +
+      ">Load save</button>" +
+      '<button type="button" id="campaignNewBtn">New campaign</button>' +
+      "</div>"
+    );
+  }
+
+  function updateCampaignSaveBar() {
+    var bar = document.getElementById("campaignSaveBar");
+    if (!bar) return;
+    bar.innerHTML = campaignSaveControlsHtml();
+    wireCampaignSaveControls(bar);
+  }
+
+  function ensureCampaignSaveBar() {
+    var bar = document.getElementById("campaignSaveBar");
+    if (bar) return bar;
+    var app = document.getElementById("app");
+    if (!app || !app.parentNode) return null;
+    bar = document.createElement("div");
+    bar.id = "campaignSaveBar";
+    bar.className = "campaign-save-bar";
+    bar.setAttribute("aria-label", "Campaign save controls");
+    app.parentNode.insertBefore(bar, app);
+    return bar;
+  }
+
+  function wireCampaignSaveControls(root) {
+    if (!root) return;
+    var saveBtn = root.querySelector("#campaignSaveBtn");
+    if (saveBtn) saveBtn.onclick = function () { saveCampaignProgress(); };
+    var loadBtn = root.querySelector("#campaignLoadBtn");
+    if (loadBtn) loadBtn.onclick = function () { loadCampaignProgress(false); };
+    var newBtn = root.querySelector("#campaignNewBtn");
+    if (newBtn) {
+      newBtn.onclick = function () {
+        state.confirmDialog = {
+          kind: "new_campaign",
+          title: "Start a new campaign?",
+          message:
+            "This clears your current run" +
+            (hasCampaignSave() ? " and deletes the saved progress in this browser" : "") +
+            ".",
+          confirmLabel: "New campaign",
+          cancelLabel: "Cancel",
+          onConfirm: "executeNewCampaign",
+        };
+        render();
+      };
+    }
+  }
+
 
   function claimPlaythroughNumber() {
     var n = 1;
@@ -1836,7 +2237,11 @@
     var excess = Math.max(0, intel - 4);
     var level = member.level || 1;
     var perPoint = level >= 10 ? 1 : 0.5;
-    return Math.max(0, Math.floor(excess * perPoint));
+    var bonus = Math.max(0, Math.floor(excess * perPoint));
+    if (member.role === "priest") {
+      return Math.min(bonus, level >= 10 ? 5 : 4);
+    }
+    return bonus;
   }
 
   function spellDamage(member) {
@@ -1890,7 +2295,7 @@
   function rollWeaponLoot(fromRuins) {
     var mercs = mercenaryCount(state.party);
     var gradeBonus = fromRuins ? 1 + mercs : mercs;
-    var rolls = fromRuins ? 3 : 1;
+    var rolls = fromRuins ? Math.max(1, Math.floor(3 * RUINS_LOOT_MULTIPLIER)) : 1;
     for (var i = 0; i < rolls; i++) {
       var r = Math.random();
       var tierIdx = 0;
@@ -1908,8 +2313,8 @@
 
   function resolveRuinsSearchRewards() {
     var mult = lootMultiplier(state.party);
-    var goldGain = roadGoldBonus(Math.floor(10 * mult));
-    var gemGain = Math.floor(10 * mult);
+    var goldGain = roadGoldBonus(Math.floor(10 * mult * RUINS_LOOT_MULTIPLIER));
+    var gemGain = Math.floor(10 * mult * RUINS_LOOT_MULTIPLIER);
     state.gold += goldGain;
     state.gems += gemGain;
     rollWeaponLoot(true);
@@ -2055,8 +2460,54 @@
     }, RESUME_TRAVEL_MS);
   }
 
+  function ensureSettledCompanions() {
+    if (!state.settledCompanions) state.settledCompanions = [];
+    if (state.newIsilSettlers && state.newIsilSettlers.length) {
+      var legacy = state.newIsilSettlers;
+      var li;
+      for (li = 0; li < legacy.length; li++) {
+        var legacySettler = legacy[li];
+        if (!legacySettler.settledTown) legacySettler.settledTown = "new_isil";
+        normalizeSettlerRecord(legacySettler);
+        state.settledCompanions.push(legacySettler);
+      }
+      state.newIsilSettlers = [];
+    }
+  }
+
+  function normalizeSettlerRecord(settler) {
+    if (!settler) return settler;
+    if (!settler.settledTown) settler.settledTown = "new_isil";
+    if (typeof settler.settledOnDay !== "number") settler.settledOnDay = 0;
+    if (typeof settler.rejoinEligibleOnDay !== "number") {
+      settler.rejoinEligibleOnDay = settler.settledOnDay + SETTLER_REJOIN_COOLDOWN_DAYS;
+    }
+    if (settler.canRejoin === false && !settler.rejoined) settler.rejoined = true;
+    if (settler.rejoined) settler.canRejoin = false;
+    return settler;
+  }
+
+  function settlerRejoinDaysRemaining(settler) {
+    normalizeSettlerRecord(settler);
+    return Math.max(0, settler.rejoinEligibleOnDay - (state.totalDaysElapsed || 0));
+  }
+
+  function settlerCanRejoin(settler) {
+    if (!settler || settler.rejoined) return false;
+    normalizeSettlerRecord(settler);
+    return (state.totalDaysElapsed || 0) >= settler.rejoinEligibleOnDay;
+  }
+
+  function settlersAtTown(townKey, includeRejoined) {
+    ensureSettledCompanions();
+    return state.settledCompanions.filter(function (s) {
+      if (!s || s.settledTown !== townKey) return false;
+      return includeRejoined ? true : !s.rejoined;
+    });
+  }
+
   function newIsilSettlerCount() {
-    return state && state.newIsilSettlers ? state.newIsilSettlers.length : 0;
+    return settlersAtTown("new_isil", false).length;
   }
 
   function syncNewIsilPopulation() {
@@ -2255,20 +2706,8 @@
     }, ARRIVE_CITY_MS);
   }
 
-  function settleMemberAtNewIsil(memberId) {
-    var living = state.party.filter(function (m) {
-      return m && m.hp > 0 && !m.permadead;
-    });
-    if (living.length <= 1) {
-      logLine("At least one companion must lead the caravan eastbound back to Cantebury.", "bad");
-      render();
-      return;
-    }
-    var member = null;
-    for (var i = 0; i < state.party.length; i++) {
-      if (state.party[i] && state.party[i].id === memberId) member = state.party[i];
-    }
-    if (!member || member.hp <= 0 || member.permadead) return;
+  function settleMemberAtTown(member, townKey) {
+    if (!member || member.hp <= 0 || member.permadead) return false;
     ensureMemberEquipment(member);
     var slot;
     for (var s = 0; s < EQUIPMENT_SLOTS.length; s++) {
@@ -2276,24 +2715,138 @@
       if (member.equipment[slot]) addToGearStash(member.equipment[slot]);
       member.equipment[slot] = null;
     }
-    state.newIsilSettlers.push({
+    ensureSettledCompanions();
+    var settledDay = state.totalDaysElapsed || 0;
+    var town = destinationForKey(townKey || "new_isil");
+    state.settledCompanions.push({
       id: member.id,
       name: member.name,
       role: member.role,
-      settledOnDay: state.totalDaysElapsed || 0,
+      settledOnDay: settledDay,
+      settledTown: town.key,
+      rejoinEligibleOnDay: settledDay + SETTLER_REJOIN_COOLDOWN_DAYS,
+      rejoined: false,
       loop: state.caravanLoops || 0,
       stats: cloneStats(member.stats || baseStatsForRole(member.role)),
       bonus: member.bonus ? cloneStats(member.bonus) : null,
       headshot: member.headshot || "",
       gender: member.gender || "",
-      canRejoin: true,
     });
     state.party = state.party.filter(function (m) {
-      return m && m.id !== memberId;
+      return m && m.id !== member.id;
     });
     syncNewIsilPopulation();
-    logLine(member.name + " settles in New Isil to begin a new life.", "good");
+    logLine(
+      member.name +
+        " settles in " +
+        town.label +
+        ". They may rejoin the caravan after one year on the road (journey day " +
+        (settledDay + SETTLER_REJOIN_COOLDOWN_DAYS) +
+        ").",
+      "good"
+    );
+    return true;
+  }
+
+  function settleMemberIntoNewIsil(member) {
+    return settleMemberAtTown(member, "new_isil");
+  }
+
+  function livingPartyMembers() {
+    return state.party.filter(function (m) {
+      return m && m.hp > 0 && !m.permadead;
+    });
+  }
+
+  function transitionToCanteburyAfterFullSettlement() {
+    clearTransitionTimers();
+    syncNewIsilPopulation();
+    trackPlaytest("caravan_loop_settled", {
+      day: state.totalDaysElapsed || 0,
+      caravanLoop: (state.caravanLoops || 0) + 1,
+      settlers: newIsilSettlerCount(),
+    });
+    state.caravanLoops = (state.caravanLoops || 0) + 1;
+    state.party = [];
+    state.partyIdSeq = 0;
+    state.leaderProfile = null;
+    state.newLeaderDraft = null;
+    state.guest = null;
+    state.onReturnMarch = false;
+    state.settlementTown = null;
+    state.settlementView = "church";
+    state.combat = null;
+    state.pendingEncounter = null;
+    state.adventure = null;
+    state.quest = null;
+    state.npcDialog = null;
+    state.finalBossCleared = false;
+    resetTrailPathForWestwardMarch();
+    state.travelOrigin = "cantebury";
+    state.travelDestination = "gustaf";
+    state.travelDay = 0;
+    state.inventoryFocusId = null;
+    state.inventoryHealTargetId = null;
+    state.inventoryDetailOpen = false;
+    state.travelInventoryOpen = false;
+    state.loopLeaderSetup = true;
+    internPendingHeadstones();
+    replenishCaravanAtCantebury();
+    logLine(
+      "<span class=\"hi\">New Isil:</span> every companion has settled. Cantebury will send a new leader west — journey day " +
+        (state.totalDaysElapsed || 0) +
+        " / " +
+        effectiveStabilityTarget() +
+        " continues (loop " +
+        state.caravanLoops +
+        ").",
+      "good"
+    );
+    state.phase = "new_game_setup";
+    state.transition = { kind: "arrive", label: "Cantebury" };
     render();
+    scheduleTransition(function () {
+      state.transition = null;
+      render();
+    }, ARRIVE_CITY_MS);
+  }
+
+  function settleMemberAtTownId(memberId, townKey) {
+    if (state.phase !== "settlement" || state.settlementTown !== townKey) return;
+    var living = livingPartyMembers();
+    if (living.length <= 1 && townKey !== "new_isil") {
+      logLine("At least one companion must stay with the caravan.", "bad");
+      render();
+      return;
+    }
+    var member = null;
+    for (var i = 0; i < state.party.length; i++) {
+      if (state.party[i] && state.party[i].id === memberId) member = state.party[i];
+    }
+    if (!settleMemberAtTown(member, townKey)) return;
+    if (townKey === "new_isil" && livingPartyMembers().length === 0) {
+      transitionToCanteburyAfterFullSettlement();
+      return;
+    }
+    render();
+  }
+
+  function settleMemberAtNewIsil(memberId) {
+    settleMemberAtTownId(memberId, "new_isil");
+  }
+
+  function settleAllPartyAtNewIsil() {
+    if (state.phase !== "settlement" || state.settlementTown !== "new_isil") return;
+    var living = livingPartyMembers().slice();
+    if (!living.length) {
+      logLine("No living companions remain to settle.", "bad");
+      render();
+      return;
+    }
+    for (var i = 0; i < living.length; i++) {
+      settleMemberIntoNewIsil(living[i]);
+    }
+    transitionToCanteburyAfterFullSettlement();
   }
 
   function applyPermanentStatPenalty(member, fraction) {
@@ -2325,13 +2878,35 @@
       render();
       return;
     }
+    ensureSettledCompanions();
     var settler = null;
-    var settlers = state.newIsilSettlers || [];
     var i;
-    for (i = 0; i < settlers.length; i++) {
-      if (settlers[i].id === settlerId) settler = settlers[i];
+    for (i = 0; i < state.settledCompanions.length; i++) {
+      if (state.settledCompanions[i].id === settlerId) settler = state.settledCompanions[i];
     }
-    if (!settler || !settler.canRejoin) return;
+    if (!settler || settler.rejoined) return;
+    if (state.settlementTown !== settler.settledTown) {
+      logLine(
+        settler.name +
+          " settled in " +
+          destinationForKey(settler.settledTown).label +
+          ". Visit that town to invite them back.",
+        "bad"
+      );
+      render();
+      return;
+    }
+    if (!settlerCanRejoin(settler)) {
+      logLine(
+        settler.name +
+          " is still putting down roots — " +
+          settlerRejoinDaysRemaining(settler) +
+          " journey day(s) remain before they can rejoin (−25% stats).",
+        "bad"
+      );
+      render();
+      return;
+    }
     for (i = 0; i < state.party.length; i++) {
       if (state.party[i] && state.party[i].id === settlerId) {
         logLine(settler.name + " is already with the caravan.", "bad");
@@ -2353,10 +2928,11 @@
     });
     applyPermanentStatPenalty(member, 0.25);
     state.party.push(member);
+    settler.rejoined = true;
     settler.canRejoin = false;
     logLine(
       settler.name +
-        " rejoins the march with a permanent toll on body and nerve (−25% stats).",
+        " rejoins the march after their year away, bearing a permanent toll on body and nerve (−25% stats).",
       "hi"
     );
     render();
@@ -2379,8 +2955,15 @@
 
   function departEastboundTo(townKey) {
     if (state.phase !== "settlement") return;
+    var origin = state.settlementTown;
+    var allowed = eastboundRevisitTargets(origin);
+    if (allowed.indexOf(townKey) < 0) {
+      logLine("The trail home is marched one leg at a time — no shortcuts across the route.", "bad");
+      render();
+      return;
+    }
     state.onReturnMarch = true;
-    state.travelOrigin = state.settlementTown;
+    state.travelOrigin = origin;
     state.travelDestination = townKey;
     state.finalBossCleared = true;
     departIllirial();
@@ -2455,7 +3038,15 @@
       if (state.adventure.dir === "out" && state.adventure.daysOut >= state.adventure.maxDays) {
         state.adventure.dir = "back";
         state.adventure.returnDays = state.adventure.daysOut;
-        logLine("You've used all 10 adventuring days. Heading back to " + locationLabel(state.adventure.town) + " (" + state.adventure.returnDays + " day(s) home).", "hi");
+        state.adventure.returnDaysRemaining = state.adventure.daysOut;
+        logLine(
+          "You've used all 10 adventuring days. Heading back to " +
+            locationLabel(state.adventure.town) +
+            " (" +
+            state.adventure.returnDays +
+            " day(s) home, encounters each day).",
+          "hi"
+        );
       }
       queueResumeTravel();
       return;
@@ -2496,7 +3087,18 @@
     state.combat = null;
     state.pendingEncounter = null;
     if (k === "ruins_combat" && state.ruinsRoomsRemaining > 0) {
-      logLine("Ruins room cleared. " + state.ruinsRoomsRemaining + " room(s) remain.", "good");
+      var ruinsUnit = ruinsUnitLabel(currentRuinsSiteType(), state.ruinsRoomsRemaining);
+      logLine(
+        ruinsSiteLabel(currentRuinsSiteType()) +
+          " " +
+          ruinsUnit +
+          " cleared. " +
+          state.ruinsRoomsRemaining +
+          " " +
+          ruinsUnitLabel(currentRuinsSiteType(), state.ruinsRoomsRemaining) +
+          " remain.",
+        "good"
+      );
       state.phase = "action";
       state.pendingEncounter = { kind: "ruins_discovery", label: "Mysterious ruins", foes: [] };
       render();
@@ -2901,13 +3503,23 @@
 
   function applyRuinsDiscoveryEncounter() {
     state.ruinsDiscovered = true;
+    state.ruinsType = rollRuinsSiteType();
     state.ruinsTravelDay = state.travelDay;
-    state.ruinsRoomsTotal = rollRuinsRoomCount();
+    state.ruinsRoomsTotal = rollRuinsRoomCountForType(state.ruinsType);
     state.ruinsRoomsRemaining = state.ruinsRoomsTotal;
     initRuinsMap();
-    state.pendingEncounter = { kind: "ruins_discovery", label: "Mysterious ruins", foes: [] };
+    var siteLabel = ruinsSiteLabel(state.ruinsType);
+    state.pendingEncounter = { kind: "ruins_discovery", label: siteLabel, foes: [] };
     state.phase = "action";
-    logLine("Ruins mapped: " + state.ruinsRoomsTotal + " room(s) detected.", "hi");
+    logLine(
+      siteLabel +
+        " mapped: " +
+        state.ruinsRoomsTotal +
+        " " +
+        ruinsUnitLabel(state.ruinsType, state.ruinsRoomsTotal) +
+        " detected.",
+      "hi"
+    );
   }
 
   function applyTravelDayMpRegen() {
@@ -3034,7 +3646,7 @@
     if (hadEncounter) {
       var t = rollFieldEncounterType();
       if (t === "ruins_discovery") {
-        queueEncounterCutaway("Shrine ruins on the horizon", "Day " + state.travelDay + " - old stonework breaks the skyline", function () {
+        queueEncounterCutaway("Ruins on the horizon", "Day " + state.travelDay + " - old stonework breaks the skyline", function () {
           applyRuinsDiscoveryEncounter();
         });
         return;
@@ -3045,8 +3657,8 @@
       return;
     }
     if (!state.ruinsDiscovered && Math.random() < RUINS_QUIET_DAY_CHANCE) {
-      logLine("Scouts spot a shrine ruin off-road.", "hi");
-      queueEncounterCutaway("Shrine ruins", "Day " + state.travelDay + " - a side path worth a look", function () {
+      logLine("Scouts spot ruins off-road.", "hi");
+      queueEncounterCutaway("Ruins off the trail", "Day " + state.travelDay + " - a side path worth a look", function () {
         applyRuinsDiscoveryEncounter();
       });
       return;
@@ -3150,7 +3762,15 @@
     if (state.adventure.daysOut >= state.adventure.maxDays) {
       state.adventure.dir = "back";
       state.adventure.returnDays = state.adventure.daysOut;
-      logLine("You've used all 10 adventuring days. Heading back to " + locationLabel(state.adventure.town) + " (" + state.adventure.returnDays + " day(s) home).", "hi");
+      state.adventure.returnDaysRemaining = state.adventure.daysOut;
+      logLine(
+        "You've used all 10 adventuring days. Heading back to " +
+          locationLabel(state.adventure.town) +
+          " (" +
+          state.adventure.returnDays +
+          " day(s) home, encounters each day).",
+        "hi"
+      );
     }
     render();
   }
@@ -3167,8 +3787,15 @@
     state.confirmDialog = {
       kind: "adventure_return",
       title: "Return to " + locationLabel(state.adventure.town) + "?",
-      message: "The trip home will cost <b>" + daysCost + " day(s)</b> and <b>" + daysCost + " supply" + (daysCost > 1 ? " bundles" : "") + "</b>. No encounters on the way back.",
-      confirmLabel: "Return home",
+      message:
+        "The march home will take <b>" +
+        daysCost +
+        " day(s)</b> and <b>" +
+        daysCost +
+        " supply" +
+        (daysCost > 1 ? " bundles" : "") +
+        "</b>, one leg per day with encounter rolls — same danger as the outbound trek.",
+      confirmLabel: "Begin return march",
       cancelLabel: "Stay out",
       onConfirm: "executeAdventureReturn",
     };
@@ -3183,36 +3810,87 @@
     }
     var daysCost = state.adventure.dir === "out"
       ? state.adventure.daysOut
-      : state.adventure.returnDays;
+      : state.adventure.returnDaysRemaining != null
+        ? state.adventure.returnDaysRemaining
+        : state.adventure.returnDays;
+    state.confirmDialog = null;
     if (daysCost <= 0) {
-      state.confirmDialog = null;
       endAdventureBackInTown();
       return;
     }
     state.adventure.dir = "back";
-    state.adventure.returnDays = 0;
-    state.confirmDialog = null;
-    for (var i = 0; i < daysCost; i++) {
-      consumeTravelDaySupplies();
-      if (allDead()) {
-        state.gameoverMode = "loss";
-        state.phase = "gameover";
-        logLine("The expedition is lost on the way home.", "bad");
-        render();
-        return;
-      }
-      state.travelDay++;
-      tickJourneyDay();
-      applyTravelDayMpRegen();
-      processDailyDeath();
-      if (state.phase === "gameover") {
-        render();
-        return;
-      }
+    state.adventure.returnDays = daysCost;
+    state.adventure.returnDaysRemaining = daysCost;
+    logLine(
+      "You turn back toward " +
+        locationLabel(state.adventure.town) +
+        " — " +
+        daysCost +
+        " day(s) of road ahead, with encounters each day.",
+      "hi"
+    );
+    render();
+  }
+
+  function advanceAdventureReturnDay() {
+    if (state.phase !== "adventure" || !state.adventure || state.adventure.dir !== "back") return;
+    if (typeof state.adventure.returnDaysRemaining !== "number") {
+      state.adventure.returnDaysRemaining = state.adventure.returnDays || state.adventure.daysOut || 0;
     }
+    var remaining = state.adventure.returnDaysRemaining;
+    if (typeof remaining !== "number" || remaining <= 0) {
+      endAdventureBackInTown();
+      return;
+    }
+    if (state.food <= 0) {
+      logLine("You need supplies to keep marching home.", "bad");
+      render();
+      return;
+    }
+    consumeTravelDaySupplies();
+    if (allDead()) {
+      state.gameoverMode = "loss";
+      state.phase = "gameover";
+      logLine("The expedition is lost on the way home.", "bad");
+      render();
+      return;
+    }
+    state.adventure.returnDaysRemaining = remaining - 1;
+    state.travelDay++;
+    tickJourneyDay();
     state.stableRestDays = 0;
-    logLine("After " + daysCost + " day(s) of march, you return to " + locationLabel(state.adventure.town) + ".", "good");
-    endAdventureBackInTown();
+    applyTravelDayMpRegen();
+    processDailyDeath();
+    if (state.phase === "gameover") {
+      render();
+      return;
+    }
+    var legNum = state.adventure.returnDays - state.adventure.returnDaysRemaining;
+    logLine(
+      "Return march day " +
+        legNum +
+        " of " +
+        state.adventure.returnDays +
+        " toward " +
+        locationLabel(state.adventure.town) +
+        ".",
+      ""
+    );
+    var hadEncounter = rollTravelEncounter();
+    if (hadEncounter) {
+      queueEncounterCutaway("Hostile creatures", "Return march day " + legNum + " — the road home offers no mercy", function () {
+        startTacticalCombat(buildRandomMonsterEncounter("adventure"));
+      });
+      return;
+    }
+    logLine("Quiet march homeward.", "");
+    endOfDayPriestHealing();
+    if (state.adventure.returnDaysRemaining <= 0) {
+      logLine("After " + state.adventure.returnDays + " day(s) on the road, you return to " + locationLabel(state.adventure.town) + ".", "good");
+      endAdventureBackInTown();
+      return;
+    }
+    render();
   }
 
   function cancelConfirmDialog() {
@@ -3573,6 +4251,14 @@
 
   var CONFIRM_HANDLERS = {
     executeAdventureReturn: function () { executeAdventureReturn(); },
+    executeLoadCampaign: function () {
+      state.confirmDialog = null;
+      loadCampaignProgress(true);
+    },
+    executeNewCampaign: function () {
+      state.confirmDialog = null;
+      startNewCampaignWipeSave();
+    },
   };
 
   function campDialogOverlayHtml() {
@@ -4705,35 +5391,26 @@
   function eastboundRevisitDepartHtml(fromTownKey) {
     var targets = eastboundRevisitTargets(fromTownKey);
     if (!targets.length) return "";
-    var reverseKey = pathPreviousTown(fromTownKey);
-    var btns = targets
-      .map(function (key) {
-        var dest = destinationForKey(key);
-        var isPrimary = reverseKey ? key === reverseKey : key === "cantebury";
-        return (
-          '<button type="button"' +
-          (isPrimary ? ' class="primary"' : "") +
-          ' data-eastbound-to="' +
-          key +
-          '">March to ' +
-          dest.label +
-          legDepartDaysHint(fromTownKey, key) +
-          "</button>"
-        );
-      })
-      .join("");
-    var reverseNote =
-      reverseKey && targets[0] === reverseKey
-        ? '<p class="hint">Your outbound route reverses here — next hop on the trail home is <b>' +
-          destinationForKey(reverseKey).label +
-          "</b>.</p>"
-        : "";
+    var reverseKey = targets[0];
+    var dest = destinationForKey(reverseKey);
+    var totalHome = totalEastboundDaysToCantebury(fromTownKey);
     return (
-      '<p class="town-lead">Eastbound — follow your route in reverse or detour to another town you visited.</p>' +
-      reverseNote +
+      '<p class="town-lead">Eastbound — march the trail home <b>one leg at a time</b>, with the same road days and encounter risk as the westward march.</p>' +
+      '<p class="hint">Next hop: <b>' +
+      dest.label +
+      "</b>" +
+      legDepartDaysHint(fromTownKey, reverseKey) +
+      (totalHome > 0
+        ? ". Full return to Cantebury from here: ~<b>" + totalHome + "</b> journey day(s) across all remaining legs."
+        : "") +
+      "</p>" +
       '<div class="actions" style="flex-wrap:wrap;gap:.4rem">' +
-      btns +
-      "</div>"
+      '<button type="button" class="primary" data-eastbound-to="' +
+      reverseKey +
+      '">March to ' +
+      dest.label +
+      legDepartDaysHint(fromTownKey, reverseKey) +
+      "</button></div>"
     );
   }
 
@@ -4829,7 +5506,7 @@
         head +
         '<p class="town-lead">Strike out for an adventuring trek. Up to <b>10 days</b> exploring the wilds near ' +
         locationLabel(townKey) +
-        ". Each day spent outbound rolls an encounter. Turn back any time; the return trip takes the same days you spent (no encounters) and still consumes supplies.</p>" +
+        ". Each day spent outbound rolls an encounter. Turning back marches home one day at a time with the same encounter risk and supply cost.</p>" +
         '<p class="hint">Tip: Make sure your party is rested and stocked. Encounter level scales with how far you have marched west.</p>' +
         '<div class="actions">' +
         '<button type="button" class="primary" id="beginAdventureBtn"' +
@@ -4841,23 +5518,31 @@
     return head + settlementDepartPanelHtml(townKey);
   }
 
-  function newIsilDepartPanelHtml() {
-    syncNewIsilPopulation();
-    var pop = state.newIsilGrowth ? state.newIsilGrowth.population : NEW_ISIL_BASE_POPULATION;
-    var settlers = state.newIsilSettlers || [];
+  function settlerStatusLabel(settler) {
+    if (settler.rejoined) return "rejoined";
+    if (settlerCanRejoin(settler)) return "eligible";
+    return settlerRejoinDaysRemaining(settler) + " day(s) until rejoin";
+  }
+
+  function settlementCompanionPanelHtml(townKey) {
+    ensureSettledCompanions();
+    var town = destinationForKey(townKey);
+    var settlersHere = settlersAtTown(townKey, false);
     var settlerList =
-      settlers.length === 0
-        ? '<p class="hint">No companions settled yet.</p>'
+      settlersHere.length === 0
+        ? '<p class="hint">No companions settled here yet.</p>'
         : "<ul>" +
-          settlers
+          settlersHere
             .map(function (s) {
               return (
                 "<li><b>" +
                 escapeHtml(s.name) +
                 "</b> (" +
                 roleLabel(s.role) +
-                ") — day " +
+                ") — settled day " +
                 (s.settledOnDay || "?") +
+                ", rejoin " +
+                settlerStatusLabel(s) +
                 "</li>"
               );
             })
@@ -4873,65 +5558,61 @@
           "</b> (" +
           roleLabel(m.role) +
           ")</span>" +
-          '<button type="button" data-settle-member="' +
+          '<button type="button" data-settle-at-town="' +
+          townKey +
+          '" data-settle-member="' +
           m.id +
-          '">Settle in New Isil</button>' +
+          '">Settle in ' +
+          escapeHtml(town.label) +
+          "</button>" +
           "</div>"
         );
       })
       .join("");
-    var rejoinRows = settlers
-      .filter(function (s) {
-        return s.canRejoin;
-      })
+    var rejoinRows = settlersHere
       .map(function (s) {
+        var eligible = settlerCanRejoin(s);
+        var status = eligible ? settlerStatusLabel(s) : settlerRejoinDaysRemaining(s) + " day(s) left";
         return (
           '<div class="shop-row" style="align-items:center;gap:.5rem">' +
           "<span><b>" +
           escapeHtml(s.name) +
           "</b> (" +
           roleLabel(s.role) +
-          ", settled)</span>" +
+          ", settled — " +
+          status +
+          ")</span>" +
           '<button type="button" data-rejoin-settler="' +
           s.id +
-          '">Rejoin caravan (−25% stats, permanent)</button>' +
+          '"' +
+          (eligible ? "" : " disabled") +
+          ">Rejoin caravan (−25% stats)</button>" +
           "</div>"
         );
       })
       .join("");
     return (
-      '<p class="town-lead">New Isil is the harbor goal. Settle companions here; on the <b>eastbound</b> return you may invite them back at a permanent cost. The campaign ends when you reach New Isil after <b>' +
-      effectiveStabilityTarget() +
-      " journey days</b>" +
-      (mustDefeatFinalHarborBoss() ? " (after Kew Kumber falls on the final westward leg)" : "") +
-      ".</p>" +
-      '<p><b>Harbor population:</b> ' +
-      pop +
-      " (+" +
-      settlers.length +
-      " from your caravans)</p>" +
-      "<h3 class=\"roster-heading\">Settled here</h3>" +
+      '<p class="hint">Companions who settle must wait <b>one year</b> (' +
+      SETTLER_REJOIN_COOLDOWN_DAYS +
+      " journey days) before rejoining. After that, invite them back here for a permanent −25% stat penalty.</p>" +
+      "<h3 class=\"roster-heading\">Settled in " +
+      escapeHtml(town.label) +
+      "</h3>" +
       settlerList +
-      "<h3 class=\"roster-heading\">Caravan — settle companions</h3>" +
-      (partyRows || '<p class="hint">No living companions left to settle.</p>') +
-      (rejoinRows ? "<h3 class=\"roster-heading\">Invite settlers back</h3>" + rejoinRows : "") +
-      "<h3 class=\"roster-heading\">Eastbound depart</h3>" +
-      eastboundRevisitDepartHtml("new_isil") +
-      '<p class="hint">Journey day ' +
-      (state.totalDaysElapsed || 0) +
-      " / " +
-      effectiveStabilityTarget() +
-      (mustDefeatFinalHarborBoss() ? " — defeat Kew Kumber on the final westward leg (day " + FINAL_BOSS_MIN_DAYS + "+)" : "") +
-      ".</p>"
+      (partyRows
+        ? "<h3 class=\"roster-heading\">Caravan — settle companions</h3>" + partyRows
+        : "") +
+      (rejoinRows ? "<h3 class=\"roster-heading\">Invite settlers back</h3>" + rejoinRows : "")
     );
   }
 
-  function wireNewIsilDepart(root) {
-    var settleBtns = root.querySelectorAll("[data-settle-member]");
-    for (var i = 0; i < settleBtns.length; i++) {
+  function wireSettlementCompanionActions(root) {
+    var settleBtns = root.querySelectorAll("[data-settle-at-town][data-settle-member]");
+    var i;
+    for (i = 0; i < settleBtns.length; i++) {
       settleBtns[i].onclick = (function (btn) {
         return function () {
-          settleMemberAtNewIsil(btn.getAttribute("data-settle-member"));
+          settleMemberAtTownId(btn.getAttribute("data-settle-member"), btn.getAttribute("data-settle-at-town"));
         };
       })(settleBtns[i]);
     }
@@ -4943,6 +5624,47 @@
         };
       })(rejoinBtns[r]);
     }
+  }
+
+  function newIsilDepartPanelHtml() {
+    syncNewIsilPopulation();
+    var pop = state.newIsilGrowth ? state.newIsilGrowth.population : NEW_ISIL_BASE_POPULATION;
+    var settlersHere = settlersAtTown("new_isil", false);
+    var partyRows = state.party.some(function (m) {
+      return m && m.hp > 0;
+    });
+    return (
+      '<p class="town-lead">New Isil is the harbor goal. Settle companions here — when <b>everyone</b> settles, Cantebury sends a new leader west and the journey continues. Or keep fighters and march <b>eastbound</b> home; on later visits you may invite settlers back after their year away (−25% stats). The campaign ends when you reach New Isil after <b>' +
+      effectiveStabilityTarget() +
+      " journey days</b>" +
+      (mustDefeatFinalHarborBoss() ? " (after Kew Kumber falls on the final westward leg)" : "") +
+      ".</p>" +
+      '<p><b>Harbor population:</b> ' +
+      pop +
+      " (+" +
+      settlersHere.length +
+      " from your caravans)</p>" +
+      settlementCompanionPanelHtml("new_isil") +
+      (partyRows
+        ? '<div class="actions"><button type="button" class="primary" id="settleAllAtNewIsilBtn">Settle entire caravan &amp; return to Cantebury</button></div>'
+        : "") +
+      "<h3 class=\"roster-heading\">Eastbound depart</h3>" +
+      (partyRows
+        ? eastboundRevisitDepartHtml("new_isil")
+        : '<p class="hint">No fighters remain — settle everyone above or invite settlers back before marching east.</p>') +
+      '<p class="hint">Journey day ' +
+      (state.totalDaysElapsed || 0) +
+      " / " +
+      effectiveStabilityTarget() +
+      (mustDefeatFinalHarborBoss() ? " — defeat Kew Kumber on the final westward leg (day " + FINAL_BOSS_MIN_DAYS + "+)" : "") +
+      ".</p>"
+    );
+  }
+
+  function wireNewIsilDepart(root) {
+    var settleAllBtn = root.querySelector("#settleAllAtNewIsilBtn");
+    if (settleAllBtn) settleAllBtn.onclick = settleAllPartyAtNewIsil;
+    wireSettlementCompanionActions(root);
     wireEastboundDepart(root);
   }
 
@@ -5030,7 +5752,9 @@
       '<div class="tavern-choice-row">' +
       '<button type="button" class="primary" id="barkeepBtn">Talk to the barkeep</button>' +
       "</div>" +
-      rosterEditHtml("Tavern roster", settlementRecruitNote(townKey))
+      rosterEditHtml("Tavern roster", settlementRecruitNote(townKey)) +
+      '<div class="sheet-divider"></div>' +
+      settlementCompanionPanelHtml(townKey)
     );
   }
 
@@ -5503,6 +6227,7 @@
     state.travelDay = 0;
     state.encounterChance = ENCOUNTER_BASE;
     state.ruinsDiscovered = false;
+    state.ruinsType = null;
     state.ruinsTravelDay = null;
     state.ruinsSearched = false;
     state.ruinsRoomsTotal = 0;
@@ -5520,7 +6245,11 @@
     var originLabel = currentOriginLabel();
     var legNote =
       isEastboundLeg(originKey, dest.key)
-        ? ", matching your " + totalWestwardTrailDays() + "-day westward march (" + state.legRouteDays + " eastbound)"
+        ? ", same leg length as your westward hop on this road (" +
+          state.legRouteDays +
+          " day" +
+          (state.legRouteDays === 1 ? "" : "s") +
+          " eastbound)"
         : hadLeg
           ? ", same as before"
           : ", route length set for this campaign";
@@ -5648,7 +6377,7 @@
       routeDays +
       " days on the trade road" +
       (isEastboundLeg(state.travelOrigin || "cantebury", state.travelDestination)
-        ? " (eastbound — reverse your fork choices town by town)"
+        ? " (eastbound — one leg homeward; encounters roll each day as on the westward march)"
         : "") +
       '. Each quiet day adds <b>+25%</b> to the next day\'s encounter roll (max 95%). A fight resets tension.</p>' +
       "</div>"
@@ -6482,7 +7211,9 @@
 
   function resourcesStatsGridHtml() {
     var mult = lootMultiplier(state.party).toFixed(2);
-    var ru = state.ruinsDiscovered ? "day " + state.ruinsTravelDay : "-";
+    var ru = state.ruinsDiscovered
+      ? ruinsSiteLabel(currentRuinsSiteType()) + " (day " + state.ruinsTravelDay + ")"
+      : "-";
     var bless = state.blessing ? blessingTypeLabel(state.blessing) : blessingTypeLabel(null);
     if (state.blessing && typeof state.blessingExpiresOnDay === "number") {
       bless += " (" + Math.max(0, state.blessingExpiresOnDay - (state.totalDaysElapsed || 0)) + "d left)";
@@ -6755,6 +7486,8 @@
   function render() {
     var app = document.getElementById("app");
     if (!app) return;
+    ensureCampaignSaveBar();
+    updateCampaignSaveBar();
 
     if (state.phase === "gameover") {
       var overText =
@@ -6784,19 +7517,40 @@
         state = initialState();
         render();
       };
+      if (state.confirmDialog) wireConfirmDialog(app);
       return;
     }
 
     if (state.phase === "new_game_setup") {
+      var setupLead =
+        (state.caravanLoops || 0) > 0 || (state.totalDaysElapsed || 0) > 0
+          ? "<p class=\"town-lead\">Your last caravan settled entirely in New Isil. Journey day <b>" +
+            (state.totalDaysElapsed || 0) +
+            " / " +
+            effectiveStabilityTarget() +
+            "</b> continues — choose who leads the next march from Cantebury.</p>"
+          : "<p class=\"town-lead\">Choose how to set your caravan leader before departing Cantebury.</p>";
       app.innerHTML =
         startCitySplash() +
-        "<h2 class=\"panel-title\">Start a new caravan</h2>" +
-        "<p class=\"town-lead\">Choose how to set your caravan leader before departing Cantebury.</p>" +
+        "<h2 class=\"panel-title\">" +
+        ((state.caravanLoops || 0) > 0 ? "New caravan from Cantebury" : "Start a new caravan") +
+        "</h2>" +
+        setupLead +
         "<div class=\"actions\">" +
-        '<button type="button" class="primary" id="newLeaderBtn">Create new character</button>' +
+        (hasCampaignSave()
+          ? '<button type="button" class="primary" id="continueSaveBtn">Continue saved game</button>'
+          : "") +
+        '<button type="button" id="newLeaderBtn"' +
+        (hasCampaignSave() ? "" : ' class="primary"') +
+        ">Create new character</button>" +
         '<button type="button" id="presetLeaderBtn">Use preset leader</button>' +
         "</div>" +
+        (hasCampaignSave()
+          ? '<p class="hint">Saved: ' + escapeHtml(campaignSaveSummaryText()) + "</p>"
+          : "") +
         renderLog();
+      var continueBtn = document.getElementById("continueSaveBtn");
+      if (continueBtn) continueBtn.onclick = function () { loadCampaignProgress(true); };
       document.getElementById("newLeaderBtn").onclick = function () {
         state.phase = "new_character";
         render();
@@ -6812,6 +7566,7 @@
           render();
         }
       };
+      if (state.confirmDialog) wireConfirmDialog(app);
       return;
     }
 
@@ -6882,7 +7637,9 @@
       app.innerHTML =
         startCitySplash() +
         "<h2 class=\"panel-title\">Create your leader</h2>" +
-        "<p class=\"town-lead\">Define the character who leads the first caravan.</p>" +
+        "<p class=\"town-lead\">Define the character who leads " +
+        ((state.caravanLoops || 0) > 0 ? "the next westward caravan" : "the first caravan") +
+        ".</p>" +
         '<div class="char-form">' +
         '<label>Name <input id="leadName" maxlength="32" placeholder="e.g. Rowan Hale" value="' +
         (draft.name || "") +
@@ -7126,7 +7883,7 @@
           ROUTE_DAYS_MIN +
           "–" +
           ROUTE_DAYS_MAX +
-          ' days</b> the first time you march each hop; eastbound legs mirror the same routes in reverse.</p>' +
+          ' days</b> the first time you march each hop; eastbound legs use the same per-hop length and daily encounter rolls, marched one town at a time.</p>' +
           settlementWestwardForkNote("cantebury") +
           (state.trailLowerFork
             ? '<p class="hint">Last lower-fork choice: <b>' + destinationForKey(state.trailLowerFork).label + "</b>.</p>"
@@ -7348,7 +8105,7 @@
             ? "<p class=\"hint\">Cantebury training grounds: <b>level 1</b> foes only; encounter pace is <b>80% slower</b> than other towns.</p>"
             : "") +
           (adv.daysOut > 0
-            ? "<p class=\"hint\">Return trip will be " + adv.daysOut + " day(s), no encounters, 1 supply per day.</p>"
+            ? "<p class=\"hint\">Return march: " + adv.daysOut + " day(s) homeward, one day per step, with encounters.</p>"
             : "");
         advActions =
           '<button type="button" class="primary" id="advancePushBtn"' +
@@ -7358,13 +8115,17 @@
           '<button type="button" id="turnBackBtn">Return home (' + adv.daysOut + ' day' + (adv.daysOut !== 1 ? 's' : '') + ')</button>' +
           '<button type="button" id="advInventoryBtn">Inventory</button>';
       } else {
+        var retLeft = Math.max(0, adv.returnDaysRemaining != null ? adv.returnDaysRemaining : adv.returnDays || 0);
         advBody =
-          "<p>Heading back to <b>" + advTownLabel + "</b>. The march home will take <b>" + Math.max(0, adv.returnDays) +
-          "</b> day(s) and consume 1 supply per day. No encounters on the way back.</p>";
+          "<p>Heading back to <b>" +
+          advTownLabel +
+          "</b>. <b>" +
+          retLeft +
+          "</b> day(s) of road remain — each day consumes 1 supply and rolls an encounter.</p>";
         advActions =
           '<button type="button" class="primary" id="advanceReturnBtn"' +
-          (state.food > 0 ? "" : " disabled") +
-          '>Return to ' + advTownLabel + ' (' + Math.max(0, adv.returnDays) + ' day' + (adv.returnDays !== 1 ? 's' : '') + ')</button>' +
+          (state.food > 0 && retLeft > 0 ? "" : " disabled") +
+          ">March home (1 day)</button>" +
           '<button type="button" id="advInventoryBtn">Inventory</button>';
       }
       app.innerHTML =
@@ -7385,7 +8146,7 @@
       var backBtn = document.getElementById("turnBackBtn");
       if (backBtn) backBtn.onclick = function () { turnBackAdventure(); };
       var retBtn = document.getElementById("advanceReturnBtn");
-      if (retBtn) retBtn.onclick = function () { continueAdventureReturn(); };
+      if (retBtn) retBtn.onclick = function () { advanceAdventureReturnDay(); };
       var advCampBtn = document.getElementById("advCampBtn");
       if (advCampBtn) advCampBtn.onclick = openCampDialog;
       var advInvBtn = document.getElementById("advInventoryBtn");
@@ -7448,6 +8209,7 @@
       } else if (state.settlementView === "tavern") {
         wireRosterEdit(app);
         wireTavernBarkeep(app);
+        wireSettlementCompanionActions(app);
         wireNpcDialog(app);
       } else if (state.settlementView === "shop") {
         wireSettlementShopPanel(app);
@@ -7477,22 +8239,43 @@
     if (state.phase === "action") {
       var enc = state.pendingEncounter;
       if (enc && enc.kind === "ruins_discovery") {
+        var ruinsType = currentRuinsSiteType();
+        var ruinsDef = ruinSiteDef(ruinsType);
+        var unitPlural = ruinsUnitLabel(ruinsType, 2);
+        var unitSingular = ruinsUnitLabel(ruinsType, 1);
         app.innerHTML =
-          '<div class="scene scene-splash scene-ruins" role="img" aria-label="Ruins">' +
+          '<div class="scene scene-splash scene-ruins" role="img" aria-label="' +
+          escapeHtml(ruinsDef.label) +
+          '">' +
           '<div class="splash-badge">Strange ground</div>' +
-          '<div class="splash-title">Ancient ruins</div>' +
-          '<div class="splash-sub">Weathered stone juts from the earth</div>' +
+          '<div class="splash-title">' +
+          escapeHtml(ruinsDef.splashTitle || ruinsDef.label) +
+          "</div>" +
+          '<div class="splash-sub">' +
+          escapeHtml(ruinsDef.splashSub || "Weathered stone juts from the earth") +
+          "</div>" +
           "</div>" +
           renderHeader() +
-          "<h2 class=\"panel-title\">Ruins</h2>" +
-          "<p>Rooms to explore: <b>" + state.ruinsRoomsRemaining + "</b> / " + state.ruinsRoomsTotal +
-          ". Each room may trigger monsters (" +
+          "<h2 class=\"panel-title\">" +
+          escapeHtml(ruinsDef.label) +
+          "</h2>" +
+          "<p>" +
+          (unitSingular === "house" ? "Houses to search" : "Rooms to explore") +
+          ": <b>" +
+          state.ruinsRoomsRemaining +
+          "</b> / " +
+          state.ruinsRoomsTotal +
+          ". Each " +
+          unitSingular +
+          " may trigger monsters (" +
           Math.round(SKELETON_FIGHT_CHANCE * 100) +
           "% chance). Gold caches are rare but worthwhile.</p>" +
           ruinsMinimapHtml() +
           ruinsNavigationPlaceholderHtml() +
           "<div class=\"actions\">" +
-          "<button type=\"button\" id=\"searchRuins\">Explore current room</button>" +
+          '<button type="button" id="searchRuins">' +
+          escapeHtml(ruinsExploreActionLabel(ruinsType)) +
+          "</button>" +
           "<button type=\"button\" id=\"skipRuins\">Mark and leave</button>" +
           '<button type="button" id="ruinsInventoryBtn">Inventory</button>' +
           "</div>" +
@@ -7505,10 +8288,16 @@
             return;
           }
           var roomIdx = state.ruinsRoomsTotal - state.ruinsRoomsRemaining + 1;
+          var areaLabel = ruinsSiteLabel(currentRuinsSiteType());
+          var unitLabel = ruinsUnitLabel(currentRuinsSiteType(), 1);
           state.ruinsRoomsRemaining -= 1;
           if (Math.random() < SKELETON_FIGHT_CHANCE) {
             var pack = buildRandomMonsterEncounter("ruins");
-            startTacticalCombat({ kind: "ruins_combat", label: "Ruins room " + roomIdx + " encounter", foes: pack.foes });
+            startTacticalCombat({
+              kind: "ruins_combat",
+              label: areaLabel + " " + unitLabel + " " + roomIdx + " encounter",
+              foes: pack.foes,
+            });
             render();
             return;
           }
@@ -7518,15 +8307,27 @@
             roomGold = roadGoldBonus(rollInt(RUINS_GOLD_MIN, RUINS_GOLD_MAX));
             state.gold += roomGold;
           }
-          if (Math.random() < 0.15) {
+          if (Math.random() < RUINS_GEM_FIND_CHANCE) {
             roomGems = 1;
             state.gems += roomGems;
           }
           if (state.ruinsMap) markRuinsTileExplored(state.ruinsMap.playerX, state.ruinsMap.playerY);
           if (roomGold || roomGems) {
-            logLine("Ruins room " + roomIdx + " cleared: +" + roomGold + " gold" + (roomGems ? ", +1 gem" : "") + ".", "good");
+            logLine(
+              areaLabel +
+                " " +
+                unitLabel +
+                " " +
+                roomIdx +
+                " cleared: +" +
+                roomGold +
+                " gold" +
+                (roomGems ? ", +1 gem" : "") +
+                ".",
+              "good"
+            );
           } else {
-            logLine("Ruins room " + roomIdx + " cleared: nothing of value.", "");
+            logLine(areaLabel + " " + unitLabel + " " + roomIdx + " cleared: nothing of value.", "");
           }
           if (state.ruinsRoomsRemaining <= 0) {
             resolveRuinsSearchRewards();
@@ -7536,7 +8337,15 @@
           }
         };
         document.getElementById("skipRuins").onclick = function () {
-          logLine("Ruins marked on your map (" + state.ruinsRoomsRemaining + " room(s) left unexplored).", "");
+          logLine(
+            ruinsSiteLabel(currentRuinsSiteType()) +
+              " marked on your map (" +
+              state.ruinsRoomsRemaining +
+              " " +
+              unitPlural +
+              " left unexplored).",
+            ""
+          );
           finishEncounterCommon();
         };
         var ruinsInvBtn = document.getElementById("ruinsInventoryBtn");
@@ -7596,11 +8405,17 @@
           (state.pendingEncounter ? state.pendingEncounter.label : "Fight") +
           "</p>" +
           '<div class="combat-stage">' +
+          '<div class="combat-enemy-band">' +
+          '<p class="combat-enemy-band-title">Enemies</p>' +
           '<div class="foe-row">' +
           foesHtml +
           "</div>" +
+          "</div>" +
+          '<div class="combat-party-band">' +
+          '<p class="combat-party-band-title">Your party</p>' +
           '<div class="battle-grid">' +
           cards +
+          "</div>" +
           "</div>" +
           "</div>" +
           "<div class=\"actions battle-actions-row\">" +
@@ -7624,7 +8439,11 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    ensureCampaignSaveBar();
     logLine("Prepare in <span class=\"hi\">Cantebury</span>, then travel the route to Gustaf, Hollow Banks, Solem, and New Isil.", "");
+    if (hasCampaignSave()) {
+      logLine("Saved campaign found in this browser — use <span class=\"hi\">Load save</span> or Continue on the setup screen.", "hi");
+    }
     trackPlaytest("app_loaded", { version: GAME_VERSION });
     render();
   });

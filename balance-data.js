@@ -1,7 +1,47 @@
 window.ILLIRIAL_BALANCE = {
-  "version": "6.3.0",
-  "stabilityTargetDays": 100,
-  "finalBossMinDays": 90,
+  "version": "6.5.0",
+  "stabilityTargetDays": 300,
+  "finalBossMinDays": 270,
+  "settlerRejoinCooldownDays": 365,
+  "ruinSiteTypes": {
+    "shrine": {
+      "label": "Shrine",
+      "splashTitle": "Roadside shrine",
+      "splashSub": "Weathered stone and faded ward-symbols",
+      "roomMin": 1,
+      "roomMax": 8,
+      "weight": 40,
+      "unit": "room"
+    },
+    "temple": {
+      "label": "Temple",
+      "splashTitle": "Fallen temple",
+      "splashSub": "Collapsed vaults and broken idol halls",
+      "roomMin": 2,
+      "roomMax": 10,
+      "weight": 25,
+      "unit": "room"
+    },
+    "ruined_castle": {
+      "label": "Ruined castle",
+      "splashTitle": "Ruined castle",
+      "splashSub": "Broken towers and gutted great halls",
+      "roomMin": 5,
+      "roomMax": 15,
+      "weight": 10,
+      "unit": "room"
+    },
+    "abandoned_town": {
+      "label": "Abandoned town",
+      "splashTitle": "Abandoned town",
+      "splashSub": "Empty lanes and fire-blackened homes — not worth rebuilding",
+      "roomMin": 3,
+      "roomMax": 5,
+      "weight": 25,
+      "unit": "house",
+      "unitPlural": "houses"
+    }
+  },
   "source": "chart for game.xlsx",
   "classCreationBonusPoints": 3,
   "hpGrowthTuning": {
@@ -786,9 +826,9 @@ window.ILLIRIAL_BALANCE = {
     },
     "priest": {
       "strength": 1,
-      "intelligence": 3,
-      "stamina": 3,
-      "luck": 3
+      "intelligence": 2,
+      "stamina": 1,
+      "luck": 1
     },
     "mage": {
       "strength": 1,

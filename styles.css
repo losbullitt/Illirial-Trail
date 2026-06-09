@@ -512,6 +512,266 @@ code {
   background-position: center;
 }
 
+
+
+/* Travel biomes (placeholder terrain — speed/spawn hooks later) */
+.travel-biome-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+  margin: 0 0 0.65rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.travel-biome-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(200, 156, 63, 0.45);
+  color: #f0e6d2;
+  background: rgba(44, 36, 28, 0.85);
+}
+
+.travel-biome-hint {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.travel-biome-speed {
+  font-size: 0.78rem;
+  font-style: italic;
+}
+
+.travel-biome-note {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.map-biome {
+  display: block;
+  font-size: 0.52rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c89c3f;
+  margin-top: 0.1rem;
+}
+
+.map-seg--plains { background: rgba(120, 110, 70, 0.22); }
+.map-seg--forest { background: rgba(48, 88, 52, 0.28); }
+.map-seg--desert { background: rgba(160, 120, 60, 0.24); }
+.map-seg--mountains { background: rgba(88, 96, 118, 0.3); }
+.map-seg--steppe { background: rgba(130, 120, 70, 0.24); }
+.map-seg--tundra { background: rgba(110, 130, 140, 0.26); }
+.map-seg--snowfields { background: rgba(180, 196, 210, 0.22); }
+
+/* Biome UI themes (stand-in for weather until implemented) */
+body {
+  transition: background 0.45s ease, color 0.35s ease;
+}
+
+.app {
+  transition: background-color 0.45s ease, border-color 0.45s ease, box-shadow 0.45s ease;
+}
+
+body.biome-theme-plains {
+  --bg: #1e1a12;
+  --panel: #2e2818;
+  --border: #6a5a3a;
+  --text: #f0e8d0;
+  --muted: #a89878;
+  --accent: #d4a84a;
+  background: radial-gradient(ellipse at top, #3a3420 0%, var(--bg) 58%);
+}
+
+body.biome-theme-forest {
+  --bg: #101814;
+  --panel: #1a2a1c;
+  --border: #3d5c42;
+  --text: #dce8d4;
+  --muted: #8aa088;
+  --accent: #7cb86a;
+  background: radial-gradient(ellipse at top, #243028 0%, var(--bg) 58%);
+}
+
+body.biome-theme-desert {
+  --bg: #1e1610;
+  --panel: #2c2218;
+  --border: #7a5a38;
+  --text: #f5e8d0;
+  --muted: #b89870;
+  --accent: #e8a050;
+  background: radial-gradient(ellipse at top, #3a2a18 0%, var(--bg) 58%);
+}
+
+body.biome-theme-mountains {
+  --bg: #141820;
+  --panel: #1e2430;
+  --border: #4a5568;
+  --text: #e0e8f0;
+  --muted: #8898a8;
+  --accent: #8aa4c8;
+  background: radial-gradient(ellipse at top, #283040 0%, var(--bg) 58%);
+}
+
+body.biome-theme-steppe {
+  --bg: #1a1810;
+  --panel: #282418;
+  --border: #6a6040;
+  --text: #ece4cc;
+  --muted: #a09870;
+  --accent: #c9b060;
+  background: radial-gradient(ellipse at top, #343020 0%, var(--bg) 58%);
+}
+
+body.biome-theme-tundra {
+  --bg: #12181c;
+  --panel: #1a2428;
+  --border: #4a6068;
+  --text: #dce8ec;
+  --muted: #809098;
+  --accent: #88b8c8;
+  background: radial-gradient(ellipse at top, #243038 0%, var(--bg) 58%);
+}
+
+body.biome-theme-snowfields {
+  --bg: #161a22;
+  --panel: #222830;
+  --border: #5a6878;
+  --text: #eef4f8;
+  --muted: #98a8b8;
+  --accent: #b8d4e8;
+  background: radial-gradient(ellipse at top, #2a3440 0%, var(--bg) 58%);
+}
+
+.app.app--biome-plains { box-shadow: 0 8px 28px rgba(80, 60, 20, 0.35); }
+.app.app--biome-forest { box-shadow: 0 8px 28px rgba(40, 80, 48, 0.35); }
+.app.app--biome-desert { box-shadow: 0 8px 28px rgba(120, 72, 24, 0.35); }
+.app.app--biome-mountains { box-shadow: 0 8px 28px rgba(48, 64, 96, 0.35); }
+.app.app--biome-steppe { box-shadow: 0 8px 28px rgba(88, 72, 32, 0.35); }
+.app.app--biome-tundra { box-shadow: 0 8px 28px rgba(48, 80, 96, 0.35); }
+.app.app--biome-snowfields { box-shadow: 0 8px 28px rgba(96, 120, 148, 0.35); }
+
+.travel-screen .travel-biome-panel {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--panel) 88%, var(--accent) 12%);
+}
+
+.travel-screen .travel-biome-badge {
+  border-color: color-mix(in srgb, var(--accent) 65%, transparent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel) 70%, var(--accent) 30%);
+}
+
+.travel-screen .travel-visual {
+  background: color-mix(in srgb, var(--panel) 80%, var(--accent) 20%);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.travel-screen .map-node {
+  background: color-mix(in srgb, var(--panel) 85%, var(--accent) 15%);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+
+.travel-screen .map-node.start {
+  color: var(--accent);
+}
+
+.travel-screen .map-biome {
+  color: var(--accent);
+}
+
+.travel-screen .log {
+  background: color-mix(in srgb, var(--bg) 55%, var(--panel) 45%);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--border));
+}
+
+.travel-screen button.primary {
+  background: color-mix(in srgb, var(--accent) 82%, #1a1510 18%);
+  border-color: color-mix(in srgb, var(--accent) 70%, #000 30%);
+  color: color-mix(in srgb, var(--text) 92%, #000 8%);
+}
+
+.travel-screen button.primary:hover {
+  filter: brightness(1.08);
+}
+
+.travel-screen .party-panel {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  background: color-mix(in srgb, var(--panel) 92%, var(--bg) 8%);
+}
+
+
+.scene-biome-plains {
+  background-image:
+    radial-gradient(circle at 30% 20%, rgba(255, 240, 180, 0.35) 0%, transparent 45%),
+    linear-gradient(185deg, rgba(96, 120, 72, 0.45) 0%, rgba(168, 140, 88, 0.42) 55%, rgba(42, 34, 22, 0.65) 100%),
+    var(--scene-field);
+  background-size: cover;
+  background-position: center;
+}
+
+.scene-biome-forest {
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(120, 180, 100, 0.25) 0%, transparent 40%),
+    linear-gradient(185deg, rgba(28, 58, 36, 0.65) 0%, rgba(64, 88, 48, 0.5) 50%, rgba(18, 22, 16, 0.72) 100%),
+    var(--scene-field);
+  background-size: cover;
+  background-position: center;
+}
+
+.scene-biome-desert {
+  background-image:
+    radial-gradient(circle at 70% 15%, rgba(255, 220, 150, 0.4) 0%, transparent 42%),
+    linear-gradient(185deg, rgba(180, 130, 60, 0.5) 0%, rgba(140, 96, 48, 0.45) 52%, rgba(48, 32, 20, 0.68) 100%),
+    var(--scene-field-alt);
+  background-size: cover;
+  background-position: center;
+}
+
+.scene-biome-mountains {
+  background-image:
+    radial-gradient(circle at 50% 10%, rgba(200, 210, 230, 0.3) 0%, transparent 38%),
+    linear-gradient(185deg, rgba(72, 82, 108, 0.58) 0%, rgba(96, 88, 72, 0.48) 50%, rgba(28, 26, 34, 0.7) 100%),
+    var(--scene-field-alt);
+  background-size: cover;
+  background-position: center;
+}
+
+.scene-biome-steppe {
+  background-image:
+    radial-gradient(circle at 40% 18%, rgba(240, 210, 140, 0.32) 0%, transparent 44%),
+    linear-gradient(185deg, rgba(120, 108, 62, 0.48) 0%, rgba(168, 148, 88, 0.42) 55%, rgba(42, 36, 24, 0.64) 100%),
+    var(--scene-field);
+  background-size: cover;
+  background-position: center;
+}
+
+.scene-biome-tundra {
+  background-image:
+    radial-gradient(circle at 55% 12%, rgba(210, 230, 240, 0.28) 0%, transparent 40%),
+    linear-gradient(185deg, rgba(88, 108, 118, 0.52) 0%, rgba(120, 130, 118, 0.42) 52%, rgba(24, 28, 32, 0.68) 100%),
+    var(--scene-field-alt);
+  background-size: cover;
+  background-position: center;
+}
+
+.scene-biome-snowfields {
+  background-image:
+    radial-gradient(circle at 50% 8%, rgba(240, 248, 255, 0.45) 0%, transparent 42%),
+    linear-gradient(185deg, rgba(140, 160, 180, 0.55) 0%, rgba(180, 190, 200, 0.38) 48%, rgba(32, 36, 44, 0.72) 100%),
+    var(--scene-field-alt);
+  background-size: cover;
+  background-position: center;
+}
+
 .scene-travel .splash-title {
   color: #fff8ec;
 }
@@ -835,7 +1095,7 @@ code {
   border-style: solid !important;
   border-color: var(--accent) !important;
   outline: 1px solid rgba(201, 162, 39, 0.35);
-  animation: seg-pulse 1.35s ease-in-out infinite;
+  animation: seg-pulse 0.95s ease-in-out infinite;
 }
 
 @keyframes seg-pulse {
@@ -858,7 +1118,7 @@ code {
   z-index: 3;
   filter: drop-shadow(0 0 6px rgba(201, 162, 39, 0.9));
   left: var(--from-left, 0%);
-  animation: map-caravan-march 1.35s ease-in-out forwards;
+  animation: map-caravan-march 0.95s ease-in-out forwards;
 }
 
 .map-caravan-dot {
@@ -1124,6 +1384,20 @@ code {
   white-space: nowrap;
 }
 
+
+.battle-doll .battle-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+}
+
+.battle-doll .battle-mp {
+  font-size: 0.62rem;
+  color: #9ab4d8;
+  margin-bottom: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .battle-doll .battle-hp {
   font-size: 0.62rem;
   color: var(--muted);
@@ -1158,6 +1432,12 @@ code {
   font-size: 0.68rem;
   padding: 0.28rem 0.2rem;
   border-radius: 5px;
+}
+
+.combat-cancel-btn {
+  border-color: #8a6a4a;
+  color: #c4a888;
+  font-size: 0.85rem;
 }
 
 .act-btn.selected {
@@ -1236,6 +1516,40 @@ code {
 
 .roster-add button {
   font-size: 0.75rem;
+}
+
+.roster-veteran-hire {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--panel-border, rgba(255, 255, 255, 0.12));
+}
+
+.roster-veteran-heading {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.roster-veteran-note {
+  margin: 0 0 0.75rem;
+}
+
+.roster-veteran-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.roster-veteran-tier {
+  flex: 0 0 100%;
+  font-size: 0.85rem;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.roster-veteran-btn {
+  font-size: 0.85rem;
 }
 
 .tavern-lead {
@@ -1750,4 +2064,500 @@ button.foe-card:disabled {
   margin: 0;
   gap: 0.45rem;
   flex-wrap: wrap;
+}
+
+
+.colony-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.1rem;
+  align-items: center;
+  margin: 0.75rem 0 1rem;
+  padding: 0.65rem 0.85rem;
+  background: #1e1812;
+  border: 1px solid #4a3d2a;
+  border-radius: 8px;
+}
+
+.colony-tier-badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: #3d3020;
+  border: 1px solid #c89c3f;
+  color: #e8dcc8;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.colony-building-grid {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.colony-building-card {
+  padding: 0.65rem 0.75rem;
+  background: #1e1812;
+  border: 1px solid #4a3d2a;
+  border-radius: 8px;
+}
+
+.colony-building-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.colony-progress {
+  height: 6px;
+  background: #2a2218;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 0.45rem;
+}
+
+.colony-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6b5428, #c89c3f);
+  border-radius: 4px;
+}
+
+.colony-spark-actions {
+  margin: 0.5rem 0 1rem;
+}
+
+.colony-log {
+  margin: 0.35rem 0 0;
+  padding-left: 1.2rem;
+  color: #c9baa3;
+  font-size: 0.92rem;
+}
+
+.colony-epilogue {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  background: #1e1812;
+  border: 1px solid #4a3d2a;
+  border-radius: 10px;
+}
+
+
+.colony-sandbox {
+  margin-top: 0.5rem;
+}
+
+.sandbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.55rem 0.85rem;
+  margin: 0.5rem 0 0.85rem;
+}
+
+.sandbox-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.92rem;
+  color: #c9baa3;
+}
+
+.sandbox-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.35rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid #4a3d2a;
+  background: #1a1510;
+  color: #e8dcc8;
+}
+
+.sandbox-presets {
+  margin: 0.65rem 0;
+  flex-wrap: wrap;
+}
+
+.sandbox-rates {
+  margin: 1rem 0;
+  padding: 0.75rem 0.85rem;
+  background: #1e1812;
+  border: 1px solid #4a3d2a;
+  border-radius: 8px;
+}
+
+
+.settlement-site-choice {
+  margin: 0.75rem 0 1rem;
+}
+
+.settlement-choice-cards {
+  display: grid;
+  gap: 0.85rem;
+  margin: 1rem 0;
+}
+
+@media (min-width: 640px) {
+  .settlement-choice-cards {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+}
+
+.settlement-choice-card {
+  padding: 0.85rem 1rem;
+  background: #1e1812;
+  border: 1px solid #4a3d2a;
+  border-radius: 10px;
+}
+
+.settlement-choice-card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.settlement-grid-scene {
+  position: relative;
+  margin: 0.75rem 0 1rem;
+  border: 1px solid #4a3d2a;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #14100c;
+}
+
+.settlement-grid {
+  display: grid;
+  gap: 1px;
+  background: #2a2218;
+}
+
+.settlement-tile {
+  aspect-ratio: 1;
+  min-height: 1.75rem;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+}
+
+.tile-water { background: #1a3348; }
+.tile-mountain { background: #3a3530; }
+.tile-shore { background: #6b5a42; }
+.tile-grass { background: #2d4a2a; }
+.tile-road { background: #4a4030; box-shadow: inset 0 0 0 1px #6b5a42; }
+
+.settlement-tile.tile-road.tile-grass,
+.settlement-tile.tile-road.tile-shore {
+  background: linear-gradient(135deg, #4a4030 55%, transparent 55%);
+}
+
+.settlement-structure {
+  font-size: 1rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+  z-index: 2;
+}
+
+.settlement-structure-l1 { transform: scale(0.85); opacity: 0.85; }
+.settlement-structure-l2 { transform: scale(1); }
+.settlement-structure-l3 { transform: scale(1.15); }
+
+.settlement-wanderers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.settlement-wanderer {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e8dcc8;
+  box-shadow: 0 0 4px rgba(200, 156, 63, 0.7);
+  animation: settlement-wander 4s ease-in-out infinite alternate;
+}
+
+@keyframes settlement-wander {
+  0% { transform: translate(0, 0); opacity: 0.7; }
+  50% { transform: translate(6px, -4px); opacity: 1; }
+  100% { transform: translate(-4px, 5px); opacity: 0.75; }
+}
+
+
+.sandbox-advanced {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid #4a3d2a;
+  border-radius: 8px;
+  background: rgba(20, 16, 12, 0.6);
+}
+
+.sandbox-advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.settlement-vista {
+  position: relative; min-height: 11rem; border: 1px solid #4a3d2a; border-radius: 10px;
+  overflow: hidden; margin: 0.75rem 0 1rem; background: #14100c;
+}
+.settlement-vista--inland .vista-sky { background: linear-gradient(to bottom, #5a7090 0%, #8a9ab0 55%, #c4b898 100%); }
+.settlement-vista--inland .vista-ground { background: linear-gradient(to bottom, #4a7038 0%, #2d4a2a 100%); }
+.settlement-vista--coastal .vista-sky { background: linear-gradient(to bottom, #4a6888 0%, #7a9ab8 50%, #d4c4a0 100%); }
+.settlement-vista--coastal .vista-ground { background: linear-gradient(to bottom, #3a6848 0%, #1a3348 100%); }
+.settlement-vista--mountain .vista-sky { background: linear-gradient(to bottom, #3a4868 0%, #6a7898 45%, #b8b0a0 100%); }
+.settlement-vista--mountain .vista-ground { background: linear-gradient(to bottom, #5a5a48 0%, #2a2830 100%); }
+.vista-sky { position: absolute; inset: 0 0 38%; }
+.vista-ground { position: absolute; left: 0; right: 0; bottom: 0; height: 42%; }
+.vista-structures { position: absolute; left: 0; right: 0; bottom: 1.6rem; height: 5.5rem; pointer-events: none; }
+.settlement-vista--tier-camp .vista-structures { transform: scale(0.72); transform-origin: bottom center; opacity: 0.85; }
+.settlement-vista--tier-hamlet .vista-structures { transform: scale(0.86); transform-origin: bottom center; }
+.settlement-vista--tier-town .vista-structures { transform: scale(1); transform-origin: bottom center; }
+.settlement-vista--tier-city .vista-structures { transform: scale(1.1); transform-origin: bottom center; }
+.vista-bld { position: absolute; bottom: 0; background: #2a2218; border: 1px solid #6b5a42; border-radius: 2px 2px 0 0; box-sizing: border-box; }
+.vista-bld--walls { left: 3%; right: 3%; width: auto; height: 38%; opacity: 0.45; background: transparent; border: 2px solid #5a5040; border-bottom: none; border-radius: 4px 4px 0 0; }
+.vista-bld--gateway { left: 10%; width: 13%; height: 58%; background: #4a4030; }
+.vista-bld--chapel { left: 30%; width: 11%; height: 72%; background: #3a3530; }
+.vista-bld--chapel::after { content: ""; position: absolute; top: -8%; left: 35%; width: 30%; height: 12%; background: #5a5040; }
+.vista-bld--market { left: 50%; width: 16%; height: 48%; background: #4a3828; }
+.vista-bld--fields { right: 10%; width: 20%; height: 28%; background: #3d5a32; border-color: #5a7a42; border-radius: 2px; }
+.vista-bld--lv1 { opacity: 0.65; filter: brightness(0.9); }
+.vista-bld--lv2 { opacity: 0.88; }
+.vista-bld--lv3 { opacity: 1; box-shadow: 0 0 10px rgba(200, 156, 63, 0.35); }
+.vista-caption { position: absolute; bottom: 0.35rem; left: 0; right: 0; text-align: center; font-size: 0.8rem; color: #e8dcc8; text-shadow: 0 1px 4px rgba(0,0,0,0.9); margin: 0; z-index: 2; }
+.rally-project-cards { display: grid; gap: 0.65rem; margin: 0.75rem 0 1rem; }
+.rally-project-card { display: block; width: 100%; text-align: left; padding: 0.75rem 1rem; background: #1e1812; border: 1px solid #4a3d2a; border-radius: 8px; cursor: pointer; color: inherit; font: inherit; }
+.rally-project-card:hover:not(:disabled) { border-color: #c89c3f; background: #252018; }
+.rally-project-card:disabled { opacity: 0.55; cursor: not-allowed; }
+.rally-project-title { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+.rally-project-pitch { display: block; font-size: 0.9rem; color: #b8a890; margin-bottom: 0.35rem; line-height: 1.4; }
+.rally-project-cost { display: block; font-size: 0.82rem; color: #9a8b78; }
+
+.defense-hud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin: 0.75rem 0 1rem;
+  padding: 0.65rem 0.85rem;
+  background: #1e1812;
+  border: 1px solid #4a3d2a;
+  border-radius: 8px;
+  font-size: 0.92rem;
+}
+.defense-hud-timer b { color: #c89c3f; font-size: 1.1rem; }
+.defense-hud-break b { color: #8ab87a; }
+
+.end-round-btn--wait {
+  opacity: 0.55;
+  cursor: pointer;
+}
+.end-round-btn--ready {
+  box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.55);
+}
+.combat-choice-lock {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: #c9baa3;
+}
+
+.save-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0.5rem 0 0.65rem;
+}
+.save-slots--compact .save-slot {
+  padding: 0.5rem 0.6rem;
+}
+.save-slot {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.7rem;
+  background: rgba(0, 0, 0, 0.12);
+}
+.save-slot--active {
+  border-color: #c89c3f;
+  box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.25);
+}
+.save-slot--empty .save-slot-summary {
+  font-style: italic;
+}
+.save-slot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+.save-slot-title {
+  font-weight: 600;
+  color: #e8dcc8;
+  font-size: 0.9rem;
+}
+.save-slot-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #c89c3f;
+}
+.save-slot-summary {
+  margin: 0 0 0.45rem;
+  font-size: 0.8rem;
+  color: #c9baa3;
+  line-height: 1.35;
+}
+.save-slot-actions {
+  margin: 0;
+  gap: 0.35rem;
+}
+.save-slot-active-note {
+  margin: 0 0 0.5rem;
+}
+.campaign-save-lead {
+  margin: 0 0 0.35rem;
+  font-size: 0.88rem;
+  color: #e8dcc8;
+}
+.save-slots-setup {
+  margin-top: 0.5rem;
+}
+
+#confirmOverlayHost {
+  position: relative;
+  z-index: 70;
+}
+#confirmOverlayHost .confirm-dialog-overlay {
+  z-index: 70;
+}
+
+.inv-weapon-block {
+  margin-bottom: 0.45rem;
+}
+
+.inv-weapon-hint {
+  margin: 0.25rem 0 0.35rem;
+}
+
+.inv-weapon-stash {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.inv-weapon-equip-btn {
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: #2a2218;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.inv-weapon-equip-btn:hover {
+  border-color: var(--accent);
+  background: #4a3b1a;
+}
+
+.inv-open-weapon {
+  color: #9a8b6e;
+  font-size: 0.72rem;
+}
+
+.shop-locker-title {
+  margin-top: 1.35rem;
+}
+
+.shop-locker-hint {
+  margin: 0.25rem 0 0.65rem;
+}
+
+.shop-locker-block {
+  margin-top: 0;
+}
+
+.shop-inv-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.shop-inv-row:last-child {
+  border-bottom: none;
+}
+
+.shop-inv-label {
+  flex: 1 1 12rem;
+  font-size: 0.92rem;
+}
+
+.shop-inv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.shop-inv-sell-btn {
+  font-size: 0.82rem;
+  padding: 0.3rem 0.55rem;
+}
+
+
+.paperdoll-loadout {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.paperdoll-slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.paperdoll-slot-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  min-width: 4.5rem;
+}
+
+.paperdoll-slot-item {
+  flex: 1 1 10rem;
+  font-size: 0.88rem;
+}
+
+.paperdoll-stash-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.paperdoll-heading {
+  margin: 0.5rem 0 0.25rem;
+}
+
+.inv-open-equip {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #9a8b78;
 }

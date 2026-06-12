@@ -858,6 +858,24 @@ body.biome-theme-snowfields {
     var(--scene-solem);
 }
 
+.scene-end-city--idlwyld {
+  background-image:
+    linear-gradient(185deg, rgba(48, 72, 58, 0.5) 0%, rgba(62, 88, 72, 0.62) 45%, rgba(16, 28, 22, 0.82) 100%),
+    var(--scene-hollow-banks);
+}
+
+.scene-end-city--grosjean {
+  background-image:
+    linear-gradient(185deg, rgba(42, 58, 72, 0.48) 0%, rgba(52, 72, 88, 0.58) 45%, rgba(14, 22, 30, 0.82) 100%),
+    var(--scene-gustaf);
+}
+
+.scene-end-city--arpery {
+  background-image:
+    linear-gradient(185deg, rgba(68, 62, 52, 0.48) 0%, rgba(82, 74, 62, 0.58) 45%, rgba(24, 20, 16, 0.82) 100%),
+    var(--scene-solem);
+}
+
 .travel-visual {
   margin: 0 0 0.75rem;
   padding: 0.5rem 0.35rem 0.35rem;
@@ -1550,6 +1568,31 @@ body.biome-theme-snowfields {
 
 .roster-veteran-btn {
   font-size: 0.85rem;
+}
+
+.roster-veteran-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.roster-veteran-pick {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.15));
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text, #e8dcc8);
+  cursor: pointer;
+}
+
+.roster-veteran-pick:hover:not(:disabled) {
+  border-color: var(--accent, #c89c3f);
 }
 
 .tavern-lead {
@@ -2552,6 +2595,36 @@ button.foe-card:disabled {
   margin-top: 0.25rem;
 }
 
+
+.inv-char-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.35rem 0;
+}
+
+.inv-char-nav-btn {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 1.15rem;
+  line-height: 1;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.inv-char-nav-label {
+  flex: 1 1 auto;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.inv-detail-actions {
+  margin-bottom: 0;
+}
 .paperdoll-heading {
   margin: 0.5rem 0 0.25rem;
 }
@@ -2561,3 +2634,115 @@ button.foe-card:disabled {
   line-height: 1.35;
   color: #9a8b78;
 }
+
+
+.travel-season-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.65rem;
+  margin-top: 0.35rem;
+  font-size: 0.92rem;
+}
+.travel-season-badge {
+  font-weight: 600;
+}
+.season-spring .travel-season-badge { color: #7ec87a; }
+.season-summer .travel-season-badge { color: #e8b84a; }
+.season-fall .travel-season-badge { color: #c89060; }
+.season-winter .travel-season-badge { color: #9ec8e8; }
+
+.travel-weather-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+}
+
+.travel-weather-badge {
+  font-weight: 600;
+  color: var(--accent, #c89c3f);
+}
+
+.weather-clear .travel-weather-badge { color: #e8c86a; }
+.weather-slight_rain .travel-weather-badge { color: #8eb4d8; }
+.weather-steady_rain .travel-weather-badge { color: #6a9ec4; }
+.weather-storm .travel-weather-badge { color: #b88cff; }
+.weather-snow .travel-weather-badge { color: #d8e8f0; }
+.weather-heavy_snow .travel-weather-badge { color: #b8d0e0; }
+.weather-blizzard .travel-weather-badge { color: #e8f0ff; }
+
+/* Bestiary (v8.3.0) */
+.bestiary-panel {
+  margin-top: 0.5rem;
+}
+.bestiary-summary {
+  margin: 1rem 0 1.25rem;
+}
+.bestiary-table-wrap {
+  overflow-x: auto;
+  margin-top: 0.5rem;
+  border: 1px solid #4a3d2a;
+  border-radius: 8px;
+  background: #1c160e;
+}
+.bestiary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.bestiary-table th,
+.bestiary-table td {
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid #3a2f22;
+}
+.bestiary-table th {
+  color: #c89c3f;
+  font-weight: 600;
+  background: #241c12;
+}
+.bestiary-row--unknown .bestiary-name {
+  color: #8a7a62;
+}
+.bestiary-row--slain .bestiary-name {
+  color: #e8dcc8;
+}
+.bestiary-kills {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #c89c3f;
+}
+.bestiary-lvl {
+  color: #9a8b72;
+  white-space: nowrap;
+}
+
+/* Travel leg progress (v8.3.2) */
+.travel-leg-progress {
+  margin: 0.75rem 0 1rem;
+  padding: 0.65rem 0.85rem;
+  background: #1c160e;
+  border: 1px solid #4a3d2a;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+.travel-leg-progress-row + .travel-leg-progress-row {
+  margin-top: 0.35rem;
+}
+.travel-leg-progress-label {
+  color: #9a8b72;
+  display: inline-block;
+  min-width: 5.5rem;
+}
+.travel-leg-progress-caption {
+  margin-top: 0.35rem;
+}
+.roster-veteran-hire--none .roster-veteran-note {
+  font-style: italic;
+}
+
+.travel-leg-progress-row--route .travel-leg-progress-label { color: #c89c3f; }
+.travel-leg-progress-row--calendar .travel-leg-progress-label { color: #7eb8da; }

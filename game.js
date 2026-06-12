@@ -10,9 +10,16 @@
   var CARAVAN_FOLLOWERS_TOTAL = 10;
   var SUPPLY_PEOPLE_PER_UNIT = 5;
   var DEFAULT_ROUTE_DAYS = 10;
-  /** Each trail leg rolls once (3–10 days) and keeps that length every loop. */
-  var ROUTE_DAYS_MIN = 3;
-  var ROUTE_DAYS_MAX = 10;
+  /** Each trail leg rolls once (60–200 mi) at ~20 mi/day; length persists every loop. */
+  var LEG_MILES_MIN = 60;
+  var LEG_MILES_MAX = 200;
+  var MILES_PER_DAY = 20;
+  var CALENDAR_DAYS_PER_YEAR = 365;
+  var SEASON_DAYS = 91; /* ~3 months; winter gets the remainder (92 days) */
+  var ROUTE_DAYS_MIN = Math.ceil(LEG_MILES_MIN / MILES_PER_DAY);
+  var ROUTE_DAYS_MAX = Math.ceil(LEG_MILES_MAX / MILES_PER_DAY);
+  var ROADSIDE_AID_MIN_DAYS = 4;
+  var ROADSIDE_AID_CHANCE = 0.14;
   var DESTINATIONS = {
     gustaf: { key: "gustaf", label: "Gustaf", subtitle: "Stone quays and wind-bent banners", badge: "Port" },
     brookside: { key: "brookside", label: "Brookside", subtitle: "A small village where the brook meets the road", badge: "Village" },
@@ -20,19 +27,38 @@
     glennhardt: { key: "glennhardt", label: "Glennhardt", subtitle: "Mid-city markets and guild halls on the fork road", badge: "City" },
     solem: { key: "solem", label: "Solem", subtitle: "Hill citadel above the river forks", badge: "Citadel" },
     new_isil: { key: "new_isil", label: "New Isil", subtitle: "End city - spires above the bay", badge: "Harbor" },
+    idlwyld: { key: "idlwyld", label: "Idlwyld", subtitle: "A valley village tucked behind ancient wards that keep monsters at bay", badge: "Warded vale" },
+    grosjean: { key: "grosjean", label: "Grosjean", subtitle: "A river camp of worn houses — mostly nets, smoke, and quiet water", badge: "Fish camp" },
+    arpery: { key: "arpery", label: "Arpery", subtitle: "A Dragonspine garrison settling into fields and family life after the war", badge: "Garrison" },
   };
-  /** Fork pairs on the western march (pick one from each pair westbound). */
-  var TRAIL_FORK_LOWER = ["gustaf", "brookside"];
+  /** Fork pairs on the western march (pick one branch westbound at each fork). */
+  var TRAIL_FORK_LOWER = ["gustaf", "idlwyld"];
   var TRAIL_FORK_UPPER = ["hollow_banks", "glennhardt"];
+  /** Lower-branch ids stored on saves: gustaf (port road) or brookside (warded vale road). */
+  function trailLowerBranchKey() {
+    var lf = state && state.trailLowerFork;
+    if (lf === "brookside" || lf === "idlwyld") return "brookside";
+    return "gustaf";
+  }
+  function isBrooksideBranchLowerFork() {
+    return trailLowerBranchKey() === "brookside";
+  }
   /** Stage depth for scaling and eastbound ordering when off the recorded path. */
   var TRAIL_TOWN_STAGE = {
     cantebury: 0,
     gustaf: 1,
-    brookside: 1,
-    hollow_banks: 2,
-    glennhardt: 2,
-    solem: 3,
-    new_isil: 4,
+    idlwyld: 1,
+    grosjean: 2,
+    brookside: 2,
+    hollow_banks: 3,
+    glennhardt: 3,
+    arpery: 4,
+    solem: 5,
+    new_isil: 6,
+  };
+  function travelLegHasWardedValley() {
+    var o = state.travelOrigin || "", d = state.travelDestination || "";
+    return o === "idlwyld" || d === "idlwyld";
   };
   var KEEP_NPC_LINES = {
     cantebury_governor: {
@@ -55,7 +81,7 @@
     },
   };
   function townHasKeep(townKey) {
-    return townKey === "cantebury" || townKey === "solem";
+    return townKey === "cantebury" || townKey === "solem" || townKey === "arpery";
   }
   var BARKEEP_BY_TOWN = {
     _default: {
@@ -114,6 +140,21 @@
       activeQuest: "That contract's still on your tab. Finish it — the citadel doesn't forget debts or heroes.",
       noWork: "Citadel's quiet for hires. Rest the company and climb when you're ready.",
     },
+    idlwyld: {
+      speaker: "Barkeep Maeven", title: "The Ward Lantern", portrait: "",
+      greet: "Idlwyld keeps to itself behind the old stones. Nothing foul crosses the wards — drink easy.",
+      activeQuest: "That favor for the valley is still open.", noWork: "All quiet under the stones tonight.",
+    },
+    grosjean: {
+      speaker: "Barkeep Colm", title: "The Net & Kettle", portrait: "",
+      greet: "Grosjean smells of river mud and smoke. Fisherfolk drink here when the nets are mended.",
+      activeQuest: "Finish that river business before the season turns.", noWork: "No coin in tales tonight.",
+    },
+    arpery: {
+      speaker: "Barkeep Lira", title: "The Field Mess", portrait: "",
+      greet: "Arpery was a war camp once. Now it's supper bells and children in the furrows.",
+      activeQuest: "The garrison chore isn't done yet.", noWork: "Quiet post tonight.",
+    },
   };
   var PARTY_MAX = 5;
   var STAT_KEYS = ["strength", "intelligence", "stamina", "luck"];
@@ -161,6 +202,20 @@
 
   /** Cantebury local scouting: 80% fewer adventure encounters (20% of normal rate). */
   var CANTEBURY_ADVENTURE_ENCOUNTER_MULT = 0.2;
+  var IDLWYLD_ENCOUNTER_MULT = 0;
+  var CANTEBURY_ADVENTURE_MONSTER_NAMES = [
+    "soldiers",
+    "knight",
+    "mage",
+    "cleric",
+    "priest",
+    "Acolyte",
+    "Sorceror",
+    "Bandit",
+    "Bandit Leader",
+    "Bandit Archer",
+    "Goblin",
+  ];
   var RUINS_BASE_CHANCE = 0.18;
   var RUINS_DAY_BONUS = 0.12;
   var RUINS_MAX_CHANCE = 0.72;
@@ -173,10 +228,16 @@
   var RUINS_GOLD_MIN = 4;
   var RUINS_GOLD_MAX = 10;
   var RUINS_GEM_FIND_CHANCE = 0.075;
+  var RUINS_ABANDONED_TOWN_SUPPLY_CHANCE = 0.18;
+  var RUINS_ABANDONED_TOWN_SUPPLY_MAX = 2;
   /** Ruins completion + per-room loot scaled to 50% of pre-6.3.1 values. */
   var RUINS_LOOT_MULTIPLIER = 0.5;
   /** Ruins grid minimap — off until shrine navigation is playable. */
   var RUINS_SHOW_MINIMAP = false;
+  var LOOT_SUPPLY_DROP_CHANCE = 0.0125;
+  var LOOT_SUPPLY_DROP_MAX = 5;
+  var ENEMY_LOOT_GOLD_MULT = 1.25;
+  var ENEMY_WEAPON_DROP_CHANCE = { 1: 0.025, 2: 0.0625, 3: 0.375 };
   var LOOT_RARITY_WEIGHTS = (BALANCE_DATA && BALANCE_DATA.lootRarityWeights) || {
     common: 0.85,
     uncommon: 0.1,
@@ -269,6 +330,19 @@
     );
     return itemId;
   }
+
+  function grantSupplyLootDrop(sourceLabel, maxAmount) {
+    maxAmount = Math.max(1, parseInt(maxAmount, 10) || LOOT_SUPPLY_DROP_MAX);
+    var amt = rollInt(1, maxAmount);
+    var gained = addSupplies(amt);
+    if (!(gained > 0)) return 0;
+    var src = sourceLabel ? sourceLabel + ": " : "Loot: ";
+    logLine(
+      src + '<span class="hi">+' + gained + " supply bundle" + (gained === 1 ? "" : "s") + "</span>.",
+      "good"
+    );
+    return gained;
+  }
   var EXOTIC_WEAPONS = [
     { id: "tellerite_blade", label: "Tellerite Blade", dmgBonus: 20, price: 50000 },
     { id: "vulcan_hammer", label: "Vulcan Hammer", dmgBonus: 20, price: 50000 },
@@ -293,10 +367,37 @@
   var FINAL_BOSS_MIN_DAYS = (BALANCE_DATA && BALANCE_DATA.finalBossMinDays) || 270;
   var SETTLER_REJOIN_COOLDOWN_DAYS = (BALANCE_DATA && BALANCE_DATA.settlerRejoinCooldownDays) || 365;
   var NEW_ISIL_BASE_POPULATION = 12;
+  var NEW_ISIL_BIRTH_RATE_ANNUAL = 0.015;
+  var NEW_ISIL_TRICKLE_INTERVAL_DAYS = 91;
+  var NEW_ISIL_TRICKLE_MIN = 1;
+  var NEW_ISIL_TRICKLE_MAX = 2;
+  var JOURNEY_DAYS_PER_YEAR = 365;
   var LIFE_POTION_BUY_GP = 10;
   var KEW_KUMBER_LOOP_GRANT_GP = 100;
   var CHANCELLOR_GP_PER_CARAVAN_CIVILIAN = 10;
-  var TAVERN_VETERAN_HIRE_GP = { 3: 50, 5: 100 };
+  var TAVERN_VETERAN_HIRE_BASE_GP = 5;
+  var TAVERN_VETERAN_HIRE_GP_PER_LEVEL = 15;
+  /** Major stops where road-worn mercenaries gather — not every hamlet has them. */
+  var TAVERN_VETERAN_TOWNS = {
+    cantebury: true,
+    gustaf: true,
+    glennhardt: true,
+    solem: true,
+    arpery: true,
+    new_isil: true,
+  };
+
+  function townHasTavernVeterans(townKey) {
+    return !!(townKey && TAVERN_VETERAN_TOWNS[townKey]);
+  }
+
+  function tavernVeteranUnavailableNote(townKey) {
+    if (townKey === "idlwyld") return "Idlwyld keeps to its wards — no sellswords drink here.";
+    if (townKey === "grosjean") return "Grosjean is nets and kettles, not veteran contracts.";
+    if (townKey === "brookside") return "Brookside is too quiet for roaming veterans.";
+    if (townKey === "hollow_banks") return "Hollow Banks sees traders, not old campaign hands.";
+    return "This stop does not draw veteran mercenaries.";
+  }
   var EQUIPMENT_SLOTS = ["weapon", "armor", "finger", "neck"];
   var EQUIPMENT_SLOT_LABELS = { weapon: "Weapon", armor: "Armor", finger: "Finger", neck: "Neck" };
   var EQUIPMENT_CATALOG = (BALANCE_DATA && BALANCE_DATA.equipmentCatalog) || [];
@@ -449,6 +550,10 @@
     );
   }
 
+  function isAtCanteburyHome() {
+    return state.phase === "story_illiri" && !state.settlementTown;
+  }
+
   function snapshotCaravanTreasury() {
     return {
       gold: state.gold || 0,
@@ -480,6 +585,13 @@
   function stashMemberExoticWeapon(member) {
     if (!member || !member.exoticWeaponId) return;
     if (!state.exoticWeaponStash) state.exoticWeaponStash = [];
+    if (!state.legMilesByRoute) state.legMilesByRoute = {};
+    if (typeof state.legMilesTraveled !== "number") state.legMilesTraveled = (state.travelDay || 0) * MILES_PER_DAY;
+    if (typeof state.legMilesTotal !== "number") state.legMilesTotal = 0;
+    if (!state.travelWeather) state.travelWeather = { kind: "clear" };
+    migrateLegDaysToMiles();
+    if (!state.tavernVeterans) state.tavernVeterans = [];
+    if (state.tavernVeteransTown === undefined) state.tavernVeteransTown = null;
     state.exoticWeaponStash.push(member.exoticWeaponId);
     member.exoticWeaponId = null;
   }
@@ -747,22 +859,6 @@
   }
 
   function reconcileGearStashWithEquipment() {
-    var rows = equippedGearRows();
-    var equippedCounts = {};
-    for (var i = 0; i < rows.length; i++) {
-      var id = rows[i].id;
-      equippedCounts[id] = (equippedCounts[id] || 0) + 1;
-    }
-    var ids = Object.keys(equippedCounts);
-    for (var j = 0; j < ids.length; j++) {
-      var itemId = ids[j];
-      var toStrip = equippedCounts[itemId];
-      var stripped = 0;
-      while (stripped < toStrip && countStashItemId(itemId) > 0) {
-        if (removeFromGearStash(itemId)) stripped++;
-        else break;
-      }
-    }
     syncWeaponStockCounter();
   }
 
@@ -879,7 +975,7 @@
       luck: rollWeightedStatGain(p.luck || 0),
     };
   }
-  var MAX_SUPPLIES = 30;
+  var MAX_SUPPLIES = 50;
   var DEFAULT_RUIN_SITE_TYPES = {
     shrine: {
       label: "Shrine",
@@ -923,27 +1019,92 @@
   var BALANCE_MONSTERS = (BALANCE_DATA && BALANCE_DATA.monsters ? BALANCE_DATA.monsters : []).filter(function (m) {
     return m && m.name;
   });
-  function shopPurchasableWeapons(vendorKind) {
-    vendorKind = shopVendorKind(vendorKind);
-    if (vendorKind !== "qm") return [];
+
+  function currentShopTownKey() {
+    if (state.phase === "story_illiri") return "cantebury";
+    return state.settlementTown || "cantebury";
+  }
+
+  function ensureTownShopStockState() {
+    if (!state.townShopStock) state.townShopStock = {};
+  }
+
+  function rollMarketWeaponStock(townKey) {
+    var stock = [];
+    var seen = {};
+    function addId(id) {
+      if (!id || seen[id]) return;
+      var w = weaponSheetDef(id);
+      if (!w || !equipmentItemDef(id)) return;
+      seen[id] = true;
+      stock.push(id);
+    }
+    var commons = BALANCE_WEAPONS.filter(function (w) {
+      return w && w.id && w.purchase && w.buyPrice > 0 && (w.rarity || "common") === "common" && w.id !== "frying_pan";
+    });
+    var pickCount = rollInt(3, Math.min(5, commons.length));
+    for (var ci = 0; ci < pickCount && commons.length; ci++) {
+      var cIdx = rollInt(0, commons.length - 1);
+      addId(commons[cIdx].id);
+      commons.splice(cIdx, 1);
+    }
+    var uncommons = BALANCE_WEAPONS.filter(function (w) {
+      return w && w.id && w.purchase && w.buyPrice > 0 && w.rarity === "uncommon";
+    });
+    var ui;
+    for (ui = 0; ui < uncommons.length; ui++) {
+      if (Math.random() < 0.05) addId(uncommons[ui].id);
+    }
+    if (townKey === "cantebury") addId("frying_pan");
+    return stock;
+  }
+
+  function refreshTownShopStock(townKey) {
+    ensureTownShopStockState();
+    state.townShopStock[townKey] = rollMarketWeaponStock(townKey);
+    return state.townShopStock[townKey];
+  }
+
+  function marketWeaponStockForTown(townKey) {
+    ensureTownShopStockState();
+    if (!state.townShopStock[townKey] || !state.townShopStock[townKey].length) {
+      refreshTownShopStock(townKey);
+    }
+    return state.townShopStock[townKey];
+  }
+
+  function qmWeaponStockForTown(townKey) {
+    if (townKey !== "cantebury" && townKey !== "solem") return [];
     return BALANCE_WEAPONS.filter(function (w) {
       if (!w || !w.id) return false;
       var r = w.rarity || "common";
       return r === "rare" || r === "ultra_rare";
-    })
-      .map(function (w) {
-        return {
-          id: w.id,
-          name: w.name,
-          dmgModifier: w.dmgModifier,
-          rarity: w.rarity,
-          buyPrice: qmWeaponBuyPrice(w),
-          sellPrice: qmWeaponSellPrice(w),
-        };
-      })
-      .sort(function (a, b) {
-        return (a.buyPrice || 0) - (b.buyPrice || 0);
+    }).map(function (w) { return w.id; });
+  }
+
+  function shopPurchasableWeapons(vendorKind) {
+    vendorKind = shopVendorKind(vendorKind);
+    var townKey = currentShopTownKey();
+    var ids = vendorKind === "qm" ? qmWeaponStockForTown(townKey) : marketWeaponStockForTown(townKey);
+    var out = [];
+    var i;
+    for (i = 0; i < ids.length; i++) {
+      var w = weaponSheetDef(ids[i]);
+      if (!w || !equipmentItemDef(ids[i])) continue;
+      var qmRare = isRareWeaponId(ids[i]);
+      if (vendorKind === "qm" && !qmRare) continue;
+      if (vendorKind !== "qm" && qmRare) continue;
+      out.push({
+        id: w.id,
+        name: w.name,
+        dmgModifier: w.dmgModifier,
+        rarity: w.rarity,
+        buyPrice: vendorKind === "qm" ? qmWeaponBuyPrice(w) : w.buyPrice,
+        sellPrice: vendorKind === "qm" ? qmWeaponSellPrice(w) : (w.sellPrice || Math.max(1, Math.floor((w.buyPrice || 1) * 0.35))),
       });
+    }
+    out.sort(function (a, b) { return (a.buyPrice || 0) - (b.buyPrice || 0); });
+    return out;
   }
 
   function shopPurchasableArmor() {
@@ -1002,6 +1163,14 @@
     vendorKind = shopVendorKind(vendorKind);
     if (vendorKind === "qm") return isRareItemId(itemId);
     return isCommonOrUncommonItemId(itemId);
+  }
+
+  function quartermasterRejectCheapItem() {
+    logLine(
+      '<span class="hi">Quartermaster:</span> "Nay, I do not want such cheap item. Take it back before I boot you."',
+      "bad"
+    );
+    render();
   }
 
   function memberEquipSlotsSummary(member) {
@@ -1140,6 +1309,13 @@
     "mercenary 2.jpeg",
     "mercenary 3.jpeg",
     "mercenary female 4.jpeg",
+    "MM1.jpeg",
+    "MM2.jpeg",
+    "MM3.jpeg",
+    "MW1.jpeg",
+    "WM2.jpeg",
+    "WM3.jpeg",
+    "MW4.jpeg",
     "merchant 2.jpeg",
     "merchant woman 3.jpeg",
     "soldier 1.jpeg",
@@ -1207,6 +1383,100 @@
     var t = window.PlaytestTracker;
     if (!t || typeof t.track !== "function") return;
     t.track(eventName, payload || {});
+  }
+
+  function isDevQaEnabled() {
+    if (typeof window === "undefined") return false;
+    try {
+      if (window.location && /(?:\?|&)dev=1(?:&|$)/.test(window.location.search || "")) return true;
+      if (localStorage.getItem("illirial.dev") === "1") return true;
+    } catch (e) {}
+    return false;
+  }
+
+  var _bestiaryPlayLastTick = Date.now();
+
+  function ensureBestiaryState() {
+    if (!state.bestiary || typeof state.bestiary !== "object") {
+      state.bestiary = {
+        monstersSlain: 0,
+        monsterKills: {},
+        milesTraveled: 0,
+        companionsLost: 0,
+        goldFound: 0,
+        ruinsLooted: 0,
+        playTimeMs: 0,
+      };
+    }
+    var b = state.bestiary;
+    if (typeof b.monstersSlain !== "number") b.monstersSlain = 0;
+    if (!b.monsterKills || typeof b.monsterKills !== "object") b.monsterKills = {};
+    if (typeof b.milesTraveled !== "number") b.milesTraveled = 0;
+    if (typeof b.companionsLost !== "number") b.companionsLost = 0;
+    if (typeof b.goldFound !== "number") b.goldFound = 0;
+    if (typeof b.ruinsLooted !== "number") b.ruinsLooted = 0;
+    if (typeof b.playTimeMs !== "number") b.playTimeMs = 0;
+  }
+
+  function recordBestiaryMonsterKills(defeatedFoes) {
+    if (!defeatedFoes || !defeatedFoes.length) return;
+    ensureBestiaryState();
+    var b = state.bestiary;
+    b.monstersSlain += defeatedFoes.length;
+    for (var i = 0; i < defeatedFoes.length; i++) {
+      var name = defeatedFoes[i] && defeatedFoes[i].name ? String(defeatedFoes[i].name) : "Unknown";
+      b.monsterKills[name] = (b.monsterKills[name] || 0) + 1;
+    }
+  }
+
+  function recordBestiaryMiles(miles) {
+    if (!(miles > 0)) return;
+    ensureBestiaryState();
+    state.bestiary.milesTraveled = Math.round((state.bestiary.milesTraveled + miles) * 10) / 10;
+  }
+
+  function recordBestiaryCompanionLost() {
+    ensureBestiaryState();
+    state.bestiary.companionsLost += 1;
+  }
+
+  function recordBestiaryGoldFound(amount) {
+    if (!(amount > 0)) return;
+    ensureBestiaryState();
+    state.bestiary.goldFound += amount;
+  }
+
+  function recordBestiaryRuinLooted() {
+    ensureBestiaryState();
+    state.bestiary.ruinsLooted += 1;
+  }
+
+  function tickBestiaryPlayTime() {
+    ensureBestiaryState();
+    var now = Date.now();
+    var delta = now - _bestiaryPlayLastTick;
+    if (delta > 0 && delta < 600000) state.bestiary.playTimeMs += delta;
+    _bestiaryPlayLastTick = now;
+  }
+
+  function resetBestiaryPlayAnchor() {
+    _bestiaryPlayLastTick = Date.now();
+  }
+
+  function bestiaryPlayHoursLabel() {
+    ensureBestiaryState();
+    tickBestiaryPlayTime();
+    var hrs = state.bestiary.playTimeMs / 3600000;
+    if (hrs < 0.1) return "< 0.1 h";
+    return hrs.toFixed(1) + " h";
+  }
+
+  function migrateBestiaryFromLegacy() {
+    ensureBestiaryState();
+    var b = state.bestiary;
+    if (!b.companionsLost && state.headstones && state.headstones.length) {
+      b.companionsLost = state.headstones.length;
+    }
   }
 
   function rollInt(min, max) {
@@ -1283,6 +1553,23 @@
     return n;
   }
 
+  function syncCaravanRationMode(logChange) {
+    if (caravanCivilianTotal() > 0) return;
+    if (state.rationMode !== "stretch") return;
+    state.rationMode = "normal";
+    state.stretchedRationDays = 0;
+    if (logChange) {
+      logLine(
+        "With no civilians aboard, the company returns to <span class=\"hi\">normal</span> rations.",
+        "good"
+      );
+    }
+  }
+
+  function isStretchRations() {
+    return caravanCivilianTotal() > 0 && state.rationMode === "stretch";
+  }
+
   function dailySupplyConsumption() {
     var people = caravanPeopleCount();
     if (people <= 0) return 0;
@@ -1342,7 +1629,7 @@
       return (
         '<section class="caravan-followers caravan-followers--empty">' +
         '<h3 class="roster-heading">Trail caravan (0 civilians)</h3>' +
-        '<p class="roster-note">Settlers remain at <b>New Isil</b>. The fighting line marches alone until Cantebury assigns a new train on the next westward departure.</p>' +
+        '<p class="roster-note">Settlers remain at <b>New Isil</b>. The fighting line marches alone until Cantebury assigns a new train on the next westward departure. Rations stay on <b>normal</b> for the fighters.</p>' +
         "</section>"
       );
     }
@@ -1612,7 +1899,9 @@
   }
 
   function rollSettlementRecruitSlots(townKey) {
-    if (townKey === "solem") return rollInt(2, 3);
+    if (townKey === "solem" || townKey === "arpery") return rollInt(2, 3);
+    if (townKey === "idlwyld") return Math.random() < 0.35 ? 1 : 0;
+    if (townKey === "grosjean") return Math.random() < 0.5 ? 1 : 0;
     if (townKey === "gustaf" || townKey === "hollow_banks" || townKey === "brookside") {
       var r = Math.random();
       if (r < 0.65) return 0;
@@ -1624,13 +1913,16 @@
   }
 
   function settlementRecruitMode(townKey) {
-    if (townKey === "solem") return "soldier_only";
+    if (townKey === "solem" || townKey === "arpery") return "soldier_only";
     if (townKey === "gustaf" || townKey === "hollow_banks" || townKey === "brookside") return "limited";
     return "open";
   }
 
   function settlementRecruitNote(townKey) {
     if (townKey === "solem") return "Solem can field 2-3 new soldiers this stay. Slots left: " + (state.settlementRecruitSlots || 0) + ".";
+    if (townKey === "arpery") return "Arpery fields 2-3 garrison soldiers this stay. Slots left: " + (state.settlementRecruitSlots || 0) + ".";
+    if (townKey === "idlwyld") return "Idlwyld rarely needs swords. Slots this stay: " + (state.settlementRecruitSlots || 0) + ".";
+    if (townKey === "grosjean") return "River-hardened fighters might sign on. Slots this stay: " + (state.settlementRecruitSlots || 0) + ".";
     if (townKey === "brookside") return "Brookside rarely sees hires. Slots this stay: " + (state.settlementRecruitSlots || 0) + ".";
     if (townKey === "glennhardt") return "Glennhardt's guild halls field a full roster. Slots left: " + (state.settlementRecruitSlots || 0) + ".";
     if (townKey === "gustaf" || townKey === "hollow_banks") return "Travelers are scarce here. Random local recruits this stay: " + (state.settlementRecruitSlots || 0) + ".";
@@ -1666,9 +1958,12 @@
   }
 
   function canonicalWestwardPath() {
-    var lower = state.trailLowerFork || "gustaf";
     var upper = state.trailUpperFork || "hollow_banks";
-    return ["cantebury", lower, upper, "solem", "new_isil"];
+    var head = isBrooksideBranchLowerFork()
+      ? ["cantebury", "idlwyld", "brookside"]
+      : ["cantebury", "gustaf", "grosjean"];
+    if (upper === "glennhardt") return head.concat(["glennhardt", "arpery", "solem", "new_isil"]);
+    return head.concat(["hollow_banks", "solem", "new_isil"]);
   }
 
   function appendTrailPathTown(townKey) {
@@ -1685,14 +1980,22 @@
   }
 
   function recordWestboundForkChoice(originKey, destKey) {
-    if (originKey === "cantebury" && TRAIL_FORK_LOWER.indexOf(destKey) >= 0) state.trailLowerFork = destKey;
-    if (TRAIL_FORK_LOWER.indexOf(originKey) >= 0 && TRAIL_FORK_UPPER.indexOf(destKey) >= 0) state.trailUpperFork = destKey;
+    if (originKey === "cantebury") {
+      if (destKey === "gustaf") state.trailLowerFork = "gustaf";
+      else if (destKey === "idlwyld" || destKey === "brookside") state.trailLowerFork = "brookside";
+    }
+    if ((originKey === "grosjean" || originKey === "brookside") && TRAIL_FORK_UPPER.indexOf(destKey) >= 0) {
+      state.trailUpperFork = destKey;
+    }
   }
 
   function westboundForkDestinations(originKey) {
     if (originKey === "cantebury") return TRAIL_FORK_LOWER.slice();
-    if (TRAIL_FORK_LOWER.indexOf(originKey) >= 0) return TRAIL_FORK_UPPER.slice();
-    if (TRAIL_FORK_UPPER.indexOf(originKey) >= 0) return ["solem"];
+    if (originKey === "gustaf") return ["grosjean"];
+    if (originKey === "idlwyld") return ["brookside"];
+    if (originKey === "grosjean" || originKey === "brookside") return TRAIL_FORK_UPPER.slice();
+    if (originKey === "glennhardt") return ["arpery"];
+    if (originKey === "arpery" || originKey === "hollow_banks") return ["solem"];
     if (originKey === "solem") return ["new_isil"];
     return [];
   }
@@ -1706,9 +2009,17 @@
     var ci = canon.indexOf(fromTownKey);
     if (ci > 0) return canon[ci - 1];
     if (fromTownKey === "new_isil") return "solem";
-    if (fromTownKey === "solem") return state.trailUpperFork || "hollow_banks";
-    if (TRAIL_FORK_UPPER.indexOf(fromTownKey) >= 0) return state.trailLowerFork || "gustaf";
-    if (TRAIL_FORK_LOWER.indexOf(fromTownKey) >= 0) return "cantebury";
+    if (fromTownKey === "solem") {
+      return state.trailUpperFork === "glennhardt" ? "arpery" : state.trailUpperFork || "hollow_banks";
+    }
+    if (fromTownKey === "arpery") return "glennhardt";
+    if (fromTownKey === "glennhardt" || fromTownKey === "hollow_banks") {
+      return isBrooksideBranchLowerFork() ? "brookside" : "grosjean";
+    }
+    if (fromTownKey === "brookside") return "idlwyld";
+    if (fromTownKey === "idlwyld") return "cantebury";
+    if (fromTownKey === "grosjean") return "gustaf";
+    if (fromTownKey === "gustaf") return "cantebury";
     return "cantebury";
   }
 
@@ -1721,22 +2032,89 @@
     return Math.max(1, sum);
   }
 
-  function resolveLegRouteDays(originKey, destinationKey) {
-    if (!state.legDaysByRoute) state.legDaysByRoute = {};
+  function migrateLegDaysToMiles() {
+    if (!state.legDaysByRoute || !state.legMilesByRoute) return;
+    var keys = Object.keys(state.legDaysByRoute), i, k, days;
+    for (i = 0; i < keys.length; i++) {
+      k = keys[i];
+      if (state.legMilesByRoute[k]) continue;
+      days = state.legDaysByRoute[k];
+      if (typeof days === "number" && days > 0) state.legMilesByRoute[k] = days * MILES_PER_DAY;
+    }
+  }
+
+  function resolveLegRouteMiles(originKey, destinationKey) {
+    if (!state.legMilesByRoute) state.legMilesByRoute = {};
+    migrateLegDaysToMiles();
     var key = legRouteKey(originKey, destinationKey);
-    var cached = state.legDaysByRoute[key];
+    var cached = state.legMilesByRoute[key];
     if (typeof cached === "number" && cached > 0) return cached;
     if (isEastboundLeg(originKey, destinationKey)) {
       var reverseKey = legRouteKey(destinationKey, originKey);
-      var mirror = state.legDaysByRoute[reverseKey];
+      var mirror = state.legMilesByRoute[reverseKey];
       if (typeof mirror === "number" && mirror > 0) {
-        state.legDaysByRoute[key] = mirror;
+        state.legMilesByRoute[key] = mirror;
         return mirror;
       }
     }
-    var days = rollInt(ROUTE_DAYS_MIN, ROUTE_DAYS_MAX);
-    state.legDaysByRoute[key] = days;
-    return days;
+    var miles = rollInt(LEG_MILES_MIN, LEG_MILES_MAX);
+    state.legMilesByRoute[key] = miles;
+    if (!state.legDaysByRoute) state.legDaysByRoute = {};
+    state.legDaysByRoute[key] = Math.max(1, Math.ceil(miles / MILES_PER_DAY));
+    return miles;
+  }
+
+  function resolveLegRouteDays(originKey, destinationKey) {
+    var miles = resolveLegRouteMiles(originKey, destinationKey);
+    return Math.max(1, Math.ceil(miles / MILES_PER_DAY));
+  }
+
+  function currentLegMilesTotal() {
+    if (state.legMilesTotal > 0) return state.legMilesTotal;
+    var origin = state.travelOrigin || "cantebury";
+    var dest = state.travelDestination || "gustaf";
+    return resolveLegRouteMiles(origin, dest);
+  }
+
+  function ensureLegMilesTraveled() {
+    if (typeof state.legMilesTraveled !== "number" || state.legMilesTraveled < 0) {
+      state.legMilesTraveled = (state.travelDay || 0) * MILES_PER_DAY;
+    }
+  }
+
+  function syncTravelDayFromMiles() {
+    ensureLegMilesTraveled();
+    var total = currentLegMilesTotal();
+    state.travelDay = legRouteDaysDone();
+    state.legMarchProgress = state.legMilesTraveled / MILES_PER_DAY;
+    if (state.legMilesTraveled >= total) state.travelDay = currentRouteDays();
+  }
+
+  function legRouteDaysDone() {
+    ensureLegMilesTraveled();
+    return Math.min(currentRouteDays(), Math.floor((state.legMilesTraveled || 0) / MILES_PER_DAY));
+  }
+
+  function legRouteDayCurrent() {
+    var routeDays = Math.max(1, currentRouteDays());
+    if (state.legMilesTraveled >= currentLegMilesTotal()) return routeDays;
+    return Math.min(routeDays, Math.max(1, legRouteDaysDone() + 1));
+  }
+
+  function ensureLegCalendarState() {
+    if (typeof state.legStartedOnJourneyDay !== "number" || state.legStartedOnJourneyDay < 0) {
+      var elapsed = typeof state.legDaysTraveled === "number" ? state.legDaysTraveled : 0;
+      state.legStartedOnJourneyDay = Math.max(0, (state.totalDaysElapsed || 0) - elapsed);
+    }
+  }
+
+  function legCalendarDaysElapsed() {
+    ensureLegCalendarState();
+    return Math.max(0, (state.totalDaysElapsed || 0) - state.legStartedOnJourneyDay);
+  }
+
+  function legMilesRemaining() {
+    return Math.max(0, currentLegMilesTotal() - (state.legMilesTraveled || 0));
   }
 
   function routeDaysForLeg(originKey, destinationKey) {
@@ -1744,7 +2122,7 @@
       var stored = state.legDaysByRoute[legRouteKey(originKey, destinationKey)];
       if (typeof stored === "number" && stored > 0) return stored;
     }
-    return Math.floor((ROUTE_DAYS_MIN + ROUTE_DAYS_MAX) / 2);
+    return Math.ceil(((LEG_MILES_MIN + LEG_MILES_MAX) / 2) / MILES_PER_DAY);
   }
 
   function cachedLegDays(originKey, destinationKey) {
@@ -1772,8 +2150,12 @@
     }
     var d =
       state.legDaysByRoute && state.legDaysByRoute[legRouteKey(originKey, destinationKey)];
-    if (typeof d === "number" && d > 0) return " (" + d + " days)";
-    return " (3–10 days, set on departure)";
+    if (typeof d === "number" && d > 0) {
+      var mi = state.legMilesByRoute && state.legMilesByRoute[legRouteKey(originKey, destinationKey)];
+      if (typeof mi === "number" && mi > 0) return " (" + mi + " mi, ~" + d + " days)";
+      return " (" + d + " days)";
+    }
+    return " (" + LEG_MILES_MIN + "–" + LEG_MILES_MAX + " mi, set on departure)";
   }
 
   function trailTownStage(townKey) {
@@ -1853,7 +2235,9 @@
     var origin = state && state.travelOrigin ? state.travelOrigin : "cantebury";
     var legIndex = trailLegIndex(origin);
     var routeDays = Math.max(1, currentRouteDays());
-    var dayRatio = Math.min(1, Math.max(0, (state && state.travelDay ? state.travelDay : 0) / routeDays));
+    ensureLegMilesTraveled();
+    var totalMi = Math.max(1, currentLegMilesTotal());
+    var dayRatio = Math.min(1, Math.max(0, (state.legMilesTraveled || 0) / totalMi));
     return 1 + legIndex * 0.35 + dayRatio * 0.15;
   }
 
@@ -1915,10 +2299,7 @@
   }
 
   function campTravelLegDay() {
-    var routeDays = Math.max(1, currentRouteDays());
-    var done = state && typeof state.travelDay === "number" ? state.travelDay : 0;
-    if (done <= 0) return 1;
-    return Math.min(done, routeDays);
+    return legRouteDayCurrent();
   }
 
   function currentTravelBiome() {
@@ -1941,6 +2322,273 @@
     return "Normal march — 100% pace";
   }
 
+
+  function calendarDayOfYear(journeyDay) {
+    var d = Math.max(0, journeyDay || 0) % CALENDAR_DAYS_PER_YEAR;
+    return d;
+  }
+
+  function currentSeason(journeyDay) {
+    var d = calendarDayOfYear(journeyDay);
+    if (d < SEASON_DAYS) return "spring";
+    if (d < SEASON_DAYS * 2) return "summer";
+    if (d < SEASON_DAYS * 3) return "fall";
+    return "winter";
+  }
+
+  function seasonDef(season) {
+    if (season === "summer") {
+      return { label: "Summer", tagline: "Hot and humid." };
+    }
+    if (season === "fall") {
+      return { label: "Fall", tagline: "Cold, rain, and snow." };
+    }
+    if (season === "winter") {
+      return { label: "Winter", tagline: "Rain fading to snow." };
+    }
+    return { label: "Spring", tagline: "Rain and cold." };
+  }
+
+  function calendarYear(journeyDay) {
+    return Math.floor(Math.max(0, journeyDay || 0) / CALENDAR_DAYS_PER_YEAR) + 1;
+  }
+
+  function seasonDayNumber(journeyDay) {
+    var d = calendarDayOfYear(journeyDay);
+    if (d < SEASON_DAYS) return d + 1;
+    if (d < SEASON_DAYS * 2) return d - SEASON_DAYS + 1;
+    if (d < SEASON_DAYS * 3) return d - SEASON_DAYS * 2 + 1;
+    return d - SEASON_DAYS * 3 + 1;
+  }
+
+  function calendarLabel(journeyDay) {
+    var season = currentSeason(journeyDay);
+    var def = seasonDef(season);
+    return def.label + ", year " + calendarYear(journeyDay) + ", day " + seasonDayNumber(journeyDay);
+  }
+
+  function travelWeatherDef(kind) {
+    if (kind === "snow") {
+      return { label: "Snow", speed: 0.75, supplyMult: 1, morale: "Fresh snow slows the wagons and chills the train." };
+    }
+    if (kind === "heavy_snow") {
+      return { label: "Heavy snow", speed: 0.5, supplyMult: 1, morale: "Deep drifts force the caravan to pick its path carefully." };
+    }
+    if (kind === "blizzard") {
+      return { label: "Blizzard", speed: 0, supplyMult: 0.5, morale: "Whiteout — the train digs in and burns half rations." };
+    }
+    if (kind === "slight_rain") {
+      return { label: "Slight rain", speed: 0.95, supplyMult: 1, morale: "Drizzle damps spirits along the wagons." };
+    }
+    if (kind === "steady_rain") {
+      return { label: "Steady rain", speed: 0.9, supplyMult: 1, morale: "Cold rain wears on the train — morale sags." };
+    }
+    if (kind === "storm") {
+      return { label: "Storm", speed: 0, supplyMult: 1, morale: "Thunder and wind — the caravan holds fast." };
+    }
+    return { label: "Clear skies", speed: 1, supplyMult: 1, morale: "" };
+  }
+
+  function currentTravelWeatherKind() {
+    if (!state.travelWeather || !state.travelWeather.kind) return "clear";
+    return state.travelWeather.kind;
+  }
+
+  function isColdTravelBiome(biome) {
+    return biome === "tundra" || biome === "snowfields" || biome === "mountains";
+  }
+
+  function normalizeWeatherWeights(weights) {
+    var sum = 0;
+    var k;
+    for (k in weights) {
+      if (weights.hasOwnProperty(k)) sum += weights[k] || 0;
+    }
+    if (sum <= 0) return { clear: 1 };
+    for (k in weights) {
+      if (weights.hasOwnProperty(k)) weights[k] = (weights[k] || 0) / sum;
+    }
+    return weights;
+  }
+
+  function seasonWeatherWeights(journeyDay, biome) {
+    var cold = isColdTravelBiome(biome);
+    var season = currentSeason(journeyDay);
+    var w = { clear: 0, slight_rain: 0, steady_rain: 0, storm: 0, snow: 0, heavy_snow: 0, blizzard: 0 };
+
+    if (season === "spring") {
+      w.clear = 0.14;
+      w.slight_rain = 0.28;
+      w.steady_rain = 0.34;
+      w.storm = 0.12;
+      w.snow = cold ? 0.07 : 0.05;
+      w.heavy_snow = cold ? 0.03 : 0.02;
+      w.blizzard = cold ? 0.02 : 0.01;
+    } else if (season === "summer") {
+      w.clear = 0.54;
+      w.slight_rain = 0.28;
+      w.steady_rain = 0.10;
+      w.storm = 0.08;
+      w.snow = cold ? 0.006 : 0;
+      w.heavy_snow = 0;
+      w.blizzard = 0;
+    } else if (season === "fall") {
+      w.clear = 0.10;
+      w.slight_rain = 0.20;
+      w.steady_rain = 0.22;
+      w.storm = 0.08;
+      w.snow = cold ? 0.20 : 0.14;
+      w.heavy_snow = cold ? 0.14 : 0.10;
+      w.blizzard = cold ? 0.06 : 0.04;
+    } else {
+      var winterDay = calendarDayOfYear(journeyDay) - SEASON_DAYS * 3;
+      var winterLen = CALENDAR_DAYS_PER_YEAR - SEASON_DAYS * 3;
+      var prog = Math.min(1, Math.max(0, winterDay / Math.max(1, winterLen - 1)));
+      var rainShare = 0.55 * (1 - prog);
+      var snowShare = 0.12 + prog * 0.72;
+      w.clear = 0.06 + (1 - prog) * 0.08;
+      w.slight_rain = rainShare * 0.42;
+      w.steady_rain = rainShare * 0.38;
+      w.storm = rainShare * 0.20;
+      w.snow = snowShare * 0.42;
+      w.heavy_snow = snowShare * 0.35;
+      w.blizzard = snowShare * 0.15;
+      if (cold) {
+        w.snow *= 1.25;
+        w.heavy_snow *= 1.25;
+        w.blizzard *= 1.25;
+      }
+    }
+    return normalizeWeatherWeights(w);
+  }
+
+  function pickWeightedWeather(weights) {
+    var r = Math.random();
+    var acc = 0;
+    var order = ["clear", "slight_rain", "steady_rain", "storm", "snow", "heavy_snow", "blizzard"];
+    var i;
+    for (i = 0; i < order.length; i++) {
+      acc += weights[order[i]] || 0;
+      if (r < acc) return order[i];
+    }
+    return "clear";
+  }
+
+  function rollTravelWeatherKind(biome, journeyDay) {
+    var day = typeof journeyDay === "number" ? journeyDay : state.totalDaysElapsed || 0;
+    return pickWeightedWeather(seasonWeatherWeights(day, biome));
+  }
+
+  function setTravelWeather(kind) {
+    state.travelWeather = { kind: kind || "clear" };
+  }
+
+  function weatherSpeedMultiplier() {
+    return travelWeatherDef(currentTravelWeatherKind()).speed;
+  }
+
+  function weatherSupplyMultiplier() {
+    var mult = travelWeatherDef(currentTravelWeatherKind()).supplyMult;
+    return typeof mult === "number" ? mult : 1;
+  }
+
+  function resolveStormIntoRain() {
+    setTravelWeather(Math.random() < 0.5 ? "slight_rain" : "steady_rain");
+  }
+
+  function resolveBlizzardIntoSnow() {
+    setTravelWeather(Math.random() < 0.5 ? "snow" : "heavy_snow");
+  }
+
+  function travelSeasonPanelHtml() {
+    var jd = state.totalDaysElapsed || 0;
+    var season = currentSeason(jd);
+    var def = seasonDef(season);
+    return (
+      '<div class="travel-season-panel season-' + escapeHtml(season) + '">' +
+      '<span class="travel-season-badge">' +
+      escapeHtml(def.label) +
+      ", year " +
+      calendarYear(jd) +
+      "</span>" +
+      '<span class="travel-season-hint hint">Day ' +
+      seasonDayNumber(jd) +
+      " · " +
+      escapeHtml(def.tagline) +
+      "</span>" +
+      "</div>"
+    );
+  }
+
+  function travelWeatherPanelHtml() {
+    var kind = currentTravelWeatherKind();
+    var def = travelWeatherDef(kind);
+    var speedPct = Math.round((def.speed || 1) * 100);
+    var speedHint;
+    if ((def.speed || 1) <= 0) {
+      speedHint = def.supplyMult < 1 ? "Hold fast — " + Math.round(def.supplyMult * 100) + "% rations" : "Hold fast — no miles";
+    } else if (def.speed >= 1) {
+      speedHint = "Nominal pace";
+    } else {
+      speedHint = "March pace — " + speedPct + "%";
+    }
+    return (
+      '<div class="travel-weather-panel weather-' + escapeHtml(kind) + '">' +
+      '<span class="travel-weather-badge">' + escapeHtml(def.label) + "</span>" +
+      '<span class="travel-weather-hint hint">' + escapeHtml(speedHint) + "</span>" +
+      "</div>"
+    );
+  }
+
+  function logTravelWeatherMorale() {
+    var def = travelWeatherDef(currentTravelWeatherKind());
+    if (def.morale) logLine(def.morale, "");
+  }
+
+  function maybeRoadsideAidEncounter() {
+    if (currentRouteDays() < ROADSIDE_AID_MIN_DAYS) return false;
+    if (Math.random() >= ROADSIDE_AID_CHANCE) return false;
+    var kinds = ["outpost", "travelers", "trading_camp"];
+    applyRoadsideAid(kinds[rollInt(0, kinds.length - 1)]);
+    return true;
+  }
+
+  function applyRoadsideAid(kind) {
+    var living = (state.party || []).filter(function (m) { return m && m.hp > 0 && !m.permadead; });
+    var i, m, missing, healAmt;
+    for (i = 0; i < living.length; i++) {
+      m = living[i];
+      missing = Math.max(0, (m.maxHp || m.hp) - m.hp);
+      healAmt = Math.max(1, Math.ceil(missing * 0.25));
+      m.hp = Math.min(m.maxHp || m.hp, m.hp + healAmt);
+    }
+    applyTravelDayMpRegen();
+    if (kind === "outpost") {
+      addSupplies(1);
+      logLine('<span class="hi">Roadside outpost:</span> scouts resupply (+1 supply bundle) and the company catches breath.', "good");
+    } else if (kind === "travelers") {
+      addSupplies(1);
+      logLine('<span class="hi">Fellow travelers:</span> another train shares rations (+1 supply) and news from the road ahead.', "good");
+    } else {
+      var sup = rollInt(1, 2);
+      var gained = addSupplies(sup);
+      var gold = rollInt(1, 3);
+      state.gold += gold;
+      recordBestiaryGoldFound(gold);
+      logLine(
+        '<span class="hi">Trading camp:</span> peddlers trade rest for coin (+' +
+          gained +
+          " supply bundle" +
+          (gained === 1 ? "" : "s") +
+          ", +" +
+          gold +
+          " gp).",
+        "good"
+      );
+    }
+    trackPlaytest("roadside_aid", { kind: kind, legDays: currentRouteDays() });
+  }
+
   function ensureLegMarchProgress() {
     if (typeof state.legMarchProgress !== "number" || state.legMarchProgress < 0) {
       state.legMarchProgress = state.travelDay || 0;
@@ -1949,61 +2597,152 @@
 
   function tryBiomeMarchAdvance() {
     if (state.phase !== "travel") return { ok: false };
-    if (state.travelDay >= currentRouteDays()) return { ok: false, done: true };
-    ensureLegMarchProgress();
+    ensureLegMilesTraveled();
+    var totalMi = currentLegMilesTotal();
+    if (state.legMilesTraveled >= totalMi) return { ok: false, done: true };
     var routeDays = currentRouteDays();
-    var nextDayIndex = Math.min(routeDays, (state.travelDay || 0) + 1);
+    var nextDayIndex = Math.min(routeDays, Math.floor(state.legMilesTraveled / MILES_PER_DAY) + 1);
     var biome = biomeForLegTravelDay(
       nextDayIndex,
       routeDays,
       state.travelOrigin || "cantebury",
       state.travelDestination || "gustaf"
     );
-    var speed = biomeMarchSpeed(biome);
-    var before = state.legMarchProgress;
-    state.legMarchProgress += speed;
-    var newCompleted = Math.min(routeDays, Math.floor(state.legMarchProgress + 1e-9));
-    if (newCompleted <= state.travelDay) {
-      var towardNext = Math.max(0, Math.round((state.legMarchProgress - Math.floor(before)) * 100));
+    var weatherKind = currentTravelWeatherKind();
+    if (weatherKind === "storm") {
+      logLine(
+        '<span class="hi">Storm:</span> lightning and wind halt the train for half a day — no miles gained. Skies break into rain.',
+        "bad"
+      );
+      resolveStormIntoRain();
+      trackPlaytest("weather_storm_halt", { biome: biome, miles: state.legMilesTraveled });
+      return { ok: false, stalled: true, biome: biome, weather: "storm" };
+    }
+    if (weatherKind === "blizzard") {
+      logLine(
+        '<span class="hi">Blizzard:</span> whiteout forces the caravan to rest in place — no miles gained. Rations stretch to half the usual cost.',
+        "bad"
+      );
+      resolveBlizzardIntoSnow();
+      trackPlaytest("weather_blizzard_halt", { biome: biome, miles: state.legMilesTraveled });
+      return { ok: false, stalled: true, biome: biome, weather: "blizzard" };
+    }
+    var biomeSpeed = biomeMarchSpeed(biome);
+    var weatherSpeed = weatherSpeedMultiplier();
+    var milesGain = MILES_PER_DAY * biomeSpeed * weatherSpeed;
+    var beforeDay = Math.floor(state.legMilesTraveled / MILES_PER_DAY);
+    state.legMilesTraveled = Math.min(totalMi, state.legMilesTraveled + milesGain);
+    recordBestiaryMiles(milesGain);
+    state.legMarchProgress = state.legMilesTraveled / MILES_PER_DAY;
+    var afterDay = Math.floor(state.legMilesTraveled / MILES_PER_DAY);
+    if (afterDay <= beforeDay && milesGain > 0.01) {
+      var pct = Math.round(((state.legMilesTraveled - beforeDay * MILES_PER_DAY) / MILES_PER_DAY) * 100);
       logLine(
         '<span class="hi">' +
           escapeHtml(biomeLabel(biome)) +
-          "</span> slows the caravan — supplies spent, but only <b>" +
-          towardNext +
-          "%</b> of the next day's miles are cleared (" +
-          Math.round(speed * 100) +
-          "% pace). Camp or march again.",
+          "</span> and " +
+          escapeHtml(travelWeatherDef(weatherKind).label.toLowerCase()) +
+          " limit progress — only <b>" +
+          pct +
+          "%</b> of the next day's " +
+          MILES_PER_DAY +
+          " mi cleared (" +
+          Math.round(biomeSpeed * weatherSpeed * 100) +
+          "% pace).",
         ""
       );
-      trackPlaytest("biome_stalled_march", { biome: biome, speed: speed, progress: state.legMarchProgress });
-      return { ok: false, stalled: true, biome: biome, speed: speed };
+      trackPlaytest("biome_stalled_march", { biome: biome, weather: weatherKind, miles: state.legMilesTraveled });
+      return { ok: false, stalled: true, biome: biome, weather: weatherKind };
     }
-    var daysGain = newCompleted - state.travelDay;
+    var daysGain = afterDay - beforeDay;
     if (daysGain > 1) {
       logLine(
         '<span class="hi">' +
           escapeHtml(biomeLabel(biome)) +
-          "</span> carries the train quickly — <b>" +
+          "</span> carries the train — <b>" +
           daysGain +
-          "</b> days of road in one push (" +
-          Math.round(speed * 100) +
-          "% pace).",
+          "</b> day(s) of road (" +
+          Math.round(milesGain) +
+          " mi this push).",
         "good"
       );
     }
-    return { ok: true, daysGain: daysGain, biome: biome, speed: speed };
+    if (state.legMilesTraveled >= totalMi) daysGain = Math.max(daysGain, 1);
+    return { ok: true, daysGain: daysGain, biome: biome, weather: weatherKind, milesGain: milesGain };
+  }
+
+  function legDaysRemainingEstimate() {
+    ensureLegMilesTraveled();
+    var leftMi = legMilesRemaining();
+    if (leftMi <= 0) return 0;
+    return Math.max(1, Math.ceil(leftMi / MILES_PER_DAY));
   }
 
   function travelLegProgressText() {
-    var routeDays = currentRouteDays();
-    var done = state.travelDay || 0;
-    ensureLegMarchProgress();
-    var partial = Math.max(0, state.legMarchProgress - done);
-    var text = done + " / " + routeDays + " days complete on this leg";
-    if (partial >= 0.08) {
-      text += ' <span class="hint">(' + Math.round(partial * 100) + "% toward next day)</span>";
+    ensureLegMilesTraveled();
+    ensureLegCalendarState();
+    syncTravelDayFromMiles();
+    var totalMi = currentLegMilesTotal();
+    var doneMi = Math.min(totalMi, Math.round(state.legMilesTraveled || 0));
+    var leftMi = Math.max(0, Math.round(legMilesRemaining()));
+    var routeDaysLeft = legDaysRemainingEstimate();
+    var calOnLeg = legCalendarDaysElapsed();
+    var partialMi = doneMi - Math.floor(doneMi / MILES_PER_DAY) * MILES_PER_DAY;
+    var text =
+      "<b>Route:</b> " +
+      doneMi +
+      " / " +
+      totalMi +
+      " mi (~" +
+      routeDaysLeft +
+      " route-day(s) left) · <b>Calendar:</b> " +
+      calOnLeg +
+      " day(s) on this leg · journey day " +
+      (state.totalDaysElapsed || 0);
+    if (partialMi >= 2 && leftMi > 0) {
+      text += ' <span class="hint">(' + partialMi + " mi toward next route-day)</span>";
     }
     return text;
+  }
+
+  function travelLegProgressPanelHtml() {
+    ensureLegMilesTraveled();
+    ensureLegCalendarState();
+    syncTravelDayFromMiles();
+    var totalMi = currentLegMilesTotal();
+    var doneMi = Math.min(totalMi, Math.round(state.legMilesTraveled || 0));
+    var leftMi = Math.max(0, Math.round(legMilesRemaining()));
+    var routeDaysTotal = currentRouteDays();
+    var routeDaysLeft = legDaysRemainingEstimate();
+    var routeDaysDone = legRouteDaysDone();
+    var calOnLeg = legCalendarDaysElapsed();
+    return (
+      '<div class="travel-leg-progress">' +
+      '<div class="travel-leg-progress-row travel-leg-progress-row--route">' +
+      '<span class="travel-leg-progress-label">Route (miles)</span> <b>' +
+      doneMi +
+      "</b> / " +
+      totalMi +
+      " mi" +
+      ' <span class="hint">(~' +
+      routeDaysDone +
+      " / ~" +
+      routeDaysTotal +
+      " route-days · " +
+      leftMi +
+      " mi / ~" +
+      routeDaysLeft +
+      " route-days left)</span></div>" +
+      '<div class="travel-leg-progress-row travel-leg-progress-row--calendar">' +
+      '<span class="travel-leg-progress-label">Calendar (time)</span> <b>' +
+      calOnLeg +
+      "</b> day(s) on this leg · journey day <b>" +
+      (state.totalDaysElapsed || 0) +
+      "</b>" +
+      ' <span class="hint">(' +
+      escapeHtml(calendarLabel(state.totalDaysElapsed || 0)) +
+      ")</span></div></div>"
+    );
   }
 
   function travelBiomePanelHtml() {
@@ -2015,6 +2754,8 @@
       '<span class="travel-biome-badge">' + escapeHtml(label) + "</span>" +
       (hint ? '<span class="travel-biome-hint">' + escapeHtml(hint) + "</span>" : "") +
       '<span class="travel-biome-speed hint">' + escapeHtml(biomeMarchSpeedHint(biomeKey)) + "</span>" +
+      travelSeasonPanelHtml() +
+      travelWeatherPanelHtml() +
       "</div>"
     );
   }
@@ -2144,8 +2885,23 @@
     return baseHp + bonusStam * 2;
   }
 
+  function memberLevelHpBonus(member) {
+    if (!member) return 0;
+    var bonus = member.levelHpBonus;
+    return typeof bonus === "number" && bonus > 0 ? bonus : 0;
+  }
+
+  function ensureMemberLevelHpBonus(member) {
+    if (!member) return;
+    if (typeof member.levelHpBonus === "number" && member.levelHpBonus >= 0) return;
+    ensureMemberEquipment(member);
+    var statBase = memberBaseMaxHp(member) + equipmentHpBonus(member);
+    var maxHp = typeof member.maxHp === "number" ? member.maxHp : statBase;
+    member.levelHpBonus = Math.max(0, Math.floor(maxHp - statBase));
+  }
+
   function memberMaxHp(member) {
-    return memberBaseMaxHp(member) + equipmentHpBonus(member);
+    return memberBaseMaxHp(member) + equipmentHpBonus(member) + memberLevelHpBonus(member);
   }
 
   function hpGainOnLevel(member) {
@@ -2173,6 +2929,8 @@
         luck: (base.luck || 0) + (member.bonus.luck || 0),
       };
     }
+    ensureMemberEquipment(member);
+    ensureMemberLevelHpBonus(member);
     var derivedMaxHp = memberMaxHp(member);
     if (typeof member.maxHp !== "number" || member.maxHp < derivedMaxHp) member.maxHp = derivedMaxHp;
     if (typeof member.hp !== "number" || member.hp < 0) member.hp = member.maxHp;
@@ -2461,6 +3219,7 @@
     } else {
       logLine("Caravan leader ready: <span class=\"hi\">" + lead.name + "</span> (" + roleLabel(lead.role) + ").", "good");
     }
+    resetBestiaryPlayAnchor();
     trackPlaytest("run_started", {
       leaderRole: lead.role,
       leaderSource: lead.source || "custom",
@@ -2493,8 +3252,14 @@
       guest: null,
       travelDay: 0,
       legMarchProgress: 0,
+      legMilesTraveled: 0,
+      legDaysTraveled: 0,
+      legStartedOnJourneyDay: 0,
+      legMilesTotal: 0,
       legRouteDays: 0,
       legDaysByRoute: {},
+      legMilesByRoute: {},
+      travelWeather: { kind: "clear" },
       encounterChance: ENCOUNTER_BASE,
       ruinsDiscovered: false,
       ruinsType: null,
@@ -2536,6 +3301,15 @@
       headstones: loadHeadstonesFromStorage(),
       headstonesIdSeq: 0,
       runId: "run-" + Date.now() + "-" + Math.floor(Math.random() * 1000),
+      bestiary: {
+        monstersSlain: 0,
+        monsterKills: {},
+        milesTraveled: 0,
+        companionsLost: 0,
+        goldFound: 0,
+        ruinsLooted: 0,
+        playTimeMs: 0,
+      },
       playthrough: 0,
       adventure: null,
       elaraDialog: null,
@@ -2545,6 +3319,9 @@
       loopLeaderSetup: false,
       kewKumberGrantDue: 0,
       chancellorGrantDue: 0,
+      townShopStock: {},
+      tavernVeterans: [],
+      tavernVeteransTown: null,
       stabilityTargetNotedAtNewIsil: false,
       settledCompanions: [],
       newIsilSettlers: [],
@@ -2937,6 +3714,7 @@
     migrateColonyBuildingKeys(state.newIsilColony);
     recomputeColonyTier();
     syncNewIsilGrowthFromColony();
+    syncCaravanRationMode(false);
     ensureHeadstonesState();
     saveHeadstonesToStorage();
     if (state.party && state.party.length) {
@@ -2948,6 +3726,11 @@
       }
     }
     syncLeaderPartyMember();
+    ensureBestiaryState();
+    migrateBestiaryFromLegacy();
+    ensureLegCalendarState();
+    if (state.phase === "travel") syncTravelDayFromMiles();
+    resetBestiaryPlayAnchor();
     processDailyDeath();
     return true;
   }
@@ -3540,6 +4323,11 @@
     m.hp = Math.min(m.maxHp, m.hp + amt);
   }
 
+  function healingPotionAmount(member) {
+    if (!member || !member.maxHp) return 1;
+    return Math.max(1, Math.round(member.maxHp * 0.1));
+  }
+
   function damageMember(id, amt) {
     var m = teamMemberById(id);
     if (!m || m.hp <= 0) return;
@@ -3554,9 +4342,11 @@
   }
 
   function rollTravelEncounter() {
+    if (state.phase === "travel" && travelLegHasWardedValley()) return false;
     var chance = state.encounterChance;
-    if (state.phase === "adventure" && state.adventure && state.adventure.town === "cantebury") {
-      chance *= CANTEBURY_ADVENTURE_ENCOUNTER_MULT;
+    if (state.phase === "adventure" && state.adventure) {
+      if (state.adventure.town === "cantebury") chance *= CANTEBURY_ADVENTURE_ENCOUNTER_MULT;
+      else if (state.adventure.town === "idlwyld") chance *= IDLWYLD_ENCOUNTER_MULT;
     }
     if (Math.random() < chance) {
       state.encounterChance = ENCOUNTER_BASE;
@@ -3564,6 +4354,19 @@
     }
     state.encounterChance = Math.min(state.encounterChance + ENCOUNTER_STEP, ENCOUNTER_CAP);
     return false;
+  }
+
+  function normalizeMonsterName(name) {
+    return String(name || "").toLowerCase().trim();
+  }
+
+  function filterMonstersByNames(monsters, names) {
+    var wanted = {};
+    var i;
+    for (i = 0; i < names.length; i++) wanted[normalizeMonsterName(names[i])] = true;
+    return (monsters || []).filter(function (m) {
+      return m && wanted[normalizeMonsterName(m.name)];
+    });
   }
 
   function randomBalanceMonster(pool) {
@@ -3814,10 +4617,14 @@
     if (sourceKind === "ruins") {
       pool = ruinsMonsterPool(allowed);
     } else {
-      pool = BALANCE_MONSTERS.filter(function (m) {
-        var lvl = (m && m.level) || 1;
-        return allowed.indexOf(lvl) >= 0;
-      });
+      if (sourceKind === "adventure" && advTown === "cantebury") {
+        pool = filterMonstersByNames(BALANCE_MONSTERS, CANTEBURY_ADVENTURE_MONSTER_NAMES);
+      } else {
+        pool = BALANCE_MONSTERS.filter(function (m) {
+          var lvl = (m && m.level) || 1;
+          return allowed.indexOf(lvl) >= 0;
+        });
+      }
       if (!pool.length) pool = BALANCE_MONSTERS.slice();
     }
     var archetype = sourceKind === "ruins" ? pickRuinsMonster(pool) : randomBalanceMonster(pool);
@@ -4155,9 +4962,11 @@
     var goldGain = roadGoldBonus(Math.floor(10 * mult * RUINS_LOOT_MULTIPLIER));
     var gemGain = Math.floor(10 * mult * RUINS_LOOT_MULTIPLIER);
     state.gold += goldGain;
+    recordBestiaryGoldFound(goldGain);
     state.gems += gemGain;
     rollWeaponLoot(true);
     state.ruinsSearched = true;
+    recordBestiaryRuinLooted();
     logLine("Ruins search complete: " + goldGain + " gold, " + gemGain + " gems.", "good");
   }
 
@@ -4184,9 +4993,9 @@
     return sum;
   }
 
-  // Level 1: XP only.
-  // Level 2: XP + small gold + 5% weapon drop.
-  // Level 3: XP + better gold + 30% weapon drop.
+  // Level 1: XP + small gold + ~2.5% weapon drop.
+  // Level 2: XP + gold + ~6.25% weapon drop.
+  // Level 3: XP + better gold + ~37.5% weapon drop.
   function applyLevelDrops(foes) {
     if (!foes || !foes.length) return;
     for (var i = 0; i < foes.length; i++) {
@@ -4196,15 +5005,17 @@
       else if (lvl === 2) goldGain = roadGoldBonus(rollInt(1, 3));
       else goldGain = roadGoldBonus(rollInt(3, 6));
       if (goldGain > 0) {
+        goldGain = Math.max(1, Math.round(goldGain * ENEMY_LOOT_GOLD_MULT));
         state.gold += goldGain;
+        recordBestiaryGoldFound(goldGain);
         logLine(foes[i].name + " drop: +" + goldGain + " gold.", "good");
       }
-      var dropChance;
-      if (lvl <= 1) dropChance = 0.02;
-      else if (lvl === 2) dropChance = 0.05;
-      else dropChance = 0.30;
+      var dropChance = ENEMY_WEAPON_DROP_CHANCE[lvl] || ENEMY_WEAPON_DROP_CHANCE[3];
       if (Math.random() < dropChance) {
         grantWeaponGearDrop(foes[i].name + " drop");
+      }
+      if (Math.random() < LOOT_SUPPLY_DROP_CHANCE) {
+        grantSupplyLootDrop(foes[i].name + " drop", LOOT_SUPPLY_DROP_MAX);
       }
     }
   }
@@ -4220,8 +5031,11 @@
     m.stats.stamina = Math.min(STAT_CAP, (m.stats.stamina || 0) + sg.stamina);
     m.stats.luck = Math.min(STAT_CAP, (m.stats.luck || 0) + sg.luck);
     var hpGain = hpGainOnLevel(m);
-    m.maxHp += hpGain;
-    m.hp = Math.min(m.maxHp, m.hp + hpGain);
+    ensureMemberLevelHpBonus(m);
+    m.levelHpBonus = memberLevelHpBonus(m) + hpGain;
+    var prevMaxHp = m.maxHp || memberMaxHp(m);
+    m.maxHp = memberMaxHp(m);
+    m.hp = Math.min(m.maxHp, m.hp + Math.max(hpGain, m.maxHp - prevMaxHp));
     var prevMaxMp = m.maxMp || 0;
     m.maxMp = memberMaxMp(m);
     var mpGain = Math.max(0, m.maxMp - prevMaxMp);
@@ -4418,7 +5232,7 @@
     for (i = 0; i < keys.length; i++) buildings[keys[i]] = 0;
     return {
       population: NEW_ISIL_BASE_POPULATION, points: 0, tier: "camp", buildings: buildings,
-      deliveredCivilians: 0, lastTickDay: 0, colonyLog: [], ralliedThisVisit: false,
+      deliveredCivilians: 0, lastTickDay: 0, nextTrickleDay: null, colonyLog: [], ralliedThisVisit: false,
     };
   }
   function ensureNewIsilColony() {
@@ -4456,7 +5270,7 @@
   function recomputeColonyPopulationFloor() {
     ensureNewIsilColony();
     var c = state.newIsilColony;
-    var floor = NEW_ISIL_BASE_POPULATION + newIsilSettlerCount() + Math.floor((c.deliveredCivilians || 0) * 0.35);
+    var floor = NEW_ISIL_BASE_POPULATION + newIsilSettlerCount() + (c.deliveredCivilians || 0);
     if (c.population < floor) c.population = floor;
   }
   function colonyTierDefs() {
@@ -4504,14 +5318,40 @@
     syncNewIsilGrowthFromColony();
     recomputeColonyPopulationFloor();
   }
+  function newIsilBirthRateAnnual() {
+    var cfg = colonyCfg();
+    return typeof cfg.birthRateAnnual === "number" ? cfg.birthRateAnnual : NEW_ISIL_BIRTH_RATE_ANNUAL;
+  }
+
+  function newIsilTrickleIntervalDays() {
+    var cfg = colonyCfg();
+    return typeof cfg.trickleIntervalDays === "number" ? cfg.trickleIntervalDays : NEW_ISIL_TRICKLE_INTERVAL_DAYS;
+  }
+
+  function ensureNewIsilTrickleSchedule(colony) {
+    if (typeof colony.nextTrickleDay !== "number") {
+      colony.nextTrickleDay = (state.totalDaysElapsed || 0) + newIsilTrickleIntervalDays();
+    }
+  }
+
   function tickNewIsilColonyDay() {
     if (!colonyIsActive()) return;
     ensureNewIsilColony();
     var colony = state.newIsilColony, passive = colonyCfg().passive || {};
     var settlers = settlersAtTown("new_isil", false), nSettlers = settlers.length;
-    var delivered = colony.deliveredCivilians || 0;
-    var popGain = (passive.populationPerDayBase || 0.04) + nSettlers * (passive.populationPerSettlerPerDay || 0.22) + delivered * (passive.populationPerDeliveredCivilianPerDay || 0.04);
-    colony.population = (colony.population || NEW_ISIL_BASE_POPULATION) + popGain;
+    var pop = colony.population || NEW_ISIL_BASE_POPULATION;
+    var birthGain = pop * (newIsilBirthRateAnnual() / JOURNEY_DAYS_PER_YEAR);
+    colony.population = pop + birthGain;
+    ensureNewIsilTrickleSchedule(colony);
+    var day = state.totalDaysElapsed || 0;
+    if (day >= colony.nextTrickleDay) {
+      var trickleMin = typeof colonyCfg().trickleMin === "number" ? colonyCfg().trickleMin : NEW_ISIL_TRICKLE_MIN;
+      var trickleMax = typeof colonyCfg().trickleMax === "number" ? colonyCfg().trickleMax : NEW_ISIL_TRICKLE_MAX;
+      var trickle = rollInt(trickleMin, trickleMax);
+      colony.population = (colony.population || NEW_ISIL_BASE_POPULATION) + trickle;
+      colony.nextTrickleDay = day + newIsilTrickleIntervalDays();
+      pushColonyLog("Wanderers drift in from the coast (+" + trickle + ").");
+    }
     var ptGain = nSettlers * (passive.pointsPerSettlerPerDay || 0.18) + Math.round(colony.population) * (passive.pointsPerPopulationPerDay || 0.025);
     colony.points = (colony.points || 0) + ptGain;
     var bStep = (passive.buildingProgressPerDayPerSettler || 0.06), maxL = colonyMaxBuildingLevel(), si;
@@ -4617,7 +5457,7 @@
     var settlerHtml = settlers.length === 0 ? '<p class="hint">No companions settled here yet.</p>' : '<ul>' + settlers.map(function (s) {
       return '<li><b>' + escapeHtml(s.name) + '</b> (' + roleLabel(s.role) + ') → ' + escapeHtml(buildingDefForSite(settlerRoleBuildingKey(s.role)).label) + '</li>';
     }).join("") + '</ul>';
-    return '<p class="town-lead">While you march, the settlement <b>grows on its own</b>. Each visit, rally the settlers behind <b>one</b> project.</p>' + siteLine + '<div class="colony-summary"><span class="colony-tier-badge">' + escapeHtml(tier) + '</span><span>Population ~<b>' + Math.round(colony.population || NEW_ISIL_BASE_POPULATION) + '</b></span><span>Score <b>' + Math.round(colony.points || 0) + '</b></span></div><h3 class="roster-heading">The settlement</h3>' + settlementVistaHtml() + rallyProjectCardsHtml() + '<h3 class="roster-heading">Settlers at work</h3>' + settlerHtml;
+    return '<p class="town-lead">While you march, New Isil grows slowly from <b>births (~1.5%/year)</b> and <b>1–2 wanderers every three months</b>. Most new souls arrive when a <b>caravan reaches the harbor</b>. Each visit, rally the settlers behind <b>one</b> project.</p>' + siteLine + '<div class="colony-summary"><span class="colony-tier-badge">' + escapeHtml(tier) + '</span><span>Population ~<b>' + Math.round(colony.population || NEW_ISIL_BASE_POPULATION) + '</b></span><span>Score <b>' + Math.round(colony.points || 0) + '</b></span></div><h3 class="roster-heading">The settlement</h3>' + settlementVistaHtml() + rallyProjectCardsHtml() + '<h3 class="roster-heading">Settlers at work</h3>' + settlerHtml;
   }
   function wireNewIsilColonyPanel(root) {
     if (!root) return;
@@ -4709,28 +5549,21 @@
       if (originTown === "new_isil") return 1;
       var days = 0;
       var key = originTown;
-      if (key === "cantebury") {
-        days += cachedLegDays("cantebury", "gustaf");
-        key = "gustaf";
+      var guard = 0;
+      while (key && key !== "new_isil" && guard < 20) {
+        var canon = canonicalWestwardPath();
+        var idx = canon.indexOf(key);
+        if (idx < 0 || idx >= canon.length - 1) break;
+        days += cachedLegDays(key, canon[idx + 1]);
+        key = canon[idx + 1];
+        guard++;
       }
-      if (key === "gustaf") {
-        days += cachedLegDays("gustaf", "hollow_banks");
-        key = "hollow_banks";
-      }
-      if (key === "hollow_banks") {
-        days += cachedLegDays("hollow_banks", "solem");
-        key = "solem";
-      }
-      if (key === "solem") days += cachedLegDays("solem", "new_isil");
       return Math.max(1, days + 1);
     }
-    return (
-      cachedLegDays("cantebury", "gustaf") +
-      cachedLegDays("gustaf", "hollow_banks") +
-      cachedLegDays("hollow_banks", "solem") +
-      cachedLegDays("solem", "new_isil") +
-      2
-    );
+    var defaultPath = ["cantebury", "gustaf", "grosjean", "hollow_banks", "solem", "new_isil"];
+    var sum = 0;
+    for (var i = 0; i < defaultPath.length - 1; i++) sum += cachedLegDays(defaultPath[i], defaultPath[i + 1]);
+    return Math.max(1, sum + 2);
   }
 
   function mustDefeatFinalHarborBoss() {
@@ -4821,6 +5654,9 @@
     var count = state.caravan.total;
     ensureNewIsilColony();
     state.newIsilColony.deliveredCivilians = (state.newIsilColony.deliveredCivilians || 0) + count;
+    state.newIsilColony.population = (state.newIsilColony.population || NEW_ISIL_BASE_POPULATION) + count;
+    recomputeColonyPopulationFloor();
+    syncNewIsilGrowthFromColony();
     state.caravan = {
       total: 0,
       farmers: 0,
@@ -4831,6 +5667,7 @@
       cobblers: 0,
       blacksmiths: 0,
     };
+    syncCaravanRationMode(true);
     logLine(
       "<span class=\"hi\">New Isil:</span> " +
         count +
@@ -4845,7 +5682,7 @@
     if (state.caravan.total > 0) return;
     var n = rollInt(1, 15);
     state.caravan = rollNewCaravanFollowers(n);
-    state.caravanDeliveredToNewIsil = true;
+    state.caravanDeliveredToNewIsil = false;
     queueChancellorCaravanGrant(n);
     logLine(
       "<span class=\"hi\">Cantebury:</span> the crown assigns <b>" +
@@ -4869,18 +5706,24 @@
       caravanLoop: (state.caravanLoops || 0) + 1,
     });
     state.caravanLoops = (state.caravanLoops || 0) + 1;
+    state.travelOrigin = "cantebury";
+    state.travelDestination = "gustaf";
+    state.onReturnMarch = false;
+    refreshTownShopStock("cantebury");
+    refreshTavernVeterans("cantebury");
     state.phase = "story_illiri";
     state.illiriView = "castle";
     state.keepView = "hall";
     state.settlementTown = null;
     state.npcDialog = null;
     internPendingHeadstones();
+    replenishCaravanAtCantebury();
     logLine(
       "<span class=\"hi\">Cantebury:</span> the fighting line returns from New Isil (loop " +
         state.caravanLoops +
-        ") — <b>no civilian train</b> on the eastbound road. Settlers abroad: " +
+        ") — settlers abroad: " +
         newIsilSettlerCount() +
-        ". Cantebury will assign civilians when you march west again.",
+        ". The crown readies the next westward train; speak with the chancellor for travel stipends.",
       "good"
     );
     state.transition = { kind: "arrive", label: "Cantebury" };
@@ -5166,6 +6009,7 @@
       }
     }
     member.settlerPenalty = true;
+    member.levelHpBonus = 0;
     initMemberProgress(member);
     member.maxHp = memberMaxHp(member);
     member.hp = Math.min(member.hp, member.maxHp);
@@ -5245,7 +6089,7 @@
 
   function departWestboundTo(townKey) {
     if (state.phase !== "settlement" && state.phase !== "story_illiri") return;
-    var origin = state.settlementTown || state.travelOrigin || "cantebury";
+    var origin = isAtCanteburyHome() ? "cantebury" : state.settlementTown || state.travelOrigin || "cantebury";
     if (origin === "cantebury") {
       resetTrailPathForWestwardMarch();
       replenishCaravanAtCantebury();
@@ -5289,9 +6133,14 @@
     state.npcDialog = null;
     state.settlementRecruitSlots = rollSettlementRecruitSlots(dest.key);
     state.settlementRecruitMode = settlementRecruitMode(dest.key);
+    refreshTownShopStock(dest.key);
+    refreshTavernVeterans(dest.key);
     internPendingHeadstones();
     markTrailTownVisited(dest.key);
     appendTrailPathTown(dest.key);
+    if (dest.key === "idlwyld") logLine("<span class=\"hi\">Idlwyld:</span> ward-stones hum — no beast tracks breach the circle.", "good");
+    else if (dest.key === "grosjean") logLine("<span class=\"hi\">Grosjean:</span> smoke from fish-kettles along the river.", "good");
+    else if (dest.key === "arpery") logLine("<span class=\"hi\">Arpery:</span> children run between barracks and barley beneath the Dragonspine.", "good");
     if (dest.key === "new_isil") {
       deliverCaravanToNewIsil();
       syncNewIsilPopulation();
@@ -5352,7 +6201,7 @@
       render();
       return;
     }
-    if (state.quest && state.quest.status === "active" && state.phase === "quest_trek") {
+    if (state.quest && state.quest.status === "active" && !state.quest.defense) {
       queueResumeTravel();
       return;
     }
@@ -5374,7 +6223,7 @@
       queueResumeTravel();
       return;
     }
-    if (state.travelDay >= currentRouteDays()) {
+    if (state.legMilesTraveled >= currentLegMilesTotal()) {
       logLine("<span class=\"hi\">You reach " + currentDestination().label + ".</span>", "good");
       queueArrivalAtDestination();
     } else {
@@ -5394,6 +6243,7 @@
       day: state.travelDay,
     });
     if (xpAward > 0) grantXp(xpAward);
+    recordBestiaryMonsterKills(defeatedFoes);
     applyLevelDrops(defeatedFoes);
     if (k === "new_isil_gate_boss") {
       state.finalBossCleared = true;
@@ -5527,6 +6377,7 @@
       var m = state.party[i];
       if (!m || m.hp > 0) continue;
       state.headstones.push(makeHeadstoneForMember(m));
+      recordBestiaryCompanionLost();
     }
     saveHeadstonesToStorage();
     buryRemainingAtFallbackTown();
@@ -5682,19 +6533,10 @@
     return -1;
   }
 
-  function clearCombatChoicesFromIndex(fromIdx) {
-    if (!state.combat || fromIdx < 0) return;
-    var team = combatTeam();
-    for (var i = fromIdx; i < team.length; i++) {
-      delete state.combat.choices[team[i].id];
-    }
-  }
-
   function cancelCombatMemberChoice(memberId) {
     if (!state.combat || !memberId) return;
-    var idx = combatMemberIndex(memberId);
-    if (idx < 0) return;
-    clearCombatChoicesFromIndex(idx);
+    if (combatMemberIndex(memberId) < 0) return;
+    delete state.combat.choices[memberId];
     render();
   }
 
@@ -6017,8 +6859,9 @@
             continue;
           }
           state.healingPotions--;
-          healMember(m.id, 3);
-          logLine(m.name + " drinks Potion of Healing (+3 HP).", "good");
+          var healAmt = healingPotionAmount(m);
+          healMember(m.id, healAmt);
+          logLine(m.name + " drinks Potion of Healing (+" + healAmt + " HP).", "good");
           continue;
         }
         logLine(m.name + " has no item selected.", "bad");
@@ -6238,7 +7081,7 @@
   function applyRuinsDiscoveryEncounter() {
     state.ruinsDiscovered = true;
     state.ruinsType = rollRuinsSiteType();
-    state.ruinsTravelDay = state.travelDay;
+    state.ruinsTravelDay = legCalendarDaysElapsed();
     state.ruinsRoomsTotal = rollRuinsRoomCountForType(state.ruinsType);
     state.ruinsRoomsRemaining = state.ruinsRoomsTotal;
     initRuinsMap();
@@ -6325,6 +7168,7 @@
       var daysDead = fallenJourneyDaysDead(m);
       if (daysDead >= 2) {
         state.headstones.push(makeHeadstoneForMember(m));
+        recordBestiaryCompanionLost();
         droppedIds.push(m.id);
         logLine(m.name + " was not revived in time. The body will be interred at the next town.", "bad");
         trackPlaytest("member_permadead", { memberId: m.id, role: m.role, day: state.totalDaysElapsed || 0 });
@@ -6365,9 +7209,18 @@
 
   function runTravelDayResolution() {
     if (state.phase !== "travel") return;
-    if (state.travelDay >= currentRouteDays()) return;
-    state.travelDay++;
+    ensureLegMilesTraveled();
+    if (state.legMilesTraveled >= currentLegMilesTotal()) return;
+    syncTravelDayFromMiles();
+    var nextBiome = biomeForLegTravelDay(
+      legRouteDayCurrent(),
+      currentRouteDays(),
+      state.travelOrigin || "cantebury",
+      state.travelDestination || "gustaf"
+    );
     tickJourneyDay();
+    syncTravelDayFromMiles();
+    setTravelWeather(rollTravelWeatherKind(nextBiome, state.totalDaysElapsed));
     if (state.phase === "settlement_site_choice") {
       app.innerHTML = renderHeader() + "<h2 class=\"panel-title\">The end of the trail</h2>" + settlementSiteChoiceHtml() + renderLog();
       wireSettlementSiteChoice(app);
@@ -6380,23 +7233,44 @@
     }
     state.stableRestDays = 0;
     var marchedBiome = biomeForLegTravelDay(
-      state.travelDay,
+      legRouteDayCurrent(),
       currentRouteDays(),
       state.travelOrigin || "cantebury",
       state.travelDestination || "gustaf"
     );
     logLine(
-      "Day " +
-        state.travelDay +
-        " of " +
-        currentRouteDays() +
-        ' on the road — <span class="hi">' +
+      "<b>Route:</b> " +
+        Math.min(currentLegMilesTotal(), Math.round(state.legMilesTraveled || 0)) +
+        " / " +
+        currentLegMilesTotal() +
+        " mi (~" +
+        legDaysRemainingEstimate() +
+        " route-day(s) left) · <b>Calendar:</b> journey day " +
+        (state.totalDaysElapsed || 0) +
+        " (" +
+        legCalendarDaysElapsed() +
+        ' on this leg) — <span class="hi">' +
+        escapeHtml(calendarLabel(state.totalDaysElapsed)) +
+        "</span> · " +
         escapeHtml(biomeLabel(marchedBiome)) +
-        "</span>.",
+        ", " +
+        escapeHtml(travelWeatherDef(currentTravelWeatherKind()).label.toLowerCase()) +
+        ".",
       ""
     );
-    trackPlaytest("day_advanced", { day: state.travelDay, routeDays: currentRouteDays() });
+    trackPlaytest("day_advanced", { day: state.travelDay, routeDays: currentRouteDays(), miles: state.legMilesTraveled, weather: currentTravelWeatherKind(), season: currentSeason(state.totalDaysElapsed), calendarDay: calendarDayOfYear(state.totalDaysElapsed) });
+    logTravelWeatherMorale();
     applyTravelDayMpRegen();
+    if (maybeRoadsideAidEncounter()) {
+      endOfDayPriestHealing();
+      if (state.legMilesTraveled >= currentLegMilesTotal()) {
+        logLine("You reach " + currentDestination().label + ".", "good");
+        queueArrivalAtDestination();
+      } else {
+        render();
+      }
+      return;
+    }
     if (shouldTriggerNewIsilGateBoss()) {
       queueEncounterCutaway(
         "Dark standard ahead",
@@ -6410,7 +7284,7 @@
     if (shouldTriggerDragonSchoolEncounter()) {
       queueDragonSchoolEncounter(
         "Dragon on the wind",
-        "Day " + state.travelDay + " — scales and smoke above the road"
+        "Journey day " + (state.totalDaysElapsed || 0) + " — scales and smoke above the road"
       );
       return;
     }
@@ -6418,26 +7292,27 @@
     if (hadEncounter) {
       var t = rollFieldEncounterType();
       if (t === "ruins_discovery") {
-        queueEncounterCutaway("Ruins on the horizon", "Day " + state.travelDay + " - old stonework breaks the skyline", function () {
+        queueEncounterCutaway("Ruins on the horizon", "Journey day " + (state.totalDaysElapsed || 0) + " - old stonework breaks the skyline", function () {
           applyRuinsDiscoveryEncounter();
         });
         return;
       }
-      queueEncounterCutaway("Hostile creatures", "Day " + state.travelDay + " - a random pack attacks", function () {
+      queueEncounterCutaway("Hostile creatures", "Journey day " + (state.totalDaysElapsed || 0) + " - a random pack attacks", function () {
         startTacticalCombat(buildRandomMonsterEncounter("road"));
       });
       return;
     }
     if (!state.ruinsDiscovered && Math.random() < RUINS_QUIET_DAY_CHANCE) {
       logLine("Scouts spot ruins off-road.", "hi");
-      queueEncounterCutaway("Ruins off the trail", "Day " + state.travelDay + " - a side path worth a look", function () {
+      queueEncounterCutaway("Ruins off the trail", "Journey day " + (state.totalDaysElapsed || 0) + " - a side path worth a look", function () {
         applyRuinsDiscoveryEncounter();
       });
       return;
     }
     logLine("Quiet travel.", "");
     endOfDayPriestHealing();
-    if (state.travelDay >= currentRouteDays()) {
+    if (state.legMilesTraveled >= currentLegMilesTotal()) {
+      syncTravelDayFromMiles();
       logLine("You reach " + currentDestination().label + ".", "good");
       queueArrivalAtDestination();
     } else {
@@ -6447,7 +7322,8 @@
 
   function beginNextTravelDayMarch() {
     if (state.phase !== "travel") return;
-    if (state.travelDay >= currentRouteDays()) {
+    ensureLegMilesTraveled();
+    if (state.legMilesTraveled >= currentLegMilesTotal()) {
       queueArrivalAtDestination();
       return;
     }
@@ -6455,13 +7331,23 @@
     state.transition = null;
     var adv = tryBiomeMarchAdvance();
     if (!adv.ok) {
+      if (adv.stalled) {
+        tickJourneyDay();
+        syncTravelDayFromMiles();
+        logLine(
+          "Weather pins the caravan — a <b>calendar day</b> passes with no forward miles. <span class=\"hi\">" +
+            travelLegProgressText() +
+            "</span>",
+          "bad"
+        );
+      }
       render();
       return;
     }
     var steps = adv.daysGain || 1;
     var i;
     for (i = 0; i < steps; i++) {
-      if (state.phase !== "travel" || state.travelDay >= currentRouteDays()) break;
+      if (state.phase !== "travel" || state.legMilesTraveled >= currentLegMilesTotal()) break;
       runTravelDayResolution();
       if (state.transition) break;
       if (state.phase !== "travel") break;
@@ -6471,7 +7357,8 @@
   function allowedLevelsForAdventureEncounter(townKey) {
     var key = townKey || "cantebury";
     if (key === "cantebury") return [1];
-    if (key === "brookside" || key === "hollow_banks" || key === "glennhardt" || key === "solem" || key === "new_isil") {
+    if (key === "idlwyld") return [1];
+    if (key === "brookside" || key === "hollow_banks" || key === "glennhardt" || key === "solem" || key === "new_isil" || key === "grosjean" || key === "arpery") {
       if (Math.random() < 0.05) return [1, 2, 3];
     }
     return [1, 2];
@@ -6869,6 +7756,7 @@
     d.onBreak = false;
     d.breakEndsAt = null;
     d.leaving = true;
+    state.phase = "quest_defense";
     state.combat = null;
     state.pendingEncounter = null;
     state.transition = null;
@@ -7058,8 +7946,8 @@
     };
     state.questDialog = null;
     state.npcDialog = null;
-    if (state.phase === "story_illiri") state.illiriView = "party";
-    else state.settlementView = "inventory";
+    if (state.phase === "story_illiri") state.illiriView = "adventure";
+    else state.settlementView = "adventure";
     logLine("Accepted quest: <span class=\"hi\">" + def.name + "</span>.", "good");
     trackPlaytest("quest_accepted", { questId: questId });
     render();
@@ -7188,6 +8076,7 @@
     var qid = state.quest.id;
     var reward = def.rewardGold || 0;
     state.gold += reward;
+    if (reward > 0) recordBestiaryGoldFound(reward);
     state.questsCompleted = (state.questsCompleted || []).concat([qid]);
     logLine("<span class=\"hi\">" + def.name + "</span> complete! Reward: +" + reward + " gp.", "good");
     trackPlaytest("quest_completed", { questId: qid, reward: reward });
@@ -7324,6 +8213,7 @@
   }
 
   var CONFIRM_HANDLERS = {
+    executeHireTavernVeteran: function () { executeHireTavernVeteran(); },
     executeAdventureReturn: function () { executeAdventureReturn(); },
     executeLoadCampaign: function () {
       var dlg = state.confirmDialog;
@@ -7353,8 +8243,12 @@
           '<div style="color:#c89c3f;font-weight:600;margin-bottom:.35rem">Set up camp?</div>' +
           '<div style="color:#e8dcc8;margin-bottom:.5rem">Pick how the night unfolds. There is always a ~20% chance the watch fires draw eyes.</div>' +
           '<ul style="color:#9a8b78;margin:0 0 .75rem 1rem;padding:0;list-style:disc">' +
-            '<li><b>Rest only</b>: lose ' + dailySupplyCostLabel() + ', recover 50% of missing HP — you <b>stay put</b> on the trail.</li>' +
-            '<li><b>Rest & forage</b>: lose 2 supplies, recover 25% of missing HP, chance to find supplies, gold, or gear — still no march.</li>' +
+            '<li><b>Rest only</b>: lose ' + dailySupplyCostLabel() + ', recover ' +
+            (isStretchRations() && state.phase === "travel" ? "25%" : "50%") +
+            ' of missing HP — you <b>stay put</b> on the trail.</li>' +
+            '<li><b>Rest & forage</b>: spend 2 supply bundles (not the full daily ration), recover ' +
+            (isStretchRations() && state.phase === "travel" ? "10%" : "25%") +
+            ' of missing HP, chance to find extra supplies, gold, or gear — still no march.</li>' +
           '</ul>' +
           '<div style="display:flex;justify-content:flex-end;gap:.4rem;flex-wrap:wrap">' +
             '<button type="button" id="campDialogCancel">Cancel</button>' +
@@ -7478,7 +8372,7 @@
       }
       state.gold -= 5;
       state.healingPotions += 1;
-      logLine("Bought Potion of Healing (+3 HP when used).", "good");
+      logLine("Bought Potion of Healing (+10% max HP when used).", "good");
       render();
       return;
     }
@@ -7553,7 +8447,7 @@
   }
 
   function noteStretchedRationGrumbles() {
-    if (state.rationMode !== "stretch") {
+    if (!isStretchRations()) {
       state.stretchedRationDays = 0;
       return;
     }
@@ -7586,11 +8480,16 @@
   }
 
   function consumeTravelDaySupplies() {
+    syncCaravanRationMode(false);
     var people = caravanPeopleCount();
     var cost = dailySupplyConsumption();
+    if (state.phase === "travel" && cost > 0) {
+      var supplyMult = weatherSupplyMultiplier();
+      if (supplyMult < 1) cost = Math.max(1, Math.ceil(cost * supplyMult));
+    }
     if (cost <= 0) return;
     if (state.food > 0) {
-      var stretch = state.rationMode === "stretch";
+      var stretch = isStretchRations();
       var saveChance = stretch ? Math.min(0.85, caravanSupplySaveChance() + 0.35) : caravanSupplySaveChance();
       if (Math.random() < saveChance) {
         logLine(
@@ -7663,17 +8562,23 @@
       var gMissing = Math.max(0, state.guest.maxHp - state.guest.hp);
       if (gMissing > 0) state.guest.hp = Math.min(state.guest.maxHp, state.guest.hp + Math.ceil(gMissing * percent));
     }
-    logLine("Camp is quiet. Each living member recovers " + pctLabel + "% of missing HP.", "good");
+    var rationNote =
+      isStretchRations() && state.phase === "travel"
+        ? " (short rations limit recovery)"
+        : "";
+    logLine("Camp is quiet. Each living member recovers " + pctLabel + "% of missing HP" + rationNote + ".", "good");
   }
 
   function applyForageRewards() {
     var bag = [];
     if (Math.random() < caravanForageSupplyChance()) {
-      var gained = addSupplies(1);
-      if (gained) bag.push("+1 supply (caravan foragers)");
+      var supplyGain = rollInt(1, 2);
+      var gained = addSupplies(supplyGain);
+      if (gained) bag.push("+" + gained + " supply (caravan foragers)");
     }
     if (Math.random() < caravanForageGoldChance()) {
       state.gold += 1;
+      recordBestiaryGoldFound(1);
       bag.push("+1 gold (caravan traders)");
     }
     if (Math.random() < 0.20) {
@@ -7715,15 +8620,17 @@
     var phase = state.phase;
     if (phase !== "travel" && phase !== "adventure" && phase !== "quest_trek") return;
     var foraging = mode === "forage";
-    var hpPercent = foraging ? 0.25 : 0.5;
-    consumeTravelDaySupplies();
+    var onStretchRations = phase === "travel" && isStretchRations();
+    var hpPercent = onStretchRations ? (foraging ? 0.1 : 0.25) : foraging ? 0.25 : 0.5;
     if (foraging) {
-      if (state.food <= 0) {
-        logLine("Not enough supplies to forage at camp.", "bad");
+      if (state.food < 2) {
+        logLine("Need at least 2 supply bundles to rest & forage.", "bad");
         render();
         return;
       }
-      state.food--;
+      state.food -= 2;
+    } else {
+      consumeTravelDaySupplies();
     }
     if (allDead()) {
       state.gameoverMode = "loss";
@@ -7739,7 +8646,7 @@
     applyCampMpRegen();
     if (phase === "travel") {
       logLine(
-        "You make camp without marching. Progress stays at <span class=\"hi\">" +
+        "You make camp — a <b>calendar day</b> passes; route miles unchanged. <span class=\"hi\">" +
           travelLegProgressText() +
           "</span> — use <b>Next day</b> when you are ready to move.",
         ""
@@ -7782,65 +8689,171 @@
   }
 
   function tavernVeteranHireCost(targetLevel) {
-    if (targetLevel === 3) return TAVERN_VETERAN_HIRE_GP[3] || 50;
-    if (targetLevel === 5) return TAVERN_VETERAN_HIRE_GP[5] || 100;
-    return 0;
+    var lvl = Math.max(1, targetLevel | 0);
+    return TAVERN_VETERAN_HIRE_BASE_GP + lvl * TAVERN_VETERAN_HIRE_GP_PER_LEVEL;
+  }
+
+  function currentTavernTownKey() {
+    if (state.phase === "story_illiri") return "cantebury";
+    if (state.phase === "settlement") return state.settlementTown || "cantebury";
+    return null;
+  }
+
+  function rollTavernVeteranLevel() {
+    return rollInt(2, 5);
+  }
+
+  function rollTavernVeterans(townKey) {
+    if (!townHasTavernVeterans(townKey)) return [];
+    var count = rollInt(1, 5);
+    var mode = settlementRecruitMode(townKey || "cantebury");
+    var roles = mode === "soldier_only" ? ["soldier"] : PARTY_ROLES.slice();
+    var list = [];
+    var i, role;
+    for (i = 0; i < count; i++) {
+      role = roles[rollInt(0, roles.length - 1)];
+      list.push({
+        id: "vet-" + Date.now() + "-" + i + "-" + rollInt(1000, 9999),
+        name: rollCharacterName(),
+        role: role,
+        level: rollTavernVeteranLevel(),
+      });
+    }
+    return list;
+  }
+
+  function refreshTavernVeterans(townKey) {
+    if (!townKey) return;
+    state.tavernVeteransTown = townKey;
+    state.tavernVeterans = rollTavernVeterans(townKey);
+  }
+
+  function ensureTavernVeteransForCurrentTown() {
+    var town = currentTavernTownKey();
+    if (!town) return;
+    if (state.tavernVeteransTown !== town) refreshTavernVeterans(town);
+    else if (!state.tavernVeterans) state.tavernVeterans = [];
+  }
+
+  function findTavernVeteran(vetId) {
+    var vets = state.tavernVeterans || [];
+    var i;
+    for (i = 0; i < vets.length; i++) {
+      if (vets[i] && vets[i].id === vetId) return vets[i];
+    }
+    return null;
   }
 
   function tavernVeteranHirePanelHtml(full) {
-    var levels = [3, 5];
-    var roles = PARTY_ROLES;
+    var town = currentTavernTownKey() || "cantebury";
+    if (!townHasTavernVeterans(town)) {
+      return (
+        '<div class="roster-veteran-hire roster-veteran-hire--none">' +
+        '<h4 class="roster-veteran-heading">Veterans at the bar</h4>' +
+        '<p class="hint roster-veteran-note">' + escapeHtml(tavernVeteranUnavailableNote(town)) + "</p></div>"
+      );
+    }
+    ensureTavernVeteransForCurrentTown();
+    var vets = state.tavernVeterans || [];
     var slotsBlocked =
       state.phase === "settlement" &&
       state.settlementView === "tavern" &&
       (state.settlementRecruitSlots || 0) <= 0;
     var html =
       '<div class="roster-veteran-hire">' +
-      '<h4 class="roster-veteran-heading">Veteran hires</h4>' +
-      '<p class="hint roster-veteran-note">Pay for road-tested fighters. Stats roll as if they leveled naturally (' +
-      tavernVeteranHireCost(3) +
-      " gp at level 3, " +
-      tavernVeteranHireCost(5) +
-      " gp at level 5).</p>";
-    var li;
-    for (li = 0; li < levels.length; li++) {
-      var lvl = levels[li];
-      var cost = tavernVeteranHireCost(lvl);
-      html +=
-        '<div class="roster-veteran-row">' +
-        '<span class="roster-veteran-tier">Level ' +
-        lvl +
-        " · " +
-        cost +
-        " gp</span>";
-      var ri;
-      for (ri = 0; ri < roles.length; ri++) {
-        var role = roles[ri];
+      '<h4 class="roster-veteran-heading">Veterans at the bar</h4>' +
+      '<p class="hint roster-veteran-note">Up to five road-tested fighters may be looking for a contract. Select someone to see the hire fee.</p>';
+    if (!vets.length) {
+      html += '<p class="hint">No veterans are looking for work right now — try again after the next caravan arrives.</p>';
+    } else {
+      html += '<ul class="roster-veteran-list">';
+      var vi;
+      for (vi = 0; vi < vets.length; vi++) {
+        var vet = vets[vi];
         var roleBlocked =
           state.phase === "settlement" &&
           state.settlementView === "tavern" &&
           state.settlementRecruitMode === "soldier_only" &&
-          role !== "soldier";
-        var goldOk = (state.gold || 0) >= cost;
-        var dis = full || slotsBlocked || !goldOk || roleBlocked ? " disabled" : "";
+          vet.role !== "soldier";
+        var dis = full || slotsBlocked || roleBlocked ? " disabled" : "";
         html +=
-          '<button type="button" class="roster-veteran-btn" data-hire-veteran-role="' +
-          role +
-          '" data-hire-veteran-level="' +
-          lvl +
+          '<li><button type="button" class="roster-veteran-pick" data-hire-veteran-id="' +
+          escapeHtml(vet.id) +
           '"' +
           dis +
-          ">+ " +
-          roleLabel(role) +
-          "</button>";
+          ">" +
+          escapeHtml(vet.name) +
+          ", " +
+          escapeHtml(roleLabel(vet.role)) +
+          ", level " +
+          vet.level +
+          "</button></li>";
       }
-      html += "</div>";
+      html += "</ul>";
     }
     html += "</div>";
     return html;
   }
 
-  function hireTavernVeteran(role, targetLevel) {
+  function promptHireTavernVeteran(vetId) {
+    var vet = findTavernVeteran(vetId);
+    if (!vet) {
+      render();
+      return;
+    }
+    if (state.party.length >= PARTY_MAX) {
+      logLine("Party is full (" + PARTY_MAX + " members).", "bad");
+      render();
+      return;
+    }
+    var gateMsg = tavernRecruitGate(vet.role);
+    if (gateMsg) {
+      logLine(gateMsg, "bad");
+      render();
+      return;
+    }
+    var cost = tavernVeteranHireCost(vet.level);
+    state.confirmDialog = {
+      kind: "hire_veteran",
+      veteranId: vetId,
+      title: "Hire " + vet.name + "?",
+      message:
+        escapeHtml(vet.name) +
+        " (" +
+        escapeHtml(roleLabel(vet.role)) +
+        ", level " +
+        vet.level +
+        ") asks for <b>" +
+        cost +
+        " gp</b>. Are you sure?",
+      confirmLabel: "Hire for " + cost + " gp",
+      cancelLabel: "Not now",
+      onConfirm: "executeHireTavernVeteran",
+    };
+    render();
+  }
+
+  function executeHireTavernVeteran() {
+    var dlg = state.confirmDialog;
+    var vetId = dlg && dlg.veteranId;
+    state.confirmDialog = null;
+    if (!vetId) {
+      render();
+      return;
+    }
+    hireTavernVeteranById(vetId);
+  }
+
+  function hireTavernVeteranById(vetId) {
+    var vet = findTavernVeteran(vetId);
+    if (!vet) {
+      render();
+      return;
+    }
+    hireTavernVeteran(vet.role, vet.level, vet.name, vetId);
+  }
+
+  function hireTavernVeteran(role, targetLevel, presetName, vetId) {
     var cost = tavernVeteranHireCost(targetLevel);
     if (!(cost > 0)) return;
     if (state.party.length >= PARTY_MAX) {
@@ -7869,7 +8882,7 @@
     }
     var fresh = initMemberProgress({
       id: id,
-      name: rollCharacterName(),
+      name: presetName || rollCharacterName(),
       role: role,
       gender: portrait.gender,
       headshot: portrait.headshot,
@@ -7879,6 +8892,11 @@
     simulateMemberToLevel(fresh, targetLevel);
     state.gold -= cost;
     state.party.push(fresh);
+    if (vetId && state.tavernVeterans) {
+      state.tavernVeterans = state.tavernVeterans.filter(function (v) {
+        return v && v.id !== vetId;
+      });
+    }
     if (state.phase === "settlement" && state.settlementView === "tavern") {
       state.settlementRecruitSlots = Math.max(0, (state.settlementRecruitSlots || 0) - 1);
     }
@@ -8048,14 +9066,16 @@
       tab("party", "Party") +
       tab("adventure", "Adventure") +
       tab("depart", "Depart") +
+      (isDevQaEnabled() ? tab("qa", "QA") : "") +
       "</nav>"
     );
   }
 
   function normalizeCanteburyNav() {
+    if (state.illiriView === "qa" && !isDevQaEnabled()) state.illiriView = "castle";
     var v = state.illiriView;
     if (v === "keep") state.illiriView = "castle";
-    else if (v === "inventory") state.illiriView = "party";
+    else if (v === "inventory" || v === "bestiary") state.illiriView = "party";
     else if (v === "shop" || v === "tavern") {
       state.cityView = v;
       state.illiriView = "city";
@@ -8173,7 +9193,7 @@
     }
     var html = '<div class="illiri-tabs">';
     if (townHasKeep(townKey)) {
-      html += tab("keep", townKey === "solem" ? "Keep" : "Castle");
+      html += tab("keep", townKey === "solem" ? "Keep" : townKey === "arpery" ? "Garrison" : "Castle");
     }
     if (townKey === "new_isil" && colonyIsActive()) html += tab("colony", "Colony");
     html +=
@@ -8246,10 +9266,12 @@
   }
 
   function canteburyAdventurePanelHtml() {
+    if (!state.townShopStock || !state.townShopStock.cantebury) refreshTownShopStock("cantebury");
     return (
       "<h2 class=\"panel-title\">Local adventure</h2>" +
       '<p class="town-lead">Scout the meadows and lanes around Cantebury before the long westward march. Up to <b>10 days</b> exploring nearby wilds.</p>' +
-      '<p class="hint">Training grounds: foes are <b>level 1</b> only. Encounter pace is <b>80% slower</b> than adventures from other towns.</p>' +
+      '<p class="hint">Training grounds: sparring partners, bandits, and goblins only. Encounter pace is <b>80% slower</b> than adventures from other towns.</p>' +
+      questPanelHtml() +
       '<div class="actions">' +
       '<button type="button" class="primary" id="beginCanteburyAdventureBtn"' +
       (state.food > 0 ? "" : " disabled") +
@@ -8327,10 +9349,14 @@
   }
 
   function keepTitle(townKey) {
+    if (townKey === "arpery") return "Dragonspine Garrison";
     return townKey === "solem" ? "Citadel Keep" : "Cantebury Castle";
   }
 
   function keepLead(townKey) {
+    if (townKey === "arpery") {
+      return "Barracks and farmsteads at the foot of the Dragonspine — soldiers and families keep watch over the fields they fought for.";
+    }
     if (townKey === "solem") {
       return "Stone halls rise above the river forks. Garrison clerks, quartermasters, and the magistrate's court all work from this keep.";
     }
@@ -8359,6 +9385,9 @@
   }
 
   function keepHallHtml(townKey) {
+    if (townKey === "arpery") {
+      return '<p class="hint">Post headquarters</p><div class="shop-block"><div class="shop-row" style="flex-direction:column;align-items:stretch"><div><b>Captain Hest Marrow</b> <span class="hint">— garrison commander</span></div><div style="margin-top:.4rem;text-align:right"><button type="button" id="keepTalkArperyCaptain">Speak with the captain</button></div></div></div>';
+    }
     if (townKey === "solem") {
       return (
         '<p class="hint">Audience chamber — who will you speak with?</p>' +
@@ -8547,7 +9576,10 @@
       } else if (vendorKind === "market" && isRareItemId(grp.id)) {
         html += '<span class="hint">Sell rare gear at the quartermaster</span>';
       } else if (vendorKind === "qm" && isCommonOrUncommonItemId(grp.id)) {
-        html += '<span class="hint">Sell at market stalls</span>';
+        html +=
+          '<button type="button" class="shop-inv-sell-btn" data-qm-reject-item="' +
+          escapeHtml(grp.id) +
+          '">Offer for sale</button>';
       } else {
         html += '<span class="hint">Not bought here</span>';
       }
@@ -8570,6 +9602,14 @@
           sellGearFromStash(btn.getAttribute("data-shop-sell-item"), btn.getAttribute("data-shop-sell-qty"));
         };
       })(btns[bi]);
+    }
+    var rejectBtns = root.querySelectorAll("[data-qm-reject-item]");
+    for (var ri = 0; ri < rejectBtns.length; ri++) {
+      (function (btn) {
+        btn.onclick = function () {
+          quartermasterRejectCheapItem();
+        };
+      })(rejectBtns[ri]);
     }
   }
 
@@ -8658,7 +9698,9 @@
     var qtyCap = Math.max(maxBuy, 1);
     return (
       '<div class="shop-row shop-row-weapon" style="flex-wrap:wrap;gap:.5rem;align-items:center">' +
-      '<span class="shop-row-label" style="flex:1 1 14rem"><b>Rare weapons</b> <span class="hint">(quartermaster stock)</span></span>' +
+      '<span class="shop-row-label" style="flex:1 1 14rem"><b>Weapons</b> <span class="hint">(' +
+        (vendorKind === "qm" ? "quartermaster — rare steel" : "today\u2019s market stock") +
+        ')</span></span>' +
       '<span class="shop-row-controls" style="display:flex;flex-wrap:wrap;gap:.4rem;align-items:center">' +
       '<select id="shopWeaponPick" class="shop-qty" style="width:auto;max-width:16rem">' +
       opts +
@@ -8704,7 +9746,7 @@
       settlementArmorShopRowHtml() +
       shopRowHtml({
         id: "healPotion",
-        label: "Potion of Healing (+3 HP)",
+        label: "Potion of Healing (+10% HP)",
         count: state.healingPotions,
         buyPrice: 5,
         sellPrice: 2,
@@ -8918,6 +9960,7 @@
   function openKeepNpcDialog(dialogKey) {
     var def = npcDialogueDef(dialogKey);
     if (!def) return;
+    if (isAtCanteburyHome()) replenishCaravanAtCantebury();
     var grantAmt = 0;
     if (dialogKey === "cantebury_governor") grantAmt = applyKewKumberLoopGrantIfPending();
     else if (dialogKey === "cantebury_chancellor") grantAmt = applyChancellorCaravanGrantIfPending();
@@ -8974,11 +10017,16 @@
 
   function settlementWestwardForkNote(townKey) {
     if (townKey === "cantebury") {
-      return '<p class="hint">Lower fork: march to <b>Gustaf</b> (port) or <b>Brookside</b> (village) — you will not pass through both.</p>';
+      return '<p class="hint">Lower fork: <b>Gustaf</b> (port road via <b>Grosjean</b>) or <b>Idlwyld</b> (warded vale, then <b>Brookside</b>).</p>';
     }
-    if (TRAIL_FORK_LOWER.indexOf(townKey) >= 0) {
-      return '<p class="hint">Upper fork: <b>Hollow Banks</b> (marsh) or <b>Glennhardt</b> (city) — pick one, then Solem and New Isil.</p>';
+    if (townKey === "gustaf") return '<p class="hint">Next stop: <b>Grosjean</b> fish camp, then the upper fork.</p>';
+    if (townKey === "idlwyld") return '<p class="hint">Next stop: <b>Brookside</b>, then the upper fork.</p>';
+    if (townKey === "grosjean" || townKey === "brookside") {
+      return '<p class="hint">Upper fork: <b>Hollow Banks</b> or <b>Glennhardt</b> (Glennhardt route passes <b>Arpery</b> garrison before Solem).</p>';
     }
+    if (townKey === "glennhardt") return '<p class="hint">Next: <b>Arpery</b> garrison, then <b>Solem</b> and New Isil.</p>';
+    if (townKey === "hollow_banks") return '<p class="hint">Next: <b>Solem</b>, then New Isil.</p>';
+    if (townKey === "arpery") return '<p class="hint">Next: <b>Solem</b>, then New Isil.</p>';
     return "";
   }
 
@@ -9057,8 +10105,7 @@
         '<h2 class="panel-title">Party & resources</h2>' +
         resourcesStatsGridHtml() +
         caravanLockerHtml({ sellEnabled: true }) +
-        inventoryScreenHtml() +
-        questPanelHtml()
+        inventoryScreenHtml()
       );
     }
     if (state.settlementView === "adventure") {
@@ -9068,6 +10115,7 @@
         locationLabel(townKey) +
         ". Each day spent outbound rolls an encounter. Turning back marches home one day at a time with the same encounter risk and supply cost.</p>" +
         '<p class="hint">Tip: Make sure your party is rested and stocked. Encounter level scales with how far you have marched west.</p>' +
+        questPanelHtml() +
         '<div class="actions">' +
         '<button type="button" class="primary" id="beginAdventureBtn"' +
         (state.food > 0 ? "" : " disabled") +
@@ -9480,7 +10528,7 @@
   function wireSettlementShopPanel(root, vendorKind) {
     state.shopVendorKind = shopVendorKind(vendorKind);
     wireShopRow("supplies", buySettlementSupplies, sellSettlementSupplies);
-    if (state.shopVendorKind === "qm") wireSettlementWeaponShop(root);
+    wireSettlementWeaponShop(root);
     wireSettlementArmorShop(root);
     wireShopRow("healPotion", buySettlementHealPotion, sellSettlementHealPotion);
     wireShopRow("lifePotion", buySettlementLifePotion, sellSettlementLifePotion);
@@ -9511,6 +10559,12 @@
       if (chan) chan.onclick = function () { openKeepNpcDialog("cantebury_chancellor"); };
       var mag = root.querySelector("#keepTalkMagistrate");
       if (mag) mag.onclick = function () { openKeepNpcDialog("solem_magistrate"); };
+      var arp = root.querySelector("#keepTalkArperyCaptain");
+      if (arp) arp.onclick = function () {
+        state.npcDialog = { speaker: "Captain Hest Marrow", title: "Arpery garrison", portrait: "",
+          text: "The war camps are gone. We kept the pass and planted barley. Mind the ward-lines — Idlwyld still maintains theirs." };
+        render();
+      };
     } else if (view === "chapel") {
       if (townKey === "solem") wireSettlementChurchPanel(root);
       else wireCanteburyBlessing(root);
@@ -9584,7 +10638,9 @@
     qty = Math.max(0, parseInt(qty, 10) || 1);
     var wdef = weaponSheetDef(weaponId);
     var qmRare = wdef && isRareWeaponId(weaponId);
-    if (!wdef || (state.shopVendorKind !== "qm" && (!wdef.purchase || !(wdef.buyPrice > 0))) || (state.shopVendorKind === "qm" && !qmRare)) {
+    var townKey = currentShopTownKey();
+    var stockIds = state.shopVendorKind === "qm" ? qmWeaponStockForTown(townKey) : marketWeaponStockForTown(townKey);
+    if (!wdef || stockIds.indexOf(weaponId) < 0 || (state.shopVendorKind === "qm" && !qmRare)) {
       logLine("That weapon is not sold here.", "bad");
       render();
       return;
@@ -9677,7 +10733,7 @@
       actual * buyPrice +
       " gp.";
     if (equipped) msg += " " + member.name + " equipped " + equipped + ".";
-    if (stashed) msg += " " + stashed + " in gear stash — open Party to equip.";
+    if (stashed) msg += " " + stashed + " stowed in the caravan locker — equip from the paper doll.";
     logLine(msg, "good");
     render();
   }
@@ -9800,7 +10856,8 @@
       if (vendorKind === "market" && isRareItemId(itemId)) {
         logLine("Shopkeepers only buy common and uncommon gear — try the quartermaster for rare items.", "bad");
       } else if (vendorKind === "qm" && isCommonOrUncommonItemId(itemId)) {
-        logLine("The quartermaster only buys rare gear — sell common and uncommon items at market stalls.", "bad");
+        quartermasterRejectCheapItem();
+        return;
       } else {
         logLine("This shop won't buy that item.", "bad");
       }
@@ -10001,12 +11058,12 @@
       addMage.onclick = function () {
         addPartyMember("mage");
       };
-    var vetBtns = root.querySelectorAll("[data-hire-veteran-role]");
+    var vetBtns = root.querySelectorAll("[data-hire-veteran-id]");
     var vi;
     for (vi = 0; vi < vetBtns.length; vi++) {
       vetBtns[vi].onclick = (function (btn) {
         return function () {
-          hireTavernVeteran(btn.getAttribute("data-hire-veteran-role"), parseInt(btn.getAttribute("data-hire-veteran-level"), 10));
+          promptHireTavernVeteran(btn.getAttribute("data-hire-veteran-id"));
         };
       })(vetBtns[vi]);
     }
@@ -10022,6 +11079,7 @@
     state.phase = "travel";
     state.travelDay = 0;
     state.legMarchProgress = 0;
+    state.legMilesTraveled = 0;
     state.encounterChance = ENCOUNTER_BASE;
     state.ruinsDiscovered = false;
     state.ruinsType = null;
@@ -10038,12 +11096,24 @@
       replenishCaravanAtCantebury();
     }
     var hadLeg = !!(state.legDaysByRoute && state.legDaysByRoute[legRouteKey(originKey, dest.key)]);
-    state.legRouteDays = resolveLegRouteDays(originKey, dest.key);
+    state.legMilesTotal = resolveLegRouteMiles(originKey, dest.key);
+    state.legRouteDays = Math.max(1, Math.ceil(state.legMilesTotal / MILES_PER_DAY));
+    state.legMilesTraveled = 0;
+    state.legDaysTraveled = 0;
+    state.legStartedOnJourneyDay = state.totalDaysElapsed || 0;
+    setTravelWeather(
+      rollTravelWeatherKind(
+        biomeForLegTravelDay(1, state.legRouteDays, originKey, dest.key),
+        state.totalDaysElapsed || 0
+      )
+    );
     applyDepartBossGateForLeg(dest, originKey);
     var originLabel = currentOriginLabel();
     var legNote =
       isEastboundLeg(originKey, dest.key)
         ? ", same leg length as your westward hop on this road (" +
+          state.legMilesTotal +
+          " mi, ~" +
           state.legRouteDays +
           " day" +
           (state.legRouteDays === 1 ? "" : "s") +
@@ -10057,6 +11127,8 @@
         ", marching " +
         travelDirectionClause(originKey, dest.key) +
         " (" +
+        state.legMilesTotal +
+        " mi, ~" +
         state.legRouteDays +
         " day" +
         (state.legRouteDays === 1 ? "" : "s") +
@@ -10065,6 +11137,14 @@
         ").",
       "hi"
     );
+    if ((state.totalDaysElapsed || 0) === 0) {
+      logLine(
+        "The calendar reads <span class=\"hi\">" +
+          escapeHtml(calendarLabel(0)) +
+          "</span> — the year turns in four seasons as the trail unfolds.",
+        ""
+      );
+    }
     trackPlaytest("travel_started", {
       routeDays: currentRouteDays(),
       partySize: state.party.length,
@@ -10137,9 +11217,9 @@
     var segs = "";
     var marching = march && march.kind === "march";
     for (i = 1; i <= routeDays; i++) {
-      var done = state.travelDay >= i;
+      var done = legRouteDaysDone() >= i;
       var marchingSeg = marching && march.toD === i;
-      var cur = state.travelDay + 1 === i && state.phase === "travel" && !marchingSeg;
+      var cur = legRouteDayCurrent() === i && state.phase === "travel" && !marchingSeg;
       var ruinHere = state.ruinsDiscovered && state.ruinsTravelDay === i;
       var segBiome = biomeForLegTravelDay(
         i,
@@ -10184,8 +11264,14 @@
       '<div class="map-node end">' + currentDestination().label + '</div>' +
       "</div>" +
       '<p class="map-caption">' +
+      travelLegProgressText() +
+      " · leg total " +
+      currentLegMilesTotal() +
+      " mi (~" +
       routeDays +
-      " days on the trade road" +
+      " days at " +
+      MILES_PER_DAY +
+      " mi/day)" +
       (isEastboundLeg(state.travelOrigin || "cantebury", state.travelDestination)
         ? " (eastbound — one leg homeward; encounters roll each day as on the westward march)"
         : "") +
@@ -10286,21 +11372,30 @@
 
   function headshotGender(file) {
     var lower = (file || "").toLowerCase();
+    var base = lower.replace(/\.(jpe?g|png|webp)$/i, "");
+    if (/^mw\d+$/.test(base) || /^wm\d+$/.test(base)) return "woman";
+    if (/^mm\d+$/.test(base)) return "man";
     if (lower.indexOf("woman") >= 0 || lower.indexOf("female") >= 0) return "woman";
     if (lower.indexOf("male") >= 0 || /\bman\b/.test(lower)) return "man";
     return "unknown";
   }
 
+  function headshotMatchesRole(file, role) {
+    var lower = (file || "").toLowerCase();
+    var base = lower.replace(/\.(jpe?g|png|webp)$/i, "");
+    if (role === "mage") {
+      if (/^mm\d+$/.test(base) || /^mw\d+$/.test(base) || /^wm\d+$/.test(base)) return true;
+      return lower.indexOf("mage") >= 0 || lower.indexOf("wizard") >= 0;
+    }
+    if (role === "soldier") return lower.indexOf("soldier") >= 0;
+    if (role === "priest") return lower.indexOf("priest") >= 0 || lower.indexOf("cleric") >= 0;
+    if (role === "mercenary") return lower.indexOf("mercenary") >= 0;
+    return false;
+  }
+
   function headshotOptionsForRole(role, gender) {
-    var keys = [];
-    if (role === "soldier") keys = ["soldier"];
-    else if (role === "priest") keys = ["priest", "cleric"];
-    else if (role === "mercenary") keys = ["mercenary"];
-    else if (role === "mage") keys = ["mage", "wizard"];
     var roleFiltered = HEADSHOT_FILES.filter(function (file) {
-      var lower = file.toLowerCase();
-      for (var i = 0; i < keys.length; i++) if (lower.indexOf(keys[i]) >= 0) return true;
-      return false;
+      return headshotMatchesRole(file, role);
     });
     if (!roleFiltered.length) roleFiltered = HEADSHOT_FILES.slice();
     var want = gender === "woman" ? "woman" : "man";
@@ -10398,6 +11493,43 @@
   function ensureInventoryFocus() {
     var m = inventoryMemberById(state.inventoryFocusId);
     if (!m && state.party.length) state.inventoryFocusId = state.party[0].id;
+  }
+
+  function partyMemberIndexById(id) {
+    for (var i = 0; i < state.party.length; i++) {
+      if (state.party[i] && state.party[i].id === id) return i;
+    }
+    return 0;
+  }
+
+  function cycleInventoryFocus(delta) {
+    if (!state.party || state.party.length <= 1) return;
+    var idx = partyMemberIndexById(state.inventoryFocusId);
+    var n = state.party.length;
+    idx = (idx + delta + n) % n;
+    var next = state.party[idx];
+    if (!next) return;
+    state.inventoryFocusId = next.id;
+    state.inventoryHealTargetId = next.id;
+    render();
+  }
+
+  function inventoryCharNavHtml(focus) {
+    if (!state.party || state.party.length <= 1) return "";
+    var idx = partyMemberIndexById(focus && focus.id);
+    return (
+      '<div class="inv-char-nav">' +
+      '<button type="button" id="invCharPrev" class="inv-char-nav-btn" aria-label="Previous party member">&#8592;</button>' +
+      '<span class="inv-char-nav-label">' +
+      escapeHtml(focus ? focus.name : "") +
+      ' <span class="hint">(' +
+      (idx + 1) +
+      "/" +
+      state.party.length +
+      ")</span></span>" +
+      '<button type="button" id="invCharNext" class="inv-char-nav-btn" aria-label="Next party member">&#8594;</button>' +
+      "</div>"
+    );
   }
 
   function profileForMember(m) {
@@ -10582,6 +11714,7 @@
         '<div class="inv-open-list">' +
         cards +
         "</div>" +
+        bestiaryScreenHtml() +
         "</div></section>"
       );
     }
@@ -10670,7 +11803,8 @@
     return (
       '<section class="sheet-wrap sheet-wrap--single">' +
       '<div class="sheet-card">' +
-      '<div class="actions"><button type="button" id="invBack">Back to roster</button></div>' +
+      '<div class="actions inv-detail-actions"><button type="button" id="invBack">Back to roster</button></div>' +
+      inventoryCharNavHtml(focus) +
       '<div class="sheet-top">' +
       '<div class="sheet-portrait" role="img" aria-label="portrait">' +
       portraitVisual +
@@ -10751,6 +11885,13 @@
       radios[i].onchange = (function (el) {
         return function () {
           if (!el.checked) return;
+          if (el.value === "stretch" && caravanCivilianTotal() <= 0) {
+            state.rationMode = "normal";
+            state.stretchedRationDays = 0;
+            logLine("Stretch rations need civilians in the train — the company eats normal portions.", "bad");
+            render();
+            return;
+          }
           state.rationMode = el.value === "stretch" ? "stretch" : "normal";
           if (state.rationMode !== "stretch") state.stretchedRationDays = 0;
           logLine(
@@ -10788,6 +11929,10 @@
         render();
       };
     }
+    var prevChar = root.querySelector("#invCharPrev");
+    if (prevChar) prevChar.onclick = function () { cycleInventoryFocus(-1); };
+    var nextChar = root.querySelector("#invCharNext");
+    if (nextChar) nextChar.onclick = function () { cycleInventoryFocus(1); };
 
     var useHeal = root.querySelector("#invUseHealPotion");
     if (useHeal) {
@@ -10795,8 +11940,9 @@
         var m = inventoryMemberById(state.inventoryFocusId);
         if (!m || m.hp <= 0 || m.hp >= m.maxHp || state.healingPotions <= 0) return;
         state.healingPotions--;
-        m.hp = Math.min(m.maxHp, m.hp + 3);
-        logLine(m.name + " uses Potion of Healing (+3 HP).", "good");
+        var healAmt = healingPotionAmount(m);
+        healMember(m.id, healAmt);
+        logLine(m.name + " uses Potion of Healing (+" + healAmt + " HP).", "good");
         render();
       };
     }
@@ -11178,6 +12324,9 @@
       "<div class=\"stat\">Ruins: <b>" +
       ru +
       "</b></div>" +
+      "<div class=\"stat\">Calendar: <b>" +
+      escapeHtml(calendarLabel(state.totalDaysElapsed || 0)) +
+      "</b></div>" +
       "<div class=\"stat\">Journey: <b>day " +
       (state.totalDaysElapsed || 0) +
       " / " +
@@ -11260,6 +12409,148 @@
 
   function compactJson(obj) {
     return escapeHtml(JSON.stringify(obj, null, 2));
+  }
+
+
+
+  function bestiaryScreenHtml() {
+    ensureBestiaryState();
+    tickBestiaryPlayTime();
+    var b = state.bestiary;
+    var miles = Math.round((b.milesTraveled || 0) * 10) / 10;
+    var summary =
+      '<div class="stats-grid bestiary-summary">' +
+      '<div class="stat">Monsters slain: <b>' + (b.monstersSlain || 0) + '</b></div>' +
+      '<div class="stat">Miles traveled: <b>' + miles + '</b></div>' +
+      '<div class="stat">Companions lost: <b>' + (b.companionsLost || 0) + '</b></div>' +
+      '<div class="stat">Gold found: <b>' + (b.goldFound || 0) + ' gp</b></div>' +
+      '<div class="stat">Ruins looted: <b>' + (b.ruinsLooted || 0) + '</b></div>' +
+      '<div class="stat">Hours played: <b>' + bestiaryPlayHoursLabel() + '</b></div>' +
+      '</div>';
+
+    var rows = "";
+    var kills = b.monsterKills || {};
+    var i, m, name, count, slainTotal = 0;
+    for (i = 0; i < BALANCE_MONSTERS.length; i++) {
+      m = BALANCE_MONSTERS[i];
+      if (!m || !m.name) continue;
+      name = m.name;
+      count = kills[name] || 0;
+      slainTotal += count;
+      var rowClass = count > 0 ? "bestiary-row--slain" : "bestiary-row--unknown";
+      rows +=
+        '<tr class="' + rowClass + '">' +
+        '<td class="bestiary-name">' + escapeHtml(name) + '</td>' +
+        '<td class="bestiary-lvl">Lv ' + (m.level || 1) + '</td>' +
+        '<td class="bestiary-kills">' + (count > 0 ? count : "—") + '</td>' +
+        '</tr>';
+    }
+    var extraNames = Object.keys(kills).filter(function (n) {
+      for (var j = 0; j < BALANCE_MONSTERS.length; j++) {
+        if (BALANCE_MONSTERS[j] && BALANCE_MONSTERS[j].name === n) return false;
+      }
+      return (kills[n] || 0) > 0;
+    });
+    for (i = 0; i < extraNames.length; i++) {
+      name = extraNames[i];
+      count = kills[name] || 0;
+      slainTotal += count;
+      rows +=
+        '<tr class="bestiary-row--slain">' +
+        '<td class="bestiary-name">' + escapeHtml(name) + '</td>' +
+        '<td class="bestiary-lvl">—</td>' +
+        '<td class="bestiary-kills">' + count + '</td>' +
+        '</tr>';
+    }
+
+    return (
+      '<section class="bestiary-panel">' +
+      '<p class="town-lead">Campaign chronicle — tallies persist in your save slot across loops and returns to Cantebury.</p>' +
+      summary +
+      '<h3 class="roster-heading">Monster ledger</h3>' +
+      '<p class="hint">' + slainTotal + ' recorded kills across ' + BALANCE_MONSTERS.length + ' known species.</p>' +
+      '<div class="bestiary-table-wrap">' +
+      '<table class="bestiary-table">' +
+      '<thead><tr><th>Creature</th><th>Rank</th><th>Slain</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+      '</table></div></section>'
+    );
+  }
+
+  function qaTroubleshootScreenHtml() {
+    ensureCaravanState();
+    var c = state.caravan || {};
+    var assign = canteburyShouldAssignCivilianTrain();
+    return (
+      '<section class="qa-troubleshoot">' +
+      '<h3 class="roster-heading">Loop & caravan</h3>' +
+      '<ul class="caravan-followers-list">' +
+      "<li>At Cantebury home: <b>" +
+      (isAtCanteburyHome() ? "yes" : "no") +
+      "</b></li>" +
+      "<li>Civilian train: <b>" +
+      (c.total || 0) +
+      "</b></li>" +
+      "<li>Caravan loops: <b>" +
+      (state.caravanLoops || 0) +
+      "</b></li>" +
+      "<li>Should assign civilians: <b>" +
+      (assign ? "yes" : "no") +
+      "</b></li>" +
+      "<li>Delivered-to-New-Isil flag: <b>" +
+      (state.caravanDeliveredToNewIsil ? "yes" : "no") +
+      "</b></li>" +
+      "<li>Chancellor grant due: <b>" +
+      (state.chancellorGrantDue || 0) +
+      " gp</b></li>" +
+      "<li>Governor grant due: <b>" +
+      (state.kewKumberGrantDue || 0) +
+      " gp</b></li>" +
+      "<li>travelOrigin: <b>" +
+      escapeHtml(state.travelOrigin || "—") +
+      "</b></li>" +
+      "<li>travelDestination: <b>" +
+      escapeHtml(state.travelDestination || "—") +
+      "</b></li>" +
+      "<li>Phase / town: <b>" +
+      escapeHtml(state.phase || "") +
+      (state.settlementTown ? " @ " + escapeHtml(state.settlementTown) : "") +
+      "</b></li>" +
+      "<li>Ration mode: <b>" +
+      escapeHtml(state.rationMode || "normal") +
+      "</b></li>" +
+      "</ul>" +
+      '<h3 class="roster-heading">Travel clocks (QA)</h3>' +
+      '<ul class="caravan-followers-list">' +
+      "<li>Route miles: <b>" + Math.round(state.legMilesTraveled || 0) + " / " + (state.legMilesTotal || 0) + "</b></li>" +
+      "<li>Route-days (mile index): <b>" + legRouteDaysDone() + " / " + currentRouteDays() + "</b></li>" +
+      "<li>Calendar on leg: <b>" + legCalendarDaysElapsed() + "</b> (leg started journey day " + (state.legStartedOnJourneyDay || 0) + ")</li>" +
+      "<li>Campaign journey day: <b>" + (state.totalDaysElapsed || 0) + "</b></li>" +
+      "<li>travelDay legacy sync: <b>" + (state.travelDay || 0) + "</b></li>" +
+      "</ul>" +
+      '<p class="hint">After a loop, civilians should assign on return to Cantebury (or when you speak with the keep). If counts look wrong, use the button below.</p>' +
+      '<div class="actions"><button type="button" class="primary" id="qaReplenishCaravan">Assign civilian train now</button></div>' +
+      "</section>"
+    );
+  }
+
+  function wireQaTroubleshoot(root) {
+    if (!root) return;
+    var btn = root.querySelector("#qaReplenishCaravan");
+    if (btn) {
+      btn.onclick = function () {
+        if (!isAtCanteburyHome()) {
+          logLine("QA replenish only works at Cantebury home (Castle tab, not on the road).", "bad");
+          render();
+          return;
+        }
+        replenishCaravanAtCantebury();
+        if (!(state.caravan && state.caravan.total > 0)) {
+          logLine("QA: civilian train not assigned — check loop flags above.", "bad");
+        }
+        render();
+      };
+    }
   }
 
   function balanceDataScreenHtml() {
@@ -11448,6 +12739,7 @@
   function render() {
     var app = document.getElementById("app");
     if (!app) return;
+    tickBestiaryPlayTime();
     syncTravelBiomeTheme();
     ensureCampaignSaveBar();
     updateCampaignSaveBar();
@@ -11813,6 +13105,10 @@
         wireIlliriTabs(app);
         var advStart = document.getElementById("beginCanteburyAdventureBtn");
         if (advStart) advStart.onclick = beginAdventure;
+        var qBeginCant = document.getElementById("questBegin");
+        if (qBeginCant) qBeginCant.onclick = beginQuestTrek;
+        var qAbanCant = document.getElementById("questAbandon");
+        if (qAbanCant) qAbanCant.onclick = abandonQuest;
         return;
       }
 
@@ -11826,11 +13122,22 @@
         wireIlliriTabs(app);
         return;
       }
+      if (state.illiriView === "qa" && isDevQaEnabled()) {
+        app.innerHTML =
+          illiriShell +
+          "<h2 class=\"panel-title\">QA — Troubleshoot</h2>" +
+          "<p class=\"town-lead\">Campaign loop diagnostics for playtesting. Use after returning from New Isil if civilians or stipends look wrong.</p>" +
+          qaTroubleshootScreenHtml() +
+          renderLog();
+        wireIlliriTabs(app);
+        wireQaTroubleshoot(app);
+        return;
+      }
       if (state.illiriView === "depart") {
         app.innerHTML =
           illiriShell +
           "<h2 class=\"panel-title\">Depart</h2>" +
-          "<p class=\"town-lead\">March <b>westward</b> with two forks: <b>Gustaf or Brookside</b>, then <b>Hollow Banks or Glennhardt</b>, then Solem and New Isil. On the return, march your route in <b>reverse</b> (or detour to towns you visited). The campaign <b>ends</b> when you reach New Isil after <b>" +
+          "<p class=\"town-lead\">March <b>westward</b>: <b>Gustaf → Grosjean</b> or <b>Idlwyld → Brookside</b>, then <b>Hollow Banks or Glennhardt</b> (Glennhardt passes <b>Arpery</b>), then Solem and New Isil. On the return, march your route in <b>reverse</b>. The campaign <b>ends</b> when you reach New Isil after <b>" +
           effectiveStabilityTarget() +
           " journey days</b> (plus any extension for the final leg). After <b>day " +
           FINAL_BOSS_MIN_DAYS +
@@ -11845,20 +13152,28 @@
           newIsilSettlerCount() +
           "</p>" +
           '<p><b>Trail legs:</b> each hop rolls <b>' +
+          LEG_MILES_MIN +
+          "–" +
+          LEG_MILES_MAX +
+          ' mi</b> (~' +
           ROUTE_DAYS_MIN +
           "–" +
           ROUTE_DAYS_MAX +
-          ' days</b> the first time you march each hop; eastbound legs use the same per-hop length and daily encounter rolls, marched one town at a time.</p>' +
+          ' days at ' +
+          MILES_PER_DAY +
+          ' mi/day). Terrain and weather can slow or stop the train — four seasons (~3 months each) from <b>Spring</b> at Cantebury shape each day\'s weather; blizzards halt the march at half rations. Long legs may find roadside outposts or trading camps.</p>' +
           settlementWestwardForkNote("cantebury") +
           (state.trailLowerFork
-            ? '<p class="hint">Last lower-fork choice: <b>' + destinationForKey(state.trailLowerFork).label + "</b>.</p>"
+            ? '<p class="hint">Last lower-fork choice: <b>' +
+              (isBrooksideBranchLowerFork() ? "Idlwyld (warded vale)" : "Gustaf (port road)") +
+              "</b>.</p>"
             : "") +
           '<div class="actions" style="flex-wrap:wrap;gap:.4rem">' +
           '<button type="button" class="primary" data-westbound-to="gustaf">March to Gustaf' +
           legDepartDaysHint("cantebury", "gustaf") +
           "</button>" +
-          '<button type="button" class="primary" data-westbound-to="brookside">March to Brookside' +
-          legDepartDaysHint("cantebury", "brookside") +
+          '<button type="button" class="primary" data-westbound-to="idlwyld">March to Idlwyld' +
+          legDepartDaysHint("cantebury", "idlwyld") +
           "</button></div>" +
           renderLog();
         wireIlliriTabs(app);
@@ -11874,7 +13189,7 @@
     }
 
     if (state.phase === "travel") {
-      if (state.travelDay >= currentRouteDays()) {
+      if (state.legMilesTraveled >= currentLegMilesTotal()) {
         queueArrivalAtDestination();
         return;
       }
@@ -11903,6 +13218,7 @@
           "). " +
           currentRouteDays() +
           " travel days on this leg.</p>" +
+          travelLegProgressPanelHtml() +
           travelMapHtml(null) +
           "</div>" +
           renderLog()
@@ -11925,9 +13241,10 @@
         renderHeader() +
         "<h2 class=\"panel-title\">Travel</h2>" +
         travelBiomePanelHtml() +
-        "<p>Progress: " +
+        travelLegProgressPanelHtml() +
+        "<p class=\"hint travel-leg-progress-caption\">" +
         travelLegProgressText() +
-        ". <b>Next day</b> marches forward (" + dailySupplyCostLabel() + ", +1 MP). <b>Camp</b> rests in place (" + dailySupplyCostLabel() + " + optional forage, healing, +2 MP) — journey time still passes, but you do not move until you march.</p>" +
+        ". <b>Next day</b> marches ~" + MILES_PER_DAY + " mi (" + dailySupplyCostLabel() + ", +1 MP) — terrain and weather change pace. <b>Camp</b> rests in place (" + dailySupplyCostLabel() + " + optional forage, healing, +2 MP).</p>" +
         travelFallenHint +
         "<div class=\"actions\">" +
         '<button type="button" class="primary" id="nextDay">Next day</button>' +
@@ -12194,7 +13511,7 @@
           " of up to " + adv.maxDays + ". Each <b>Push deeper</b> consumes " + dailySupplyCostLabel() + " and rolls an encounter. Encounter chance: <b>" +
           advEncPct + "%</b>.</p>" +
           (adv.town === "cantebury"
-            ? "<p class=\"hint\">Cantebury training grounds: <b>level 1</b> foes only; encounter pace is <b>80% slower</b> than other towns.</p>"
+            ? "<p class=\"hint\">Cantebury training grounds: garrison sparring partners, bandits, and goblins only; encounter pace is <b>80% slower</b> than other towns.</p>"
             : "") +
           (adv.daysOut > 0
             ? "<p class=\"hint\">Return march: " + adv.daysOut + " day(s) homeward, one day per step, with encounters.</p>"
@@ -12339,15 +13656,15 @@
         wireInventoryScreen(app);
         state.shopVendorKind = gearLockerSellEnabled() ? "market" : "market";
         wireShopCaravanLocker(app);
-        var qBegin = document.getElementById("questBegin");
-        if (qBegin) qBegin.onclick = beginQuestTrek;
-        var qAban = document.getElementById("questAbandon");
-        if (qAban) qAban.onclick = abandonQuest;
       } else if (state.settlementView === "colony") {
         wireNewIsilColonyPanel(app);
       } else if (state.settlementView === "adventure") {
         var advBtn = document.getElementById("beginAdventureBtn");
         if (advBtn) advBtn.onclick = function () { beginAdventure(); };
+        var qBeginAdv = document.getElementById("questBegin");
+        if (qBeginAdv) qBeginAdv.onclick = beginQuestTrek;
+        var qAbanAdv = document.getElementById("questAbandon");
+        if (qAbanAdv) qAbanAdv.onclick = abandonQuest;
       } else if (state.settlementView === "depart") {
         if (town.key === "new_isil") {
           wireNewIsilDepart(app);
@@ -12366,6 +13683,11 @@
       }
       if (state.adventure && !state.combat && !state.pendingEncounter) {
         state.phase = "adventure";
+        render();
+        return;
+      }
+      if (state.quest && state.quest.status === "active" && !state.combat && !state.pendingEncounter) {
+        state.phase = state.quest.defense ? "quest_defense" : "quest_trek";
         render();
         return;
       }
@@ -12402,7 +13724,7 @@
           " may host foes (" +
           Math.round(SKELETON_FIGHT_CHANCE * 100) +
           "% chance" +
-          (ruinsType === "abandoned_town" ? " — bandits and occasional imps in forsaken streets" : "") +
+          (ruinsType === "abandoned_town" ? " — bandits and occasional imps in forsaken streets; pantries may still hold supplies" : "") +
           "). Gold caches are rare but worthwhile.</p>" +
           ruinsMinimapHtml() +
           ruinsNavigationPlaceholderHtml() +
@@ -12437,21 +13759,27 @@
           }
           var roomGold = 0;
           var roomGems = 0;
+          var roomSupplies = 0;
           if (Math.random() < RUINS_GOLD_FIND_CHANCE) {
             roomGold = roadGoldBonus(rollInt(RUINS_GOLD_MIN, RUINS_GOLD_MAX));
             state.gold += roomGold;
+            recordBestiaryGoldFound(roomGold);
           }
           if (Math.random() < RUINS_GEM_FIND_CHANCE) {
             roomGems = 1;
             state.gems += roomGems;
           }
+          if (currentRuinsSiteType() === "abandoned_town" && Math.random() < RUINS_ABANDONED_TOWN_SUPPLY_CHANCE) {
+            roomSupplies = addSupplies(rollInt(1, RUINS_ABANDONED_TOWN_SUPPLY_MAX));
+          }
           if (state.ruinsMap) markRuinsTileExplored(state.ruinsMap.playerX, state.ruinsMap.playerY);
           var roomWeapon = false;
           if (Math.random() < 0.12) roomWeapon = grantWeaponGearDrop(areaLabel + " " + unitLabel + " " + roomIdx);
-          if (roomGold || roomGems || roomWeapon) {
+          if (roomGold || roomGems || roomSupplies || roomWeapon) {
             var bits = [];
             if (roomGold) bits.push("+" + roomGold + " gold");
             if (roomGems) bits.push("+1 gem");
+            if (roomSupplies) bits.push("+" + roomSupplies + " supply bundle" + (roomSupplies === 1 ? "" : "s"));
             if (roomWeapon) bits.push("weapon");
             logLine(
               areaLabel +

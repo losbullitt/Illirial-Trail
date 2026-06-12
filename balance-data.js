@@ -1,5 +1,6 @@
 window.ILLIRIAL_BALANCE = {
-  "version": "7.0.9",
+  "version": "8.3.8",
+  "travelMiles": { "min": 60, "max": 200, "perDay": 20 },
   "remoteSettlementTowns": ["brookside", "glennhardt"],
   "travelBiomes": {
     "forest": {
@@ -46,7 +47,23 @@ window.ILLIRIAL_BALANCE = {
     "hollow_banks>brookside": ["steppe", "forest", "plains"],
     "hollow_banks>gustaf": ["steppe", "forest", "plains"],
     "brookside>cantebury": ["forest", "plains"],
-    "gustaf>cantebury": ["forest", "plains", "plains"]
+    "gustaf>cantebury": ["forest", "plains", "plains"],
+    "cantebury>idlwyld": ["plains", "forest", "forest"],
+    "idlwyld>cantebury": ["forest", "plains"],
+    "brookside>idlwyld": ["forest", "forest"],
+    "idlwyld>brookside": ["forest", "plains"],
+    "gustaf>grosjean": ["plains", "forest"],
+    "grosjean>gustaf": ["forest", "plains"],
+    "grosjean>hollow_banks": ["plains", "forest", "steppe"],
+    "grosjean>glennhardt": ["forest", "mountains", "steppe"],
+    "hollow_banks>grosjean": ["steppe", "forest", "plains"],
+    "glennhardt>grosjean": ["steppe", "mountains", "forest"],
+    "brookside>glennhardt": ["forest", "mountains", "steppe"],
+    "glennhardt>brookside": ["steppe", "forest", "plains"],
+    "solem>arpery": ["mountains", "mountains"],
+    "arpery>solem": ["mountains", "steppe"],
+    "glennhardt>arpery": ["mountains", "mountains"],
+    "arpery>glennhardt": ["mountains", "mountains"]
   },
   "newIsilColony": {
     "basePopulation": 12,
@@ -188,12 +205,13 @@ window.ILLIRIAL_BALANCE = {
       { "id": "town", "label": "Town", "minPoints": 110 },
       { "id": "city", "label": "City", "minPoints": 220 }
     ],
+    "birthRateAnnual": 0.015,
+    "trickleIntervalDays": 91,
+    "trickleMin": 1,
+    "trickleMax": 2,
     "passive": {
       "pointsPerSettlerPerDay": 0.18,
       "pointsPerPopulationPerDay": 0.025,
-      "populationPerDayBase": 0.04,
-      "populationPerSettlerPerDay": 0.22,
-      "populationPerDeliveredCivilianPerDay": 0.04,
       "buildingProgressPerDayPerSettler": 0.06
     },
     "rally": {
@@ -646,6 +664,30 @@ window.ILLIRIAL_BALANCE = {
       "atk": 3,
       "type": null,
       "level": 2
+    },
+    {
+      "name": "Acolyte",
+      "hp": 14,
+      "mp": 10,
+      "atk": 4,
+      "type": "Humanoid",
+      "level": 1
+    },
+    {
+      "name": "Sorceror",
+      "hp": 20,
+      "mp": 12,
+      "atk": 10,
+      "type": "Mystical",
+      "level": 1
+    },
+    {
+      "name": "Bandit Archer",
+      "hp": 7,
+      "mp": 10,
+      "atk": 4,
+      "type": "Humanoid",
+      "level": 1
     }
   ],
   "weapons": [
@@ -674,7 +716,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Flamebrand",
     "group": "swords",
-    "dmgModifier": 6,
+    "dmgModifier": 8,
     "extras": [
       "1 fire"
     ],
@@ -686,7 +728,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Icebrand",
     "group": "swords",
-    "dmgModifier": 6,
+    "dmgModifier": 8,
     "extras": [
       "1 ice"
     ],
@@ -698,7 +740,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Lightning Blade",
     "group": "swords",
-    "dmgModifier": 6,
+    "dmgModifier": 8,
     "extras": [
       "1 lit"
     ],
@@ -710,7 +752,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Vorpal Sword",
     "group": "swords",
-    "dmgModifier": 6,
+    "dmgModifier": 8,
     "extras": [
       "1 water"
     ],
@@ -722,7 +764,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Bright Blade",
     "group": "swords",
-    "dmgModifier": 5,
+    "dmgModifier": 7,
     "extras": [
       "1 holy"
     ],
@@ -734,7 +776,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Crystal Sword",
     "group": "swords",
-    "dmgModifier": 7,
+    "dmgModifier": 9,
     "extras": [
       "2 holy"
     ],
@@ -757,18 +799,18 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Gladius",
     "group": "swords",
-    "dmgModifier": 3,
+    "dmgModifier": 4,
     "extras": [],
     "rarity": "common",
     "id": "gladius",
     "purchase": true,
-    "buyPrice": 12,
+    "buyPrice": 20,
     "sellPrice": 3
   },
   {
     "name": "Arming Sword",
     "group": "swords",
-    "dmgModifier": 4,
+    "dmgModifier": 3,
     "extras": [],
     "rarity": "uncommon",
     "id": "arming_sword",
@@ -784,7 +826,7 @@ window.ILLIRIAL_BALANCE = {
     "rarity": "uncommon",
     "id": "longsword",
     "purchase": true,
-    "buyPrice": 18,
+    "buyPrice": 25,
     "sellPrice": 4
   },
   {
@@ -795,7 +837,7 @@ window.ILLIRIAL_BALANCE = {
     "rarity": "common",
     "id": "broadsword",
     "purchase": true,
-    "buyPrice": 25,
+    "buyPrice": 30,
     "sellPrice": 5
   },
   {
@@ -806,7 +848,7 @@ window.ILLIRIAL_BALANCE = {
     "rarity": "common",
     "id": "claymore",
     "purchase": true,
-    "buyPrice": 30,
+    "buyPrice": 40,
     "sellPrice": 5
   },
   {
@@ -819,7 +861,7 @@ window.ILLIRIAL_BALANCE = {
     "rarity": "common",
     "id": "rapier",
     "purchase": true,
-    "buyPrice": 10,
+    "buyPrice": 40,
     "sellPrice": 2
   },
   {
@@ -859,7 +901,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Nodachi",
     "group": "swords",
-    "dmgModifier": 5,
+    "dmgModifier": 7,
     "extras": [],
     "rarity": "rare",
     "id": "nodachi",
@@ -879,7 +921,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Excalibur",
     "group": "swords",
-    "dmgModifier": 8,
+    "dmgModifier": 10,
     "extras": [
       "3 holy"
     ],
@@ -891,7 +933,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Dao",
     "group": "swords",
-    "dmgModifier": 5,
+    "dmgModifier": 7,
     "extras": [],
     "rarity": "rare",
     "id": "dao",
@@ -934,7 +976,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Talwar",
     "group": "swords",
-    "dmgModifier": 4,
+    "dmgModifier": 8,
     "extras": [],
     "rarity": "rare",
     "id": "talwar",
@@ -944,7 +986,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Khopesh",
     "group": "swords",
-    "dmgModifier": 4,
+    "dmgModifier": 8,
     "extras": [],
     "rarity": "rare",
     "id": "khopesh",
@@ -954,7 +996,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Urumi",
     "group": "swords",
-    "dmgModifier": 3,
+    "dmgModifier": 5,
     "extras": [
       "1 luck"
     ],
@@ -966,7 +1008,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Takoba",
     "group": "swords",
-    "dmgModifier": 4,
+    "dmgModifier": 7,
     "extras": [],
     "rarity": "rare",
     "id": "takoba",
@@ -976,7 +1018,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Shotel",
     "group": "swords",
-    "dmgModifier": 4,
+    "dmgModifier": 7,
     "extras": [],
     "rarity": "rare",
     "id": "shotel",
@@ -986,7 +1028,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Flyssa",
     "group": "swords",
-    "dmgModifier": 3,
+    "dmgModifier": 8,
     "extras": [],
     "rarity": "rare",
     "id": "flyssa",
@@ -996,7 +1038,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Barong",
     "group": "swords",
-    "dmgModifier": 4,
+    "dmgModifier": 7,
     "extras": [
       "1 str"
     ],
@@ -1008,7 +1050,7 @@ window.ILLIRIAL_BALANCE = {
   {
     "name": "Kampilan",
     "group": "swords",
-    "dmgModifier": 4,
+    "dmgModifier": 5,
     "extras": [],
     "rarity": "rare",
     "id": "kampilan",
@@ -1221,6 +1263,42 @@ window.ILLIRIAL_BALANCE = {
     "purchase": true,
     "buyPrice": 7,
     "sellPrice": 1
+  },
+  {
+    "name": "Healing staff",
+    "id": "healing_staff",
+    "group": "swords",
+    "dmgModifier": 1,
+    "extras": [
+      "+ 3hp heal",
+      "+ 10 int"
+    ],
+    "rarity": "common",
+    "purchase": false
+  },
+  {
+    "name": "staff of power",
+    "id": "staff_of_power",
+    "group": "swords",
+    "dmgModifier": 2,
+    "extras": [
+      "+2 atk",
+      "+ 20 int"
+    ],
+    "rarity": "common",
+    "purchase": false
+  },
+  {
+    "name": "Black Mage staff",
+    "id": "black_mage_staff",
+    "group": "swords",
+    "dmgModifier": 1,
+    "extras": [
+      "+5 atk",
+      "+ 5% crit"
+    ],
+    "rarity": "common",
+    "purchase": false
   }
 ],
   "statGainsPerClass": {
@@ -1415,6 +1493,13 @@ window.ILLIRIAL_BALANCE = {
     "rarity": "common"
   },
   {
+    "id": "frying_pan",
+    "slot": "weapon",
+    "label": "Frying Pan",
+    "dmgBonus": 2,
+    "rarity": "common"
+  },
+  {
     "id": "settlement_blade",
     "slot": "weapon",
     "label": "Trail blade",
@@ -1441,7 +1526,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "flamebrand",
     "slot": "weapon",
     "label": "Flamebrand",
-    "dmgBonus": 6,
+    "dmgBonus": 8,
     "rarity": "rare",
     "group": "swords",
     "extras": [
@@ -1452,7 +1537,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "icebrand",
     "slot": "weapon",
     "label": "Icebrand",
-    "dmgBonus": 6,
+    "dmgBonus": 8,
     "rarity": "rare",
     "group": "swords",
     "extras": [
@@ -1463,7 +1548,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "lightning_blade",
     "slot": "weapon",
     "label": "Lightning Blade",
-    "dmgBonus": 6,
+    "dmgBonus": 8,
     "rarity": "rare",
     "group": "swords",
     "extras": [
@@ -1474,7 +1559,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "vorpal_sword",
     "slot": "weapon",
     "label": "Vorpal Sword",
-    "dmgBonus": 6,
+    "dmgBonus": 8,
     "rarity": "rare",
     "group": "swords",
     "extras": [
@@ -1485,7 +1570,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "bright_blade",
     "slot": "weapon",
     "label": "Bright Blade",
-    "dmgBonus": 5,
+    "dmgBonus": 7,
     "rarity": "rare",
     "group": "swords",
     "extras": [
@@ -1496,7 +1581,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "crystal_sword",
     "slot": "weapon",
     "label": "Crystal Sword",
-    "dmgBonus": 7,
+    "dmgBonus": 9,
     "rarity": "ultra_rare",
     "group": "swords",
     "extras": [
@@ -1515,7 +1600,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "gladius",
     "slot": "weapon",
     "label": "Gladius",
-    "dmgBonus": 3,
+    "dmgBonus": 4,
     "rarity": "common",
     "group": "swords"
   },
@@ -1523,7 +1608,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "arming_sword",
     "slot": "weapon",
     "label": "Arming Sword",
-    "dmgBonus": 4,
+    "dmgBonus": 3,
     "rarity": "uncommon",
     "group": "swords"
   },
@@ -1593,7 +1678,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "nodachi",
     "slot": "weapon",
     "label": "Nodachi",
-    "dmgBonus": 5,
+    "dmgBonus": 7,
     "rarity": "rare",
     "group": "swords"
   },
@@ -1609,7 +1694,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "excalibur",
     "slot": "weapon",
     "label": "Excalibur",
-    "dmgBonus": 8,
+    "dmgBonus": 10,
     "rarity": "ultra_rare",
     "group": "swords",
     "extras": [
@@ -1620,7 +1705,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "dao",
     "slot": "weapon",
     "label": "Dao",
-    "dmgBonus": 5,
+    "dmgBonus": 7,
     "rarity": "rare",
     "group": "swords"
   },
@@ -1652,7 +1737,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "talwar",
     "slot": "weapon",
     "label": "Talwar",
-    "dmgBonus": 4,
+    "dmgBonus": 8,
     "rarity": "rare",
     "group": "swords"
   },
@@ -1660,7 +1745,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "khopesh",
     "slot": "weapon",
     "label": "Khopesh",
-    "dmgBonus": 4,
+    "dmgBonus": 8,
     "rarity": "rare",
     "group": "swords"
   },
@@ -1668,7 +1753,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "urumi",
     "slot": "weapon",
     "label": "Urumi",
-    "dmgBonus": 3,
+    "dmgBonus": 5,
     "rarity": "rare",
     "group": "swords",
     "extras": [
@@ -1679,7 +1764,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "takoba",
     "slot": "weapon",
     "label": "Takoba",
-    "dmgBonus": 4,
+    "dmgBonus": 7,
     "rarity": "rare",
     "group": "swords"
   },
@@ -1687,7 +1772,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "shotel",
     "slot": "weapon",
     "label": "Shotel",
-    "dmgBonus": 4,
+    "dmgBonus": 7,
     "rarity": "rare",
     "group": "swords"
   },
@@ -1695,7 +1780,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "flyssa",
     "slot": "weapon",
     "label": "Flyssa",
-    "dmgBonus": 3,
+    "dmgBonus": 8,
     "rarity": "rare",
     "group": "swords"
   },
@@ -1703,7 +1788,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "barong",
     "slot": "weapon",
     "label": "Barong",
-    "dmgBonus": 4,
+    "dmgBonus": 7,
     "rarity": "rare",
     "group": "swords",
     "extras": [
@@ -1714,7 +1799,7 @@ window.ILLIRIAL_BALANCE = {
     "id": "kampilan",
     "slot": "weapon",
     "label": "Kampilan",
-    "dmgBonus": 4,
+    "dmgBonus": 5,
     "rarity": "rare",
     "group": "swords"
   },

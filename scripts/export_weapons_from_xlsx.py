@@ -86,7 +86,7 @@ def parse_weapons_sheet(path):
             dmg_modifier = int(float(row[1]))
         except (TypeError, ValueError):
             dmg_modifier = 1
-        extras = [str(row[j]).strip() for j in range(2, 5) if j < len(row) and row[j]]
+        extras = [str(row[j]).strip() for j in range(2, 4) if j < len(row) and row[j]]
         entry = {
             "name": name, "id": slug(name), "group": current_group or "misc",
             "dmgModifier": dmg_modifier, "extras": extras,

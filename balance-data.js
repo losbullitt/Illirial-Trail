@@ -1,5 +1,5 @@
 window.ILLIRIAL_BALANCE = {
-  "version": "8.3.8",
+  "version": "8.4.0",
   "travelMiles": { "min": 60, "max": 200, "perDay": 20 },
   "remoteSettlementTowns": ["brookside", "glennhardt"],
   "travelBiomes": {
@@ -294,6 +294,7 @@ window.ILLIRIAL_BALANCE = {
         "stamina": 4,
         "luck": 4
       },
+    "paladin": { "final": { "strength": 8, "intelligence": 5, "stamina": 6, "luck": 4 } },
       "bonus": {
         "strength": 3,
         "intelligence": -1,
@@ -617,7 +618,23 @@ window.ILLIRIAL_BALANCE = {
       "type": null,
       "level": 1
     },
+        {
+      "name": "Giant",
+      "hp": 28,
+      "mp": null,
+      "atk": 11,
+      "type": null,
+      "level": 3
+    },
     {
+      "name": "Naga",
+      "hp": 20,
+      "mp": 24,
+      "atk": 7,
+      "type": null,
+      "level": 3
+    },
+{
       "name": "Ogre",
       "hp": 9,
       "mp": null,
@@ -1371,6 +1388,38 @@ window.ILLIRIAL_BALANCE = {
   "maxLevel": 20,
   "statCap": 50,
   "npcDialogues": {
+    "yosef_silver_blades": {
+      "speaker": "Yosef",
+      "title": "Silver Blades — guest officer",
+      "portrait": "",
+      "lines": [
+        "Do you want to give more to your people?",
+        "Thornwall sent riders — giants in the lower wards. Five souls pinned in the chapel.",
+        "Jephro needs hands in the Helsfort hills. Ghosts, timber, and ore — in that order.",
+        "Positions filled while you were away. Next time you are in town, I will let you know if something opens.",
+        "Did you retrieve anything from the marsh?",
+        "Lady Stillwater's guards fell ill on the Gustaf road. The miasma is not natural.",
+        "Bring me proof from Thornwall — a giant's head — and we will speak of Jephro."
+      ]
+    },
+    "lady_stillwater": {
+      "speaker": "Lady Stillwater",
+      "title": "Outside Gustaf",
+      "portrait": "",
+      "lines": [
+        "My guards retch blood at the marsh edge. Something breathes poison there — a Naga with a stolen tome.",
+        "Clear the marsh. If you find dark channeling pages, they belong in Silver Blade hands — not yours."
+      ]
+    },
+    "reginald_hawk": {
+      "speaker": "Reginald the Hawk",
+      "title": "Paladin Lord — Cantebury",
+      "portrait": "",
+      "lines": [
+        "Kneel. Your oath is not to my title — it is to the people who never see the paladin coming.",
+        "Rise, paladin of the Silver Blades. Sidra's light is heavy; carry it well."
+      ]
+    },
     "cantebury_governor": {
       "speaker": "Governor Kew Kumber",
       "title": "Governor of Cantebury",

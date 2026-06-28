@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cantebury Trails — Quest Editor</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Crimson+Pro:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --ink:        #1c1510;
+    --parchment:  #f5efe0;
+    --aged:       #e8dfc8;
+    --seam:       #c9b99a;
+    --rust:       #8b3a1e;
+    --rust-light: #b85030;
+    --gold:       #9a6f2e;
+    --muted:      #7a6a58;
+    --good:       #2d6a3f;
+    --bad:        #8b3a1e;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--ink);
+    font-family: 'Crimson Pro', Georgia, serif;
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 2rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ── Lock screen ── */
+  #lockScreen {
+    width: 100%;
+    max-width: 400px;
+    background: var(--parchment);
+    border: 2px solid var(--seam);
+    border-radius: 2px;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.7);
+    overflow: hidden;
+  }
+  #lockScreen .lock-banner {
+    background: var(--ink);
+    padding: 1.4rem 2rem;
+    border-bottom: 3px solid var(--rust);
+    text-align: center;
+  }
+  #lockScreen .lock-banner h1 {
+    font-family: 'IM Fell English', serif;
+    font-size: 1.4rem;
+    color: var(--parchment);
+    letter-spacing: 0.04em;
+  }
+  #lockScreen .lock-banner .sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--seam);
+    letter-spacing: 0.1em;
+    margin-top: 0.3rem;
+  }
+  #lockScreen .lock-body {
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    align-items: center;
+  }
+  #lockScreen .lock-icon {
+    font-size: 2.5rem;
+    line-height: 1;
+    color: var(--rust);
+  }
+  #lockScreen .lock-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    align-self: flex-start;
+  }
+  #lockScreen input[type="password"] {
+    width: 100%;
+    background: white;
+    border: 1px solid var(--seam);
+    border-radius: 2px;
+    padding: 0.55rem 0.75rem;
+    font-family: 'Crimson Pro', serif;
+    font-size: 1.1rem;
+    color: var(--ink);
+    letter-spacing: 0.1em;
+  }
+  #lockScreen input[type="password"]:focus {
+    outline: none;
+    border-color: var(--rust);
+    box-shadow: 0 0 0 2px rgba(139,58,30,0.12);
+  }
+  #lockScreen .lock-btn {
+    width: 100%;
+    background: var(--rust);
+    color: var(--parchment);
+    border: none;
+    border-radius: 2px;
+    padding: 0.65rem;
+    font-family: 'IM Fell English', serif;
+    font-size: 1.05rem;
+    cursor: pointer;
+    letter-spacing: 0.03em;
+  }
+  #lockScreen .lock-btn:hover { background: var(--rust-light); }
+  #lockScreen .lock-err {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--bad);
+    min-height: 1rem;
+    text-align: center;
+  }
+
+  /* ── Main app ── */
+  #app { display: none; width: 100%; max-width: 860px; }
+
+  .scroll {
+    background: var(--parchment);
+    border: 2px solid var(--seam);
+    border-radius: 2px;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.6), inset 0 0 60px rgba(180,150,90,0.08);
+    overflow: hidden;
+  }
+
+  .banner {
+    background: var(--ink);
+    padding: 1.4rem 2rem;
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    border-bottom: 3px solid var(--rust);
+  }
+  .banner h1 {
+    font-family: 'IM Fell English', serif;
+    font-size: 1.5rem;
+    color: var(--parchment);
+    letter-spacing: 0.04em;
+  }
+  .banner .sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--seam);
+    letter-spacing: 0.1em;
+  }
+  .banner .lock-out {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--seam);
+    border-radius: 2px;
+    color: var(--seam);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    padding: 0.3rem 0.6rem;
+    cursor: pointer;
+    letter-spacing: 0.06em;
+  }
+  .banner .lock-out:hover { border-color: var(--rust); color: var(--rust); }
+
+  .auth-bar {
+    background: var(--aged);
+    border-bottom: 1px solid var(--seam);
+    padding: 0.8rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .auth-bar label {
+    font-size: 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+  .auth-bar input {
+    flex: 1;
+    min-width: 200px;
+    background: var(--parchment);
+    border: 1px solid var(--seam);
+    border-radius: 2px;
+    padding: 0.4rem 0.6rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--ink);
+  }
+  .btn-sm {
+    background: var(--rust);
+    color: var(--parchment);
+    border: none;
+    border-radius: 2px;
+    padding: 0.4rem 1rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-sm:hover { background: var(--rust-light); }
+
+  .body { display: flex; min-height: 500px; }
+
+  .sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--seam);
+    background: var(--aged);
+    padding: 1rem 0;
+  }
+  .sidebar-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    padding: 0 1rem 0.5rem;
+  }
+  .quest-list { list-style: none; }
+  .quest-list li {
+    padding: 0.55rem 1rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    border-left: 3px solid transparent;
+    transition: background 0.1s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .quest-list li:hover { background: rgba(0,0,0,0.05); }
+  .quest-list li.active {
+    border-left-color: var(--rust);
+    background: rgba(139,58,30,0.08);
+    font-weight: 600;
+  }
+  .quest-list li .type-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    background: var(--seam);
+    color: var(--ink);
+    padding: 1px 5px;
+    border-radius: 2px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .add-btn {
+    margin: 0.75rem 1rem 0;
+    width: calc(100% - 2rem);
+    background: transparent;
+    border: 1px dashed var(--seam);
+    border-radius: 2px;
+    padding: 0.4rem;
+    font-family: 'Crimson Pro', serif;
+    font-size: 0.85rem;
+    color: var(--muted);
+    cursor: pointer;
+    text-align: center;
+  }
+  .add-btn:hover { border-color: var(--rust); color: var(--rust); }
+
+  .form-panel {
+    flex: 1;
+    padding: 1.5rem 2rem;
+    overflow-y: auto;
+  }
+
+  .form-group { margin-bottom: 1.1rem; }
+  .form-group label {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 0.3rem;
+  }
+  .form-group input,
+  .form-group textarea,
+  .form-group select {
+    width: 100%;
+    background: white;
+    border: 1px solid var(--seam);
+    border-radius: 2px;
+    padding: 0.45rem 0.6rem;
+    font-family: 'Crimson Pro', serif;
+    font-size: 1rem;
+    color: var(--ink);
+  }
+  .form-group textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
+  .form-group input:focus,
+  .form-group textarea:focus,
+  .form-group select:focus {
+    outline: none;
+    border-color: var(--rust);
+    box-shadow: 0 0 0 2px rgba(139,58,30,0.12);
+  }
+
+  .row { display: flex; gap: 1rem; }
+  .row .form-group { flex: 1; }
+
+  .monster-pool { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.3rem; }
+  .monster-chip {
+    display: flex; align-items: center; gap: 0.3rem;
+    background: var(--aged); border: 1px solid var(--seam);
+    border-radius: 2px; padding: 0.2rem 0.5rem; font-size: 0.85rem;
+  }
+  .monster-chip button {
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 0.9rem; line-height: 1; padding: 0;
+  }
+  .monster-chip button:hover { color: var(--rust); }
+  .monster-add { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
+  .monster-add input { flex: 1; }
+  .monster-add button {
+    background: var(--aged); border: 1px solid var(--seam);
+    border-radius: 2px; padding: 0.3rem 0.7rem; cursor: pointer;
+    font-family: 'Crimson Pro', serif; font-size: 0.9rem;
+  }
+  .monster-add button:hover { border-color: var(--rust); color: var(--rust); }
+
+  .conditional { display: none; }
+  .conditional.visible { display: block; }
+
+  .divider { border: none; border-top: 1px solid var(--seam); margin: 1.2rem 0; }
+
+  .footer {
+    background: var(--aged);
+    border-top: 1px solid var(--seam);
+    padding: 0.9rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .btn-primary {
+    background: var(--rust); color: var(--parchment);
+    border: none; border-radius: 2px; padding: 0.55rem 1.4rem;
+    font-family: 'IM Fell English', serif; font-size: 1rem;
+    cursor: pointer; letter-spacing: 0.03em;
+  }
+  .btn-primary:hover { background: var(--rust-light); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-danger {
+    background: transparent; color: var(--bad);
+    border: 1px solid var(--bad); border-radius: 2px;
+    padding: 0.5rem 1rem; font-family: 'Crimson Pro', serif;
+    font-size: 0.9rem; cursor: pointer; margin-left: auto;
+  }
+  .btn-danger:hover { background: var(--bad); color: white; }
+
+  .status {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem; padding: 0.3rem 0.7rem; border-radius: 2px;
+  }
+  .status.ok  { background: rgba(45,106,63,0.1);  color: var(--good); }
+  .status.err { background: rgba(139,58,30,0.1); color: var(--bad); }
+  .status.info { color: var(--muted); }
+
+  .empty {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 300px; color: var(--muted); gap: 0.5rem; font-style: italic;
+  }
+  .empty .arrow { font-size: 2rem; }
+
+  .preview-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--muted); margin-bottom: 0.4rem;
+  }
+  pre.json-preview {
+    background: var(--ink); color: #c8b99a;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+    padding: 0.8rem 1rem; border-radius: 2px;
+    overflow-x: auto; line-height: 1.6; max-height: 220px; overflow-y: auto;
+  }
+
+  .section-head {
+    font-family: 'IM Fell English', serif; font-size: 1.05rem;
+    color: var(--rust); margin-bottom: 0.8rem;
+    padding-bottom: 0.3rem; border-bottom: 1px solid var(--seam);
+  }
+</style>
+</head>
+<body>
+
+<!-- Lock Screen -->
+<div id="lockScreen">
+  <div class="lock-banner">
+    <h1>Cantebury Trails</h1>
+    <div class="sub">Quest Editor · Restricted Access</div>
+  </div>
+  <div class="lock-body">
+    <div class="lock-icon">⚔️</div>
+    <div class="lock-label">Passphrase</div>
+    <input type="password" id="lockInput" placeholder="Enter passphrase…" onkeydown="if(event.key==='Enter') unlock()" autofocus />
+    <button class="lock-btn" onclick="unlock()">Enter the Hall</button>
+    <div class="lock-err" id="lockErr"></div>
+  </div>
+</div>
+
+<!-- Main App -->
+<div id="app">
+  <div class="scroll">
+    <div class="banner">
+      <h1>Cantebury Trails</h1>
+      <span class="sub">Quest Editor · losbullitt/Illirial-Trail</span>
+      <button class="lock-out" onclick="lockOut()">🔒 Lock</button>
+    </div>
+
+    <div class="auth-bar">
+      <label>GitHub Token</label>
+      <input type="password" id="ghToken" placeholder="ghp_…" />
+      <button class="btn-sm" onclick="loadQuests()">Load Quests</button>
+      <span class="status info" id="authStatus">Enter token and click Load</span>
+    </div>
+
+    <div class="body">
+      <div class="sidebar">
+        <div class="sidebar-title">Quest Catalog</div>
+        <ul class="quest-list" id="questList"></ul>
+        <button class="add-btn" onclick="newQuest()">+ New Quest</button>
+      </div>
+      <div class="form-panel" id="formPanel">
+        <div class="empty">
+          <div class="arrow">↖</div>
+          <div>Load quests from GitHub, then select one to edit or create a new one.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer" id="footer" style="display:none">
+      <button class="btn-primary" id="saveBtn" onclick="saveQuest()">Commit to GitHub</button>
+      <span class="status" id="saveStatus"></span>
+      <button class="btn-danger" id="deleteBtn" onclick="deleteQuest()">Remove Quest</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Password check (SHA-256 hash, never stored in plaintext) ──
+const PW_HASH = '9ae47c164a6e6f478a018ef88f4f1ba88e268429f1ab71a01993bc1d6bb93b88';
+
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+async function unlock() {
+  const val = document.getElementById('lockInput').value;
+  const hash = await sha256(val);
+  if (hash === PW_HASH) {
+    document.getElementById('lockScreen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.body.style.alignItems = 'flex-start';
+    const saved = sessionStorage.getItem('ct_tok');
+    if (saved) document.getElementById('ghToken').value = saved;
+  } else {
+    const err = document.getElementById('lockErr');
+    err.textContent = 'Incorrect passphrase.';
+    document.getElementById('lockInput').value = '';
+    document.getElementById('lockInput').focus();
+    setTimeout(() => { err.textContent = ''; }, 3000);
+  }
+}
+
+function lockOut() {
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('lockScreen').style.display = 'block';
+  document.body.style.alignItems = 'center';
+  document.getElementById('lockInput').value = '';
+  document.getElementById('lockInput').focus();
+}
+
+// ── Quest Editor ──
+const REPO = 'losbullitt/Illirial-Trail';
+const FILE = 'game.js';
+const CATALOG_START = 'var QUEST_CATALOG = {';
+const MONSTERS = ['Goblin','Troll','Wolf','Bandit','Ogre','Drake','Skeleton','Spider','Orc','Wraith'];
+
+let catalog = {};
+let gameJsContent = '';
+let gameJsSha = '';
+let activeId = null;
+let isNew = false;
+let monsterPool = [];
+
+function token() { return document.getElementById('ghToken').value.trim(); }
+
+function setStatus(id, msg, cls) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = 'status ' + (cls||'info');
+}
+
+async function loadQuests() {
+  const tok = token();
+  if (!tok) { setStatus('authStatus','No token','err'); return; }
+  setStatus('authStatus','Loading…','info');
+  try {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${FILE}`, {
+      headers: { Authorization: `token ${tok}`, Accept: 'application/vnd.github.v3+json' }
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    gameJsSha = data.sha;
+    gameJsContent = atob(data.content.replace(/\n/g,''));
+    catalog = parseCatalog(gameJsContent);
+    setStatus('authStatus', `Loaded · ${Object.keys(catalog).length} quests`, 'ok');
+    renderSidebar();
+  } catch(e) {
+    setStatus('authStatus', 'Error: ' + e.message, 'err');
+  }
+}
+
+function parseCatalog(js) {
+  const start = js.indexOf(CATALOG_START);
+  if (start < 0) return {};
+  let depth = 0, i = start + CATALOG_START.length - 1;
+  for (; i < js.length; i++) {
+    if (js[i] === '{') depth++;
+    else if (js[i] === '}') { depth--; if (depth === 0) break; }
+  }
+  const block = js.slice(start + CATALOG_START.length - 1, i + 1);
+  try {
+    return new Function('return (' + CATALOG_START.slice(4) + block + ')')();
+  } catch(e) {
+    const out = {};
+    const re = /(\w+):\s*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}/g;
+    let m;
+    while ((m = re.exec(block)) !== null) {
+      try { out[m[1]] = new Function('return ({' + m[2] + '})')(); } catch(e2) {}
+    }
+    return out;
+  }
+}
+
+function renderSidebar() {
+  const list = document.getElementById('questList');
+  list.innerHTML = '';
+  Object.entries(catalog).forEach(([id, q]) => {
+    const li = document.createElement('li');
+    li.onclick = () => selectQuest(id);
+    if (id === activeId) li.classList.add('active');
+    const badge = document.createElement('span');
+    badge.className = 'type-badge';
+    badge.textContent = (q.type||'').replace('_',' ').slice(0,6);
+    li.appendChild(badge);
+    li.appendChild(document.createTextNode(q.name || id));
+    list.appendChild(li);
+  });
+}
+
+function selectQuest(id) {
+  activeId = id; isNew = false;
+  monsterPool = [...(catalog[id].monsterPool || [])];
+  renderForm(catalog[id], id);
+  renderSidebar();
+  document.getElementById('footer').style.display = 'flex';
+  document.getElementById('deleteBtn').style.display = 'inline-block';
+}
+
+function newQuest() {
+  activeId = '__new__'; isNew = true; monsterPool = [];
+  renderForm({}, '');
+  renderSidebar();
+  document.getElementById('footer').style.display = 'flex';
+  document.getElementById('deleteBtn').style.display = 'none';
+}
+
+function renderForm(q, id) {
+  const type = q.type || 'monster_hunt';
+  document.getElementById('formPanel').innerHTML = `
+    <div class="section-head">Quest Details</div>
+    <div class="row">
+      <div class="form-group">
+        <label>Quest ID <span style="color:var(--rust)">*</span></label>
+        <input id="fId" type="text" value="${id}" placeholder="e.g. cursed_merchant" ${isNew?'':'readonly style="opacity:0.6"'} />
+      </div>
+      <div class="form-group">
+        <label>Display Name <span style="color:var(--rust)">*</span></label>
+        <input id="fName" type="text" value="${q.name||''}" placeholder="The Cursed Merchant" />
+      </div>
+    </div>
+    <div class="row">
+      <div class="form-group">
+        <label>Type <span style="color:var(--rust)">*</span></label>
+        <select id="fType" onchange="onTypeChange()">
+          <option value="monster_hunt" ${type==='monster_hunt'?'selected':''}>Monster Hunt</option>
+          <option value="garrison_defense" ${type==='garrison_defense'?'selected':''}>Garrison Defense</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Reward (Gold)</label>
+        <input id="fReward" type="number" value="${q.rewardGold||20}" min="0" max="999" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Barkeep Pitch <span style="color:var(--rust)">*</span></label>
+      <textarea id="fPitch" placeholder="What the barkeep says to offer the quest…">${q.pitch||''}</textarea>
+    </div>
+    <div class="form-group">
+      <label>Quest Summary</label>
+      <textarea id="fSummary" placeholder="Shown in quest log…" style="min-height:55px">${q.summary||''}</textarea>
+    </div>
+    <hr class="divider">
+    <div class="section-head">Combat Setup</div>
+    <div class="form-group">
+      <label>Monster Pool</label>
+      <div class="monster-pool" id="monsterPool"></div>
+      <div class="monster-add">
+        <input id="monsterInput" type="text" placeholder="Add monster name…" list="monsterSuggestions" />
+        <datalist id="monsterSuggestions">
+          ${MONSTERS.map(m=>`<option value="${m}">`).join('')}
+        </datalist>
+        <button onclick="addMonster()">Add</button>
+      </div>
+    </div>
+    <div class="conditional ${type==='monster_hunt'?'visible':''}" id="huntFields">
+      <div class="row">
+        <div class="form-group">
+          <label>Trek Duration (days)</label>
+          <input id="fDays" type="number" value="${q.totalDays||5}" min="1" max="30" />
+        </div>
+        <div class="form-group">
+          <label>Boss Monster</label>
+          <input id="fBossMonster" type="text" value="${q.bossMonster||''}" placeholder="e.g. Drake" list="monsterSuggestions" />
+        </div>
+        <div class="form-group">
+          <label>Boss Count</label>
+          <input id="fBossCount" type="number" value="${q.bossCount||1}" min="1" max="20" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Boss Encounter Label</label>
+        <input id="fBossLabel" type="text" value="${q.bossLabel||''}" placeholder="e.g. Drake nest" />
+      </div>
+    </div>
+    <hr class="divider">
+    <div class="preview-label">JSON Preview</div>
+    <pre class="json-preview" id="jsonPreview"></pre>
+  `;
+  renderMonsterPool();
+  updatePreview();
+  ['fId','fName','fType','fReward','fPitch','fSummary','fDays','fBossMonster','fBossCount','fBossLabel'].forEach(fid => {
+    const el = document.getElementById(fid);
+    if (el) el.addEventListener('input', updatePreview);
+  });
+}
+
+function onTypeChange() {
+  const t = document.getElementById('fType').value;
+  const el = document.getElementById('huntFields');
+  if (el) el.classList.toggle('visible', t === 'monster_hunt');
+  updatePreview();
+}
+
+function renderMonsterPool() {
+  const el = document.getElementById('monsterPool');
+  if (!el) return;
+  el.innerHTML = monsterPool.map((m,i) => `
+    <div class="monster-chip">${m}<button onclick="removeMonster(${i})">×</button></div>
+  `).join('') || '<span style="color:var(--muted);font-size:0.85rem;font-style:italic">None added</span>';
+}
+
+function addMonster() {
+  const inp = document.getElementById('monsterInput');
+  const val = inp.value.trim();
+  if (val && !monsterPool.includes(val)) {
+    monsterPool.push(val); inp.value = '';
+    renderMonsterPool(); updatePreview();
+  }
+}
+
+function removeMonster(i) {
+  monsterPool.splice(i, 1); renderMonsterPool(); updatePreview();
+}
+
+function buildQuestObj() {
+  const id = (document.getElementById('fId')||{}).value?.trim();
+  const type = (document.getElementById('fType')||{}).value;
+  const obj = {
+    id: id || activeId,
+    name: (document.getElementById('fName')||{}).value?.trim(),
+    giver: 'barkeep',
+    pitch: (document.getElementById('fPitch')||{}).value?.trim(),
+    summary: (document.getElementById('fSummary')||{}).value?.trim(),
+    rewardGold: parseInt((document.getElementById('fReward')||{}).value)||20,
+    type,
+    monsterPool: [...monsterPool],
+  };
+  if (type === 'monster_hunt') {
+    obj.totalDays = parseInt((document.getElementById('fDays')||{}).value)||5;
+    obj.bossLabel = (document.getElementById('fBossLabel')||{}).value?.trim();
+    obj.bossMonster = (document.getElementById('fBossMonster')||{}).value?.trim();
+    obj.bossCount = parseInt((document.getElementById('fBossCount')||{}).value)||1;
+  }
+  Object.keys(obj).forEach(k => { if (obj[k] === '') delete obj[k]; });
+  return obj;
+}
+
+function updatePreview() {
+  const el = document.getElementById('jsonPreview');
+  if (el) el.textContent = JSON.stringify(buildQuestObj(), null, 2);
+}
+
+function serializeCatalog(cat) {
+  const entries = Object.entries(cat).map(([id, q]) => {
+    const pairs = Object.entries(q).map(([k,v]) => {
+      if (Array.isArray(v)) return `      ${k}: ${JSON.stringify(v)}`;
+      if (typeof v === 'string') return `      ${k}: ${JSON.stringify(v)}`;
+      return `      ${k}: ${v}`;
+    });
+    return `    ${id}: {\n${pairs.join(',\n')},\n    }`;
+  });
+  return `  var QUEST_CATALOG = {\n${entries.join(',\n')},\n  };`;
+}
+
+function extractCatalogBlock(js) {
+  const start = js.indexOf('var QUEST_CATALOG = {');
+  if (start < 0) throw new Error('QUEST_CATALOG not found in game.js');
+  let lineStart = start;
+  while (lineStart > 0 && js[lineStart-1] !== '\n') lineStart--;
+  let depth = 0, i = start + 'var QUEST_CATALOG = {'.length - 1;
+  for (; i < js.length; i++) {
+    if (js[i] === '{') depth++;
+    else if (js[i] === '}') { depth--; if (depth === 0) break; }
+  }
+  let end = i + 1;
+  while (end < js.length && js[end] === ';') end++;
+  return js.slice(lineStart, end);
+}
+
+async function saveQuest() {
+  const tok = token();
+  if (!tok || !gameJsContent) { setStatus('saveStatus','Load quests first','err'); return; }
+  const obj = buildQuestObj();
+  if (!obj.id || !obj.name || !obj.pitch) {
+    setStatus('saveStatus','ID, Name, and Pitch are required','err'); return;
+  }
+  setStatus('saveStatus','Committing…','info');
+  document.getElementById('saveBtn').disabled = true;
+  try {
+    const newId = obj.id;
+    const newCatalog = { ...catalog, [newId]: obj };
+    const oldBlock = extractCatalogBlock(gameJsContent);
+    const newBlock = serializeCatalog(newCatalog);
+    const updatedJs = gameJsContent.replace(oldBlock, newBlock);
+    const encoded = btoa(unescape(encodeURIComponent(updatedJs)));
+    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${FILE}`, {
+      method: 'PUT',
+      headers: { Authorization: `token ${tok}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: `quest-editor: ${isNew ? 'add' : 'update'} quest "${obj.name}"`,
+        content: encoded, sha: gameJsSha,
+      })
+    });
+    if (!res.ok) { const err = await res.json(); throw new Error(err.message || 'HTTP ' + res.status); }
+    const data = await res.json();
+    gameJsSha = data.content.sha;
+    catalog = newCatalog; activeId = newId; isNew = false; gameJsContent = updatedJs;
+    setStatus('saveStatus', `✓ Committed "${obj.name}"`, 'ok');
+    renderSidebar();
+    document.getElementById('deleteBtn').style.display = 'inline-block';
+  } catch(e) {
+    setStatus('saveStatus', 'Error: ' + e.message, 'err');
+  } finally {
+    document.getElementById('saveBtn').disabled = false;
+  }
+}
+
+async function deleteQuest() {
+  if (!activeId || isNew) return;
+  const q = catalog[activeId];
+  if (!confirm(`Remove quest "${q?.name || activeId}" from game.js? This cannot be undone.`)) return;
+  const tok = token();
+  setStatus('saveStatus','Removing…','info');
+  document.getElementById('saveBtn').disabled = true;
+  try {
+    const newCatalog = { ...catalog };
+    delete newCatalog[activeId];
+    const oldBlock = extractCatalogBlock(gameJsContent);
+    const newBlock = serializeCatalog(newCatalog);
+    const updatedJs = gameJsContent.replace(oldBlock, newBlock);
+    const encoded = btoa(unescape(encodeURIComponent(updatedJs)));
+    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${FILE}`, {
+      method: 'PUT',
+      headers: { Authorization: `token ${tok}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: `quest-editor: remove quest "${q?.name || activeId}"`,
+        content: encoded, sha: gameJsSha,
+      })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    gameJsSha = data.content.sha; gameJsContent = updatedJs;
+    catalog = newCatalog; activeId = null;
+    renderSidebar();
+    document.getElementById('footer').style.display = 'none';
+    document.getElementById('formPanel').innerHTML = '<div class="empty"><div class="arrow">↖</div><div>Quest removed. Select another or create a new one.</div></div>';
+  } catch(e) {
+    setStatus('saveStatus','Error: ' + e.message,'err');
+  } finally {
+    document.getElementById('saveBtn').disabled = false;
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.activeElement?.id === 'monsterInput') addMonster();
+});
+
+document.getElementById('ghToken').addEventListener('input', e => {
+  sessionStorage.setItem('ct_tok', e.target.value);
+});
+</script>
+</body>
+</html>

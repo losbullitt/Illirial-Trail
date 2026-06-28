@@ -164,33 +164,13 @@
   }
   .banner .lock-out:hover { border-color: var(--rust); color: var(--rust); }
 
-  .auth-bar {
+  .top-bar {
     background: var(--aged);
     border-bottom: 1px solid var(--seam);
-    padding: 0.8rem 2rem;
+    padding: 0.6rem 2rem;
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    flex-wrap: wrap;
-  }
-  .auth-bar label {
-    font-size: 0.8rem;
-    font-family: 'JetBrains Mono', monospace;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    white-space: nowrap;
-  }
-  .auth-bar input {
-    flex: 1;
-    min-width: 200px;
-    background: var(--parchment);
-    border: 1px solid var(--seam);
-    border-radius: 2px;
-    padding: 0.4rem 0.6rem;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.78rem;
-    color: var(--ink);
   }
   .btn-sm {
     background: var(--rust);
@@ -399,12 +379,19 @@
     <h1>Cantebury Trails</h1>
     <div class="sub">Quest Editor · Restricted Access</div>
   </div>
-  <div class="lock-body">
+  <div class="lock-body" id="lockStep1">
     <div class="lock-icon">⚔️</div>
     <div class="lock-label">Passphrase</div>
     <input type="password" id="lockInput" placeholder="Enter passphrase…" onkeydown="if(event.key==='Enter') unlock()" autofocus />
     <button class="lock-btn" onclick="unlock()">Enter the Hall</button>
     <div class="lock-err" id="lockErr"></div>
+  </div>
+  <div class="lock-body" id="lockStep2" style="display:none">
+    <div class="lock-icon">🔑</div>
+    <div class="lock-label">GitHub Token (stored in session only)</div>
+    <input type="password" id="tokenInput" placeholder="ghp_…" onkeydown="if(event.key==='Enter') submitToken()" />
+    <button class="lock-btn" onclick="submitToken()">Connect to GitHub</button>
+    <div class="lock-err"></div>
   </div>
 </div>
 
@@ -417,11 +404,9 @@
       <button class="lock-out" onclick="lockOut()">🔒 Lock</button>
     </div>
 
-    <div class="auth-bar">
-      <label>GitHub Token</label>
-      <input type="password" id="ghToken" placeholder="ghp_…" />
-      <button class="btn-sm" onclick="loadQuests()">Load Quests</button>
-      <span class="status info" id="authStatus">Enter token and click Load</span>
+    <div class="top-bar">
+      <span class="status ok" id="authStatus">🔓 Authenticated</span>
+      <button class="btn-sm" onclick="loadQuests()" style="margin-left:auto">Load Quests</button>
     </div>
 
     <div class="body">
@@ -462,8 +447,7 @@ async function unlock() {
     document.getElementById('lockScreen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     document.body.style.alignItems = 'flex-start';
-    const saved = sessionStorage.getItem('ct_tok');
-    if (saved) document.getElementById('ghToken').value = saved;
+
   } else {
     const err = document.getElementById('lockErr');
     err.textContent = 'Incorrect passphrase.';
@@ -476,6 +460,8 @@ async function unlock() {
 function lockOut() {
   document.getElementById('app').style.display = 'none';
   document.getElementById('lockScreen').style.display = 'block';
+  document.getElementById('lockStep1').style.display = 'flex';
+  document.getElementById('lockStep2').style.display = 'none';
   document.body.style.alignItems = 'center';
   document.getElementById('lockInput').value = '';
   document.getElementById('lockInput').focus();
@@ -494,7 +480,7 @@ let activeId = null;
 let isNew = false;
 let monsterPool = [];
 
-function token() { return document.getElementById('ghToken').value.trim(); }
+function token() { return sessionStorage.getItem('ct_tok') || ''; }
 
 function setStatus(id, msg, cls) {
   const el = document.getElementById(id);
@@ -818,9 +804,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.activeElement?.id === 'monsterInput') addMonster();
 });
 
-document.getElementById('ghToken').addEventListener('input', e => {
-  sessionStorage.setItem('ct_tok', e.target.value);
-});
+
 </script>
 </body>
 </html>

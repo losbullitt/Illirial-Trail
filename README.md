@@ -8,7 +8,8 @@ It is a web version for now but will update in the future for a standalone setup
 
 The game is hosted on **GitHub Pages** as static HTML/JS — open it in any modern browser; no install required.
 
-**[Play Cantebury Trails](https://losbullitt.github.io/Illirial-Trail/index.html)**
+**[Play Cantebury Trails](https://losbullitt.github.io/Illirial-Trail/index.html)**  
+**[How to play / FAQ](https://losbullitt.github.io/Illirial-Trail/faq.html)** — share this link on PaperSword.
 
 - **Direct link:** `https://losbullitt.github.io/Illirial-Trail/index.html`
 - **Repository:** [github.com/losbullitt/Illirial-Trail](https://github.com/losbullitt/Illirial-Trail)

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How to Play &amp; FAQ — Cantebury Trails</title>
+  <meta
+    name="description"
+    content="How to play Cantebury Trails: setup, travel, combat, saves, and common questions."
+  />
+  <meta name="theme-color" content="#1a1520" />
+  <link rel="stylesheet" href="styles.css?v=8.4.0" />
+  <style>
+    .faq-panel {
+      margin-top: 1.25rem;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.15rem 1.25rem 1.5rem;
+    }
+    .faq-panel h2 {
+      margin: 1.75rem 0 0.65rem;
+      font-size: 1.15rem;
+      color: var(--accent);
+      font-weight: 650;
+    }
+    .faq-panel h2:first-of-type { margin-top: 0.25rem; }
+    .faq-panel h3 {
+      margin: 1.15rem 0 0.35rem;
+      font-size: 1rem;
+      color: var(--text);
+      font-weight: 600;
+    }
+    .faq-panel p,
+    .faq-panel li {
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+    .faq-panel .lead {
+      color: var(--muted);
+      margin: 0 0 1rem;
+    }
+    .faq-panel ul,
+    .faq-panel ol {
+      margin: 0.35rem 0 0.85rem;
+      padding-left: 1.25rem;
+    }
+    .faq-panel li { margin: 0.3rem 0; }
+    .faq-panel code {
+      background: rgba(0, 0, 0, 0.25);
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+    }
+    .faq-panel pre {
+      background: rgba(0, 0, 0, 0.28);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      overflow-x: auto;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+    .faq-toc {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      margin: 0 0 1.25rem;
+      padding: 0.75rem 0.9rem;
+      background: rgba(0, 0, 0, 0.18);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+    .faq-toc a { color: var(--accent); }
+    .faq-cta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin: 0.5rem 0 1.25rem;
+    }
+    .faq-cta a {
+      display: inline-block;
+      padding: 0.45rem 0.85rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(201, 162, 39, 0.12);
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .faq-cta a.primary {
+      background: var(--accent);
+      color: #1a1510;
+      border-color: var(--accent);
+    }
+    .faq-nav {
+      margin-top: 1.25rem;
+      font-size: 0.85rem;
+    }
+    .faq-nav a { color: var(--accent); }
+    .route-map {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre;
+      line-height: 1.35;
+      font-size: 0.82rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="header">
+      <h1>How to Play &amp; FAQ</h1>
+      <p class="tagline">Cantebury Trails — player guide (v8.4.0)</p>
+    </header>
+
+    <main class="faq-panel">
+      <p class="lead">
+        Lead a caravan from <b>Cantebury</b> west to the harbor of <b>New Isil</b>.
+        Manage supplies, fight monsters, recruit companions, and survive the road.
+      </p>
+
+      <div class="faq-cta">
+        <a class="primary" href="https://losbullitt.github.io/Illirial-Trail/index.html">Play the game</a>
+        <a href="index.html">Local / same folder</a>
+        <a href="thank-you.html">Thank you / credits</a>
+      </div>
+
+      <nav class="faq-toc" aria-label="On this page">
+        <a href="#start">Getting started</a>
+        <a href="#loop">Core loop</a>
+        <a href="#route">The trail</a>
+        <a href="#combat">Combat &amp; party</a>
+        <a href="#save">Saves</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+
+      <h2 id="start">Getting started</h2>
+      <ol>
+        <li>Open the game in a modern browser (Chrome, Firefox, Safari, or Edge).</li>
+        <li>Choose <b>Create new character</b> or <b>Use preset leader</b>.</li>
+        <li>In <b>Cantebury</b>, stock supplies at the City shop, check Party gear, then open <b>Depart</b>.</li>
+        <li>Pick your first westbound fork and press on, day by day.</li>
+      </ol>
+      <p>
+        Public play link:
+        <a href="https://losbullitt.github.io/Illirial-Trail/index.html">https://losbullitt.github.io/Illirial-Trail/index.html</a>
+      </p>
+
+      <h2 id="loop">Core loop</h2>
+      <ul>
+        <li><b>Prepare</b> in town — buy supplies, heal, recruit, equip gear.</li>
+        <li><b>March</b> — each travel day spends supplies and may trigger encounters or ruins.</li>
+        <li><b>Fight</b> — pick actions for each party member, then end the round.</li>
+        <li><b>Settle</b> — rest at inns/stables, take tavern quests, visit keeps, then depart again.</li>
+        <li><b>Win</b> — reach New Isil after enough journey days (see FAQ).</li>
+      </ul>
+
+      <h2 id="route">The trail</h2>
+      <p>
+        The road forks. On the way west you pick <b>one</b> town from each fork pair
+        (you do not visit both on the same outbound march).
+      </p>
+      <pre class="route-map" aria-label="Trail map">Cantebury
+    ├─ Gustaf → Grosjean     ─┐  lower fork — pick one path
+    └─ Idlwyld → Brookside   ─┘
+              ↓
+    ├─ Hollow Banks          ─┐  upper fork — pick one
+    └─ Glennhardt → Arpery   ─┘
+              ↓
+           Solem
+              ↓
+         New Isil (harbor)</pre>
+      <ul>
+        <li>Each leg is a few travel days (rolled once per road and kept for that campaign).</li>
+        <li>Eastbound, you usually reverse the path you took, with options to revisit towns.</li>
+        <li><b>Adventure</b> tabs let you trek near a town without committing to a full leg west.</li>
+      </ul>
+
+      <h2 id="combat">Combat &amp; party</h2>
+      <ul>
+        <li>Fighting line: up to <b>5</b> companions.</li>
+        <li>Classes: <b>Soldier</b>, <b>Priest</b>, <b>Mercenary</b>, <b>Mage</b> (and later <b>Paladin</b> via an optional quest).</li>
+        <li>Stats: Strength, Intelligence, Stamina, Luck — they drive damage, spells, HP growth, and crits.</li>
+        <li>Fallen companions can be revived at chapels (gold) or with a Potion of Life (often half HP).</li>
+        <li>Keep supplies topped up — running out on the road is deadly.</li>
+      </ul>
+
+      <h2 id="save">Saves</h2>
+      <ul>
+        <li>Use the on-screen <b>Save</b> / <b>Load</b> controls (campaign slots in the browser).</li>
+        <li>Saves stay on <b>this device / this browser</b> — there is no cloud account.</li>
+        <li>Clearing site data or switching browsers will not carry your run with you.</li>
+      </ul>
+
+      <h2 id="faq">FAQ</h2>
+
+      <h3>Do I need to install anything?</h3>
+      <p><b>No.</b> The public link runs in the browser. Local play only needs a simple file server if you are developing offline.</p>
+
+      <h3>How do I win?</h3>
+      <p>
+        Reach <b>New Isil</b> after enough journey days (around <b>300</b> by default; the game can extend this for the final boss march).
+        After journey day ~<b>270</b>, <b>SK Kew Kumber</b> can block the last westward road until defeated.
+      </p>
+
+      <h3>I don’t know what to do in Cantebury.</h3>
+      <p>
+        Short checklist: City shop → buy supplies / potions → Party tab → equip weapons → Adventure (optional practice) →
+        Depart → choose a fork.
+      </p>
+
+      <h3>What are supplies for?</h3>
+      <p>Each travel / adventure / quest day consumes supplies. No food means you cannot safely press on.</p>
+
+      <h3>What are gems for?</h3>
+      <p>Loot from fights and ruins. Sell them at shops for gold.</p>
+
+      <h3>Can I visit both forks on one trip west?</h3>
+      <p><b>No</b> outbound. You may see the other road later on a return or detour if that town is available.</p>
+
+      <h3>What is “Illirial Trail” vs “Cantebury Trails”?</h3>
+      <p><b>Cantebury Trails</b> is the game title. <b>Illirial-Trail</b> is the GitHub project name. Same game.</p>
+
+      <h3>Is there multiplayer?</h3>
+      <p><b>No.</b> Single-player only.</p>
+
+      <h3>The page looks broken / plain text.</h3>
+      <p>
+        Styles or scripts failed to load. Use the full
+        <a href="https://losbullitt.github.io/Illirial-Trail/index.html">GitHub Pages index.html link</a>,
+        not a bare repo URL, and avoid opening the file directly from disk.
+      </p>
+
+      <h3>Where do I report feedback?</h3>
+      <p>
+        Email issues and feedback to
+        <a href="mailto:Carlos.Santiago@papersword.com">Carlos.Santiago@papersword.com</a>.
+        Please mention the version string in the game header (e.g. <code>v8.4.0</code>).
+      </p>
+    </main>
+
+    <p class="faq-nav">
+      <a href="index.html">← Back to the game</a>
+      ·
+      <a href="https://losbullitt.github.io/Illirial-Trail/index.html">Play online</a>
+      ·
+      <a href="thank-you.html">Thank you</a>
+    </p>
+
+    <footer class="footer">
+      Deployed through <a href="https://losbullitt.github.io/Illirial-Trail/index.html">GitHub Pages</a>.
+      · <a href="faq.html">How to play / FAQ</a>
+      · <a href="thank-you.html">Thank you</a>
+    </footer>
+  </div>
+</body>
+</html>
